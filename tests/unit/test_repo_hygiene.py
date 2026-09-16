@@ -34,6 +34,10 @@ NON_SECRET_CONSTANTS = {
     "8000",
     "9000",
     "9001",
+    "false",
+    "60",
+    "10",
+    "0.3",
 }
 # Shapes that would indicate a real credential was pasted in.
 SECRET_SHAPES = [

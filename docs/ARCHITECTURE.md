@@ -3,8 +3,8 @@
 
 The system-level picture is in the root [`ROADMAP.md`](../ROADMAP.md)
 §3. This document describes what is built: the ingest pipeline (Phase 1
-Step 3), the raw lake, the idempotency rules, and the database roles.
-Later steps add the API layering and the web tier.
+Step 3), the raw lake, the idempotency rules, the database roles, and
+the public API (Step 4). Step 5 adds the web tier.
 
 ## Ingest pipeline
 
@@ -147,6 +147,100 @@ grant per table (`alembic/versions/0001_baseline.py`) and default
 privileges cover objects created later. CI runs every URL as the service
 container's owner, which is why the ingest and admin URLs fall back to
 `JUDGEMETRICS_DATABASE_URL` when unset.
+
+## Public API v1
+
+The API (`src/judgemetrics/api`, contract in [`API.md`](API.md)) is a
+read-only view over the canonical tables, connected as the
+`judgemetrics_app` role. Requests pass through four layers, each of
+which knows only the one beneath it:
+
+```
+   GET /api/v1/judges?q=…            src/judgemetrics/
+   ┌───────────────────────────────────────────────────────────────────┐
+   │ api/routes/   HTTP: query parameters (PageParams, StrictQuery),   │
+   │               path ids, 404s, Cache-Control, the /search limiter  │
+   └───────────────────────────────┬───────────────────────────────────┘
+                                   │ typed arguments
+   ┌───────────────────────────────▼───────────────────────────────────┐
+   │ services/     assemble response models: name normalization for   │
+   │               search, the similarity threshold, provenance blocks │
+   └───────────────────────────────┬───────────────────────────────────┘
+                                   │ Session + filters
+   ┌───────────────────────────────▼───────────────────────────────────┐
+   │ repositories/ SQLAlchemy queries: window-count pagination,        │
+   │               selectinload, trigram `%` matches; bound parameters │
+   └───────────────────────────────┬───────────────────────────────────┘
+                                   │ ORM rows
+   ┌───────────────────────────────▼───────────────────────────────────┐
+   │ db/models/    the canonical tables                                │
+   └───────────────────────────────────────────────────────────────────┘
+   schemas/       the only shapes that leave the API (Pydantic v2,
+                  `from_attributes`): Page[T], Provenance, ErrorBody, …
+```
+
+- **Routes** (`api/routes/{judges,courts,jurisdictions,search}.py`)
+  declare parameters with validation (`limit` 1–100, `offset` ≥ 0,
+  enum statuses, UUID ids, ISO dates) and a `StrictQuery` allow-list
+  per route, so an undeclared query parameter is a 422 rather than an
+  ignored filter; a unit test checks each allow-list against the
+  parameters the OpenAPI document declares. List and detail routes add
+  `Cache-Control: public, max-age=60` through a router dependency, which
+  a raised error bypasses.
+- **Services** (`services/`) return the schemas. `services.search`
+  normalizes the query with `normalize_person_name`, sets
+  `pg_trgm.similarity_threshold` for the request's transaction with
+  `set_config(…, true)` (a bound parameter from
+  `JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD`), and unions judge and
+  court matches ordered by `similarity()`. `services.provenance` builds
+  the provenance block from the public columns of `source_record`.
+- **Repositories** (`repositories/`) take a `Session` and return ORM
+  rows plus totals. `paginate` adds `count(*) OVER ()` to the page query
+  so a list is one statement (a plain count only when the page is
+  empty); `get_judge` loads service records with `selectinload` and
+  their courts with a chained `joinedload`, so a judge detail is three
+  statements including provenance. `tests/integration/test_query_counts.py`
+  counts statements at the cursor and fails on more.
+- **Errors** (`api/errors.py`): every non-2xx response is an `ErrorBody`
+  (`code`, `message`, `request_id`). Validation errors name the
+  parameter; `ApiError` carries its code; a `SQLAlchemyError` is a 503
+  whose text is never returned (it can embed SQL); anything else is a
+  500 `internal_error`. Stack traces stay in the logs.
+- **Sessions**: `create_app` binds an engine and a session factory to
+  the app (`app.state`), and `api.deps.get_session` opens one session
+  per request from it, so an app built with explicit settings (tests)
+  never reaches for the process-wide engine.
+- **Identity** (`api/identity.py`, ROADMAP.md §1.4): a request resolves
+  to a rate-limit bucket; anonymous keyed by client address is the only
+  bucket until Phase 9 issues API keys. The OpenAPI document declares
+  the `X-API-Key` scheme as optional.
+
+### The rate limiter
+
+`api/ratelimit.py` is an in-process token bucket per
+`RequestIdentity.rate_limit_key`: `search_rate_limit_burst` tokens
+(default 10) refilled at `search_rate_limit_per_minute` (default 60);
+an empty bucket answers 429 with `Retry-After` and the `rate_limited`
+error body. It is applied to `/search` only, before parameter
+validation, so an over-limit client never reaches the database. The
+client address is the TCP peer unless `JUDGEMETRICS_TRUST_PROXY=true`,
+in which case it is the rightmost `X-Forwarded-For` entry — the one the
+trusted proxy appended. This is the local layer beneath the Phase 8
+edge limits: not shared across workers, forgotten on restart, and off
+under `JUDGEMETRICS_ENV=test` unless
+`JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED=true` (the integration test
+enables it with a held clock). Buckets are pruned once more than 10,000
+keys are tracked; a full bucket carries no state, so dropping it is
+exact.
+
+### The OpenAPI snapshot
+
+`judgemetrics openapi export` writes `docs/openapi.json` (sorted keys,
+two-space indent, LF, trailing newline) from an app built with test
+settings, so the document depends on the routes and the package version
+only. `tests/unit/test_openapi.py` fails when the committed file differs
+from the rendered one: a route change must regenerate the document,
+because Step 5 generates the web client from it.
 
 ## Command interface for ingest
 

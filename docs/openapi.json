@@ -1,0 +1,1507 @@
+{
+  "components": {
+    "schemas": {
+      "CourtDetail": {
+        "properties": {
+          "active_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active From"
+          },
+          "active_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active To"
+          },
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "court_type": {
+            "description": "district | appeals | supreme | other (federal, Phase 1).",
+            "title": "Court Type",
+            "type": "string"
+          },
+          "external_ids": {
+            "additionalProperties": true,
+            "title": "External Ids",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "jurisdiction_id": {
+            "format": "uuid",
+            "title": "Jurisdiction Id",
+            "type": "string"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USPS code parsed from a district-court name.",
+            "title": "State Code"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "court_type",
+          "state_code",
+          "jurisdiction_id",
+          "external_ids",
+          "active_from",
+          "active_to",
+          "provenance"
+        ],
+        "title": "CourtDetail",
+        "type": "object"
+      },
+      "CourtRef": {
+        "description": "The court a service record belongs to, enough to link and label it.",
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "court_type": {
+            "title": "Court Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "court_type"
+        ],
+        "title": "CourtRef",
+        "type": "object"
+      },
+      "CourtSummary": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "court_type": {
+            "description": "district | appeals | supreme | other (federal, Phase 1).",
+            "title": "Court Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "jurisdiction_id": {
+            "format": "uuid",
+            "title": "Jurisdiction Id",
+            "type": "string"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "USPS code parsed from a district-court name.",
+            "title": "State Code"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "court_type",
+          "state_code",
+          "jurisdiction_id"
+        ],
+        "title": "CourtSummary",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "description": "Every non-2xx response body. Never a stack trace, never SQL.",
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable code: validation_error, not_found, rate_limited, database_unavailable, internal_error, or http_error.",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "description": "Matches the `X-Request-ID` response header.",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "request_id"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "properties": {
+          "alembic_head": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alembic Head"
+          },
+          "git_sha": {
+            "title": "Git Sha",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "git_sha",
+          "alembic_head"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "JudgeDetail": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "external_ids": {
+            "additionalProperties": true,
+            "description": "Public source identifiers, e.g. `fjc_nid`.",
+            "title": "External Ids",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Public biographical facts only.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "normalized_name": {
+            "title": "Normalized Name",
+            "type": "string"
+          },
+          "provenance": {
+            "description": "The raw artifacts behind this judge and each service record.",
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "service": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceRecord"
+            },
+            "title": "Service",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "senior",
+              "deceased",
+              "retired",
+              "resigned",
+              "removed",
+              "inactive",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "status",
+          "normalized_name",
+          "external_ids",
+          "metadata",
+          "service",
+          "provenance"
+        ],
+        "title": "JudgeDetail",
+        "type": "object"
+      },
+      "JudgeSummary": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "senior",
+              "deceased",
+              "retired",
+              "resigned",
+              "removed",
+              "inactive",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "status"
+        ],
+        "title": "JudgeSummary",
+        "type": "object"
+      },
+      "JurisdictionDetail": {
+        "properties": {
+          "fips_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fips Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_jurisdiction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Jurisdiction Id"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JurisdictionType"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "state_code",
+          "fips_code",
+          "parent_jurisdiction_id",
+          "provenance"
+        ],
+        "title": "JurisdictionDetail",
+        "type": "object"
+      },
+      "JurisdictionSummary": {
+        "properties": {
+          "fips_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fips Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parent_jurisdiction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Jurisdiction Id"
+          },
+          "state_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Code"
+          },
+          "type": {
+            "$ref": "#/components/schemas/JurisdictionType"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "state_code",
+          "fips_code",
+          "parent_jurisdiction_id"
+        ],
+        "title": "JurisdictionSummary",
+        "type": "object"
+      },
+      "JurisdictionType": {
+        "enum": [
+          "federal",
+          "state",
+          "county",
+          "city",
+          "district",
+          "circuit"
+        ],
+        "title": "JurisdictionType",
+        "type": "string"
+      },
+      "NotReadyResponse": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "const": "not_ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "NotReadyResponse",
+        "type": "object"
+      },
+      "Page_CourtSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CourtSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the next page, or null on the last.",
+            "title": "Next Offset"
+          },
+          "offset": {
+            "description": "Rows skipped before this page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows matching the filters, across all pages.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "Page[CourtSummary]",
+        "type": "object"
+      },
+      "Page_JudgeSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JudgeSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the next page, or null on the last.",
+            "title": "Next Offset"
+          },
+          "offset": {
+            "description": "Rows skipped before this page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows matching the filters, across all pages.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "Page[JudgeSummary]",
+        "type": "object"
+      },
+      "Page_JurisdictionSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JurisdictionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the next page, or null on the last.",
+            "title": "Next Offset"
+          },
+          "offset": {
+            "description": "Rows skipped before this page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows matching the filters, across all pages.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "Page[JurisdictionSummary]",
+        "type": "object"
+      },
+      "Provenance": {
+        "description": "Where a row's current values came from: one retrieved raw artifact.\n\nThe raw object itself lives in the immutable lake under an internal\nstorage key that is never published; ``raw_sha256`` identifies its\nbytes and ``ingest_run_id`` the run that fetched it.",
+        "properties": {
+          "external_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The artifact's id at the source.",
+            "title": "External Record Id"
+          },
+          "ingest_run_id": {
+            "format": "uuid",
+            "title": "Ingest Run Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "raw_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Raw Sha256",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key (docs/DATA_SOURCES.md), e.g. `fjc`.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "external_record_id",
+          "retrieved_at",
+          "raw_sha256",
+          "parser_version",
+          "ingest_run_id"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "ReadyResponse": {
+        "properties": {
+          "alembic_current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alembic Current"
+          },
+          "database": {
+            "const": "ok",
+            "title": "Database",
+            "type": "string"
+          },
+          "status": {
+            "const": "ready",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "database",
+          "alembic_current"
+        ],
+        "title": "ReadyResponse",
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "items": {
+            "description": "Best matches first.",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "description": "The query after name normalization, as matched.",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "limit",
+          "items"
+        ],
+        "title": "SearchResponse",
+        "type": "object"
+      },
+      "SearchResult": {
+        "properties": {
+          "entity_type": {
+            "enum": [
+              "judge",
+              "court"
+            ],
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "description": "pg_trgm similarity to the query.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "entity_type",
+          "id",
+          "name",
+          "score"
+        ],
+        "title": "SearchResult",
+        "type": "object"
+      },
+      "ServiceRecord": {
+        "description": "One appointment: a judge at a court in a position over an interval.",
+        "properties": {
+          "court": {
+            "$ref": "#/components/schemas/CourtRef"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the appointment is current.",
+            "title": "End Date"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "Public appointment facts with no column of their own.",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "position_type": {
+            "title": "Position Type",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          }
+        },
+        "required": [
+          "id",
+          "court",
+          "position_type",
+          "start_date",
+          "end_date",
+          "metadata"
+        ],
+        "title": "ServiceRecord",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "description": "Optional. No keys are issued yet; a request without one is served as the anonymous tier, rate limited by client address.",
+        "in": "header",
+        "name": "X-API-Key",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "description": "Read-only, versioned access to JudgeMetrics' canonical data: judges, courts, jurisdictions, and name search, each with the provenance of the raw source artifacts behind it. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), and every error is an `ErrorBody`. See docs/API.md.",
+    "title": "JudgeMetrics API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/courts": {
+      "get": {
+        "operationId": "list_courts_api_v1_courts_get",
+        "parameters": [
+          {
+            "description": "Only courts of this jurisdiction.",
+            "in": "query",
+            "name": "jurisdiction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only courts of this jurisdiction.",
+              "title": "Jurisdiction Id"
+            }
+          },
+          {
+            "description": "Exact court type: district, appeals, supreme, other (federal, Phase 1).",
+            "in": "query",
+            "name": "court_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact court type: district, appeals, supreme, other (federal, Phase 1).",
+              "title": "Court Type"
+            }
+          },
+          {
+            "description": "Page size, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Page size, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rows to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CourtSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "List courts",
+        "tags": [
+          "courts"
+        ]
+      }
+    },
+    "/api/v1/courts/{court_id}": {
+      "get": {
+        "operationId": "get_court_api_v1_courts__court_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "court_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Court Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourtDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Court detail with provenance",
+        "tags": [
+          "courts"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/judges": {
+      "get": {
+        "operationId": "list_judges_api_v1_judges_get",
+        "parameters": [
+          {
+            "description": "Name to match by trigram similarity (normalized before matching).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Name to match by trigram similarity (normalized before matching).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Only judges with a service record at this court.",
+            "in": "query",
+            "name": "court_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only judges with a service record at this court.",
+              "title": "Court Id"
+            }
+          },
+          {
+            "description": "Only judges whose service interval covers this date (ISO 8601).",
+            "in": "query",
+            "name": "active_on",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only judges whose service interval covers this date (ISO 8601).",
+              "title": "Active On"
+            }
+          },
+          {
+            "description": "Exact status.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "senior",
+                    "deceased",
+                    "retired",
+                    "resigned",
+                    "removed",
+                    "inactive",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact status.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Page size, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Page size, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rows to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_JudgeSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "List judges",
+        "tags": [
+          "judges"
+        ]
+      }
+    },
+    "/api/v1/judges/{judge_id}": {
+      "get": {
+        "operationId": "get_judge_api_v1_judges__judge_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "judge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Judge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JudgeDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Judge detail with service records and provenance",
+        "tags": [
+          "judges"
+        ]
+      }
+    },
+    "/api/v1/judges/{judge_id}/service": {
+      "get": {
+        "operationId": "get_judge_service_api_v1_judges__judge_id__service_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "judge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Judge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceRecord"
+                  },
+                  "title": "Response Get Judge Service Api V1 Judges  Judge Id  Service Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Service records of a judge, oldest first",
+        "tags": [
+          "judges"
+        ]
+      }
+    },
+    "/api/v1/jurisdictions": {
+      "get": {
+        "operationId": "list_jurisdictions_api_v1_jurisdictions_get",
+        "parameters": [
+          {
+            "description": "Page size, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Page size, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rows to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_JurisdictionSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "List jurisdictions",
+        "tags": [
+          "jurisdictions"
+        ]
+      }
+    },
+    "/api/v1/jurisdictions/{jurisdiction_id}": {
+      "get": {
+        "operationId": "get_jurisdiction_api_v1_jurisdictions__jurisdiction_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "jurisdiction_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Jurisdiction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JurisdictionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Jurisdiction detail with provenance",
+        "tags": [
+          "jurisdictions"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready_api_v1_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotReadyResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "operationId": "search_names_api_v1_search_get",
+        "parameters": [
+          {
+            "description": "Name to match; normalized like judge names before matching.",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Name to match; normalized like judge names before matching.",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Results to return, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Results to return, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Rate limit exceeded; `Retry-After` gives the wait in seconds."
+          }
+        },
+        "summary": "Search judges and courts by name",
+        "tags": [
+          "search"
+        ]
+      }
+    }
+  },
+  "security": [
+    {},
+    {
+      "ApiKey": []
+    }
+  ]
+}

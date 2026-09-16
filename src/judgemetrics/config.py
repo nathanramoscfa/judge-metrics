@@ -106,6 +106,19 @@ class Settings(BaseSettings):
     # that encrypts `correction_request.requester_contact` at rest. Only the
     # admin tooling that answers corrections needs it; the API never decrypts.
     correction_contact_key: SecretStr | None = None
+    # Public API (judgemetrics.api). `trust_proxy` lets the rate limiter key
+    # on the address a trusted reverse proxy appended to `X-Forwarded-For`;
+    # without it the header is ignored (a client could otherwise spoof its
+    # bucket). The limiter is the in-process layer beneath the Phase 8 edge
+    # limits; `search_rate_limit_enabled` unset means "on, except under the
+    # test environment", so integration tests opt in explicitly.
+    trust_proxy: bool = False
+    search_rate_limit_per_minute: int = Field(default=60, ge=1)
+    search_rate_limit_burst: int = Field(default=10, ge=1)
+    search_rate_limit_enabled: bool | None = None
+    # pg_trgm similarity threshold for `/search` and the judges `q` filter,
+    # set per request with `set_config` (never interpolated into SQL).
+    search_similarity_threshold: float = Field(default=0.3, gt=0.0, le=1.0)
 
     @field_validator("database_url", "admin_database_url", "ingest_database_url")
     @classmethod
@@ -122,6 +135,12 @@ class Settings(BaseSettings):
     @property
     def effective_ingest_database_url(self) -> str:
         return self.ingest_database_url or self.database_url
+
+    @property
+    def effective_search_rate_limit_enabled(self) -> bool:
+        if self.search_rate_limit_enabled is not None:
+            return self.search_rate_limit_enabled
+        return self.env != "test"
 
     def resolved_git_sha(self) -> str:
         """The configured SHA, else the checkout's HEAD, else ``unknown``."""

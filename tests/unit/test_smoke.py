@@ -28,7 +28,7 @@ def test_cli_version_prints_package_version() -> None:
 def test_cli_lists_command_groups() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0, result.output
-    for group in ("db", "serve", "ingest"):
+    for group in ("db", "serve", "ingest", "openapi"):
         assert group in result.output
 
 

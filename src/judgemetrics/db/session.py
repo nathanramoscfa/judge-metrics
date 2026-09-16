@@ -1,9 +1,12 @@
 # src/judgemetrics/db/session.py
-"""Engine and session factory from settings, plus the FastAPI dependency."""
+"""Engine and session factory from settings.
+
+The FastAPI dependency that opens a session per request lives in
+``judgemetrics.api.deps`` and uses the factory ``create_app`` binds to the app.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from functools import lru_cache
 
 from sqlalchemy import Engine, create_engine
@@ -44,15 +47,6 @@ def get_session_factory() -> sessionmaker[Session]:
 # Conventional name for the process-wide factory: `SessionLocal()` opens a session.
 def SessionLocal() -> Session:  # noqa: N802 - SQLAlchemy convention
     return get_session_factory()()
-
-
-def get_session() -> Iterator[Session]:
-    """FastAPI dependency: one session per request, always closed."""
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
 
 
 def reset_engine_cache() -> None:
