@@ -25,10 +25,12 @@ COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-group planning --no-install-project
 
-# Then the application (editable, so alembic/ next to src/ is found).
+# Then the application (editable, so alembic/ next to src/ is found) and the
+# curated reference tables the connectors read (data/reference/).
 COPY src ./src
 COPY alembic ./alembic
 COPY alembic.ini ./
+COPY data/reference ./data/reference
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-group planning
 

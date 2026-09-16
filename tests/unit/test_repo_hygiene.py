@@ -55,6 +55,7 @@ SHARED_TARGETS = (
     "gate",
     "migrate",
     "dev-api",
+    "ingest-fjc",
 )
 SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
 
@@ -347,6 +348,7 @@ def test_command_interface_targets_present() -> None:
     assert tasks["gate-commit"] == "pre-commit run --all-files"
     assert tasks["migrate"] == "judgemetrics db upgrade"
     assert tasks["dev-api"] == "judgemetrics serve --reload"
+    assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
     assert _pyproject()["project"]["scripts"]["judgemetrics"] == "judgemetrics.cli:main"
 
 
@@ -379,6 +381,10 @@ def test_bandit_configured_to_exclude_tests() -> None:
         ("infra/docker/postgres/01-extensions.sql", "-- "),
         ("infra/docker/postgres/02-roles.sql", "-- "),
         ("CONTRIBUTING.md", "<!-- "),
+        ("docs/ARCHITECTURE.md", "<!-- "),
+        ("docs/DATA_MODEL.md", "<!-- "),
+        ("data/README.md", "<!-- "),
+        ("tests/fixtures/fjc/README.md", "<!-- "),
         ("SECURITY.md", "<!-- "),
         ("CODE_OF_CONDUCT.md", "<!-- "),
         (".github/PULL_REQUEST_TEMPLATE.md", "<!-- "),

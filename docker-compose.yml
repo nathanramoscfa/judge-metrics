@@ -55,7 +55,9 @@ services:
   minio-init:
     # Runs once after MinIO is healthy: creates the raw-lake bucket with
     # object versioning enabled (the brief's "object-store versioning for
-    # raw data"), then exits.
+    # raw data") and, when JUDGEMETRICS_S3_ACCESS_KEY_ID differs from the
+    # root user, the application user the ingest runner connects as
+    # (readwrite policy). Idempotent; then exits.
     image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       minio:
@@ -64,6 +66,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
       RAW_BUCKET: ${JUDGEMETRICS_RAW_BUCKET:-judgemetrics-raw}
+      APP_ACCESS_KEY_ID: ${JUDGEMETRICS_S3_ACCESS_KEY_ID:-}
+      APP_SECRET_ACCESS_KEY: ${JUDGEMETRICS_S3_SECRET_ACCESS_KEY:-}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -71,6 +75,11 @@ services:
         mc mb --ignore-existing "local/$$RAW_BUCKET"
         mc version enable "local/$$RAW_BUCKET"
         mc version info "local/$$RAW_BUCKET"
+        if [ -n "$$APP_ACCESS_KEY_ID" ] && [ "$$APP_ACCESS_KEY_ID" != "$$MINIO_ROOT_USER" ]; then
+          mc admin user add local "$$APP_ACCESS_KEY_ID" "$$APP_SECRET_ACCESS_KEY"
+          mc admin policy attach local readwrite --user "$$APP_ACCESS_KEY_ID" \
+            || echo "readwrite policy already attached to the application user"
+        fi
     restart: "no"
 
   api:

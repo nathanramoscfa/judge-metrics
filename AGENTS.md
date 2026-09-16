@@ -135,11 +135,11 @@ uv run poe down            # docker compose down
 uv run poe kit             # refresh the planning kit
 uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
-uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources
+uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + canonical tables (ingest role)
+uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs
 ```
 
-Later steps add `dev-web`, `ingest-fjc`, `seed`, `compute-metrics`, and
-`bootstrap`.
+Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -188,6 +188,42 @@ Later steps add `dev-web`, `ingest-fjc`, `seed`, `compute-metrics`, and
 - `make_engine` sets a 5-second psycopg `connect_timeout`; without it a
   readiness probe against an unreachable host hangs for minutes on
   Windows.
+- Ingest (docs/ARCHITECTURE.md): a `source_record` is one retrieved
+  artifact (unique on source, external id, sha256), not one row;
+  parsed rows are `SourceRecordDraft`s attributed to it. Every draft
+  has a `natural_key`; the runner deduplicates on it and publishes with
+  `INSERT … ON CONFLICT DO UPDATE` on the matching unique index, writing
+  only rows whose substantive columns changed (JSONB identifiers and
+  metadata are merged with `||`). An artifact whose hash is already
+  recorded is not re-parsed unless `--force` or the connector's
+  `parser_version` changed. The run row is committed first; the whole
+  publish is one transaction; a failure rolls it back and records
+  `failed` with a reason. Synthetic sources and fixture ingests are
+  refused in production.
+- Revision 0002 adds `source_record_id` to `jurisdiction`, `court`, and
+  `judge` (last-substantive-writer provenance: it moves only when the
+  newer artifact changed the row), `court.state_code`,
+  `judge_service.metadata`, `source_record.metadata` (HTTP validators
+  and the artifact URI, which is how conditional requests work),
+  `ingest_run.parser_version`/`checkpoint`/`failure_reason`, and the
+  natural-key unique indexes (`NULLS NOT DISTINCT`, PostgreSQL 15+).
+  `jurisdiction.source_record_id` uses `use_alter=True` to break the
+  source → jurisdiction → source_record cycle for table sorting.
+- Raw-lake keys are `<source_id>/<yyyy>/<mm>/<sha256><ext>`; `put` never
+  overwrites. `open_raw_store(settings)` picks the backend from
+  `JUDGEMETRICS_RAW_STORE_URL`; the S3 endpoint must be HTTPS in
+  production. Compose `minio-init` creates the application user named
+  by `JUDGEMETRICS_S3_ACCESS_KEY_ID` when it differs from the root user.
+- Connector headers: `schema.py` keeps the full verified header set
+  (drift → warning) apart from the expected set the connector reads
+  (missing → the run fails naming the header). The parser projects
+  rows to the expected columns, so `judges.csv`'s `Gender` and
+  `Race or Ethnicity` never enter a payload; `demographics.csv` is
+  never fetched. Fixture CSVs are real rows with those two columns
+  dropped; data-quality issues in fixtures are planted by row
+  selection, never by editing a real record.
+- The API image copies `data/reference/` so connectors that read
+  curated tables (`us_states.csv`) work inside the container.
 
 ## End-of-session report (from the brief)
 

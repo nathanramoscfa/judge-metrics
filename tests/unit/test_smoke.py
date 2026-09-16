@@ -32,10 +32,10 @@ def test_cli_lists_command_groups() -> None:
         assert group in result.output
 
 
-def test_ingest_list_sources_is_empty_until_step_3() -> None:
+def test_ingest_list_sources_names_the_fjc_connector() -> None:
     result = runner.invoke(app, ["ingest", "list-sources"])
     assert result.exit_code == 0, result.output
-    assert "no sources registered" in result.output
+    assert result.output.splitlines() == ["fjc\t2026.09.1"]
 
 
 def test_db_group_has_migration_commands() -> None:

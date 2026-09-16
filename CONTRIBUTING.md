@@ -36,9 +36,11 @@ mirrors every target for environments with GNU make (`make check`).
 | `gate`          | the full security gate: every pre-commit hook plus the pre-push stage |
 | `up`, `down`    | Docker Compose services (PostgreSQL 17, MinIO) up / down |
 | `kit`           | re-export the roadmodel planning kit                   |
+| `migrate`       | Alembic migrations to head, as the admin role          |
+| `dev-api`       | the API with auto-reload                               |
+| `ingest-fjc`    | `judgemetrics ingest run fjc`: the FJC connector, as the ingest role, into the raw lake and canonical tables |
 
-Later steps add `migrate`, `dev-api`, `dev-web`, `ingest-fjc`, `seed`,
-`compute-metrics`, and `bootstrap`.
+Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
 
 ## The security gate
 

@@ -20,8 +20,11 @@ classifiers = [
 ]
 dependencies = [
     "alembic>=1.20.0",
+    "boto3>=1.43.95",
     "cryptography>=50.0.1",
     "fastapi>=0.141.1",
+    "httpx>=0.28.1",
+    "polars>=1.44.2",
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
@@ -41,8 +44,8 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "bandit>=1.9.4",
+    "boto3-stubs[s3]>=1.43.95",
     "detect-secrets>=1.5.0",
-    "httpx>=0.28.1",
     "mypy>=2.3.1",
     "pip-audit>=2.10.1",
     "poethepoet>=0.48.0",
@@ -110,7 +113,7 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later steps add: dev-web, ingest-fjc, seed, compute-metrics, bootstrap.
+# Later steps add: dev-web, seed, compute-metrics, bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
@@ -134,3 +137,6 @@ down = "docker compose down"
 # dev-api serves judgemetrics.main:app with auto-reload.
 migrate = "judgemetrics db upgrade"
 dev-api = "judgemetrics serve --reload"
+# Ingest: the FJC connector as the ingest role (JUDGEMETRICS_INGEST_DATABASE_URL)
+# into the raw lake named by JUDGEMETRICS_RAW_STORE_URL.
+ingest-fjc = "judgemetrics ingest run fjc"

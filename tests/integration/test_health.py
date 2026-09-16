@@ -53,7 +53,7 @@ def test_health_reports_version_sha_and_head(unreachable_client: TestClient) -> 
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["git_sha"] == "unknown" or SHA.match(body["git_sha"])
-    assert body["alembic_head"] == head_revision() == "0001"
+    assert body["alembic_head"] == head_revision() == "0002"
     assert set(body) == {"status", "version", "git_sha", "alembic_head"}
 
 

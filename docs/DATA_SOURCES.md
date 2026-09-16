@@ -30,7 +30,7 @@ it as a term of the agreement (root roadmap §5.5).
 
 | Id            | Source                                                   | Role in the roadmap                       | Status (date)            | Phase | Commercial redistribution |
 |---------------|----------------------------------------------------------|-------------------------------------------|--------------------------|-------|---------------------------|
-| `fjc`         | Federal Judicial Center, Biographical Directory export   | Federal judge master data, court roster   | verified (2026-09-15)    | 1     | yes (US government work) |
+| `fjc`         | Federal Judicial Center, Biographical Directory export   | Federal judge master data, court roster   | verified (2026-09-16)    | 1     | yes (US government work) |
 | `synthetic`   | Deterministic synthetic justice dataset (in-repo generator) | MVP demo data, golden regression fixture | by construction         | 2     | n/a (never a product) |
 | `cook_sao`    | Cook County State's Attorney case-level datasets         | First real state-court corpus             | verified (2026-09-15)    | 5     | unverified (question 2) |
 | `fl_jdms`     | Florida Courts Judicial Data Management Services / UCR   | Florida court-event structure; credentialed access | unverified; workstream | 5, 7 | unverified; negotiate (question 8) |
@@ -49,6 +49,16 @@ it as a term of the agreement (root roadmap §5.5).
 - **Documentation:** the export page
   `https://www.fjc.gov/history/judges/biographical-directory-article-iii-federal-judges-export`.
 - **Access method:** HTTPS download of static files. No credentials.
+- **Fetch (verified 2026-09-16):**
+  `https://www.fjc.gov/sites/default/files/history/judges.csv`
+  (5,452,935 bytes, 4,075 rows) and
+  `https://www.fjc.gov/sites/default/files/history/federal-judicial-service.csv`
+  (1,638,289 bytes, 4,775 rows), served as `application/octet-stream`
+  with `ETag` and `Last-Modified` (`Wed, 16 Sep 2026 05:05:19 GMT` and
+  `05:05:22 GMT`), so conditional requests (`If-None-Match`,
+  `If-Modified-Since`) work and the connector sends both. UTF-8, LF
+  line endings, no byte-order mark, every field quoted, dates
+  `YYYY-MM-DD`. No redirects.
 - **Files (verified 2026-09-15):**
   - Format 1, organized by judge: `judges.csv` and `judges.xlsx`.
   - Format 2, organized by category: `categories.xlsx`,
@@ -70,20 +80,68 @@ it as a term of the agreement (root roadmap §5.5).
   them.
 - **Fields available:** judge identity, service records per court with
   appointment, commission, senior-status, and termination dates, chief
-  judge service, education, career, nominations. The exact column
-  headers must be read from the file at first fetch; the connector
-  maps by exact header name and fails if an expected header is absent.
+  judge service, education, career, nominations.
+- **Headers (verified 2026-09-16; recorded in
+  `src/judgemetrics/ingest/fjc/schema.py`):**
+  - `federal-judicial-service.csv`, 30 columns, one row per
+    appointment: `nid`, `Sequence`, `Judge Name`, `Court Type`,
+    `Court Name`, `Appointment Title`, `Appointing President`,
+    `Party of Appointing President`, `Reappointing President`,
+    `Party of Reappointing President`, `ABA Rating`, `Seat ID`,
+    `Statute Authorizing New Seat`, `Recess Appointment Date`,
+    `Nomination Date`, `Committee Referral Date`, `Hearing Date`,
+    `Judiciary Committee Action`, `Committee Action Date`,
+    `Senate Vote Type`, `Ayes/Nays`, `Confirmation Date`,
+    `Commission Date`, `Service as Chief Judge, Begin`,
+    `Service as Chief Judge, End`, `2nd Service as Chief Judge, Begin`,
+    `2nd Service as Chief Judge, End`, `Senior Status Date`,
+    `Termination`, `Termination Date`.
+  - `judges.csv`, 201 columns, one row per judge: `nid`, `jid`,
+    `Last Name`, `First Name`, `Middle Name`, `Suffix`, `Birth Month`,
+    `Birth Day`, `Birth Year`, `Birth City`, `Birth State`,
+    `Death Month`, `Death Day`, `Death Year`, `Death City`,
+    `Death State`, `Gender`, `Race or Ethnicity`; then the 27
+    appointment columns above (`Court Type` … `Termination Date`) six
+    times, suffixed ` (1)` … ` (6)`; `Other Federal Judicial Service
+    (1)` … ` (4)`; `School`, `Degree`, `Degree Year` ` (1)` … ` (5)`;
+    `Professional Career`; `Other Nominations/Recess Appointments`.
+  - The connector reads, and requires, `nid`, `jid`, the four name
+    parts, `Birth Year`, and per appointment `Court Type`,
+    `Court Name`, `Appointment Title`, `Recess Appointment Date`,
+    `Commission Date`, `Senior Status Date`, `Termination`, and
+    `Termination Date`. A missing expected header fails the run
+    naming the header; a header outside the verified set is logged as
+    a warning (schema drift).
+  - Vocabularies (every distinct value on 2026-09-16): `Court Type` ∈
+    {`U.S. District Court`, `U.S. Court of Appeals`, `Supreme Court`,
+    `Other`, `U.S. Circuit Court (1869-1911)`,
+    `U.S. Circuit Court (1801-1802)`, `U.S. Circuit Court (other)`};
+    `Appointment Title` ∈ {`Judge`, `Chief Judge`, `Associate Judge`,
+    `Presiding Judge`, `Associate Justice`, `Chief Justice`};
+    `Termination` ∈ {`Death`, `Retirement`, `Resignation`,
+    `Appointment to Another Judicial Position`, `Reassignment`,
+    `Abolition of Court`, `Recess Appointment-Not Confirmed`,
+    `Impeachment & Conviction`} or blank. `Birth Year` is `YYYY` or
+    `ca. YYYY`. 35 appointments have no commission date (33 of them
+    have a recess appointment date, which the connector uses as the
+    start); 2 have no start date at all.
 - **Fields prohibited / sensitive:** none legally restricted; the
   directory covers public officials. Demographic fields exist in
-  `demographics.csv` and are not needed for Phase 1; do not ingest them
-  until a documented purpose exists.
+  `demographics.csv` (never fetched) and as the `Gender` and
+  `Race or Ethnicity` columns of `judges.csv`; the parser projects
+  every row to the expected columns, so they never reach a payload, a
+  canonical row, or a log. Do not ingest them until a documented
+  purpose exists.
 - **Retention:** none.
 - **Provenance requirements:** store each downloaded file immutably with
   sha256, retrieval timestamp, and the export page URL; record the
   parser version on every derived row.
-- **Remaining to verify:** exact header names of `judges.csv` and
-  `federal-judicial-service.csv`; whether the server sends `ETag` or
-  `Last-Modified` headers.
+- **Ingested by:** `judgemetrics ingest run fjc` (`uv run poe
+  ingest-fjc`), connector `FjcConnector`, parser version `2026.09.1`,
+  into `jurisdiction`, `court`, `judge`, and `judge_service`; the
+  fixture excerpt is `tests/fixtures/fjc/`.
+- **Remaining to verify:** nothing for Phase 1 (headers and conditional
+  requests verified 2026-09-16; `docs/ROADMAP.md` question 1 resolved).
 
 ---
 
