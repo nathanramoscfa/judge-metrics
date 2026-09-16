@@ -12,10 +12,11 @@ guesswork), and the next milestones. The plan itself is the root
 ## Current phase
 
 **Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice.**
-In progress. Step 1 (repository bootstrap, command interface, security
-gate, CI) is complete; Step 2 (application core, canonical schema, API
-image) begins on branch `feature/phase01-step2-app-core` in a fresh
-session per [`docs/phase01-roadmap.md`](phase01-roadmap.md).
+In progress. Steps 1 (repository bootstrap, command interface, security
+gate, CI) and 2 (application core, canonical schema, API image) are
+complete; Step 3 (ingest framework and the FJC connector) begins on
+branch `feature/phase01-step3-fjc-ingest` in a fresh session per
+[`docs/phase01-roadmap.md`](phase01-roadmap.md).
 
 ## Completed
 
@@ -28,6 +29,7 @@ session per [`docs/phase01-roadmap.md`](phase01-roadmap.md).
 | 2026-09-15 | Data-source register (`docs/DATA_SOURCES.md`) with live verification of FJC, Cook County, and CourtListener. |
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-09-16 | **Phase 1 Step 2.** `config.py` (pydantic-settings, `JUDGEMETRICS_` prefix, `.env` only when local, one URL per database role, `SecretStr` secrets); `logging.py` (structlog, ISO timestamps, JSON or console renderer, stdlib loggers routed through the same chain, `scrub_sensitive` processor with a documented denylist tested recursively); `main.py` `create_app()` with request-id and access-log middleware; `GET /api/v1/health` (version, git SHA, Alembic head, nothing else) and `GET /api/v1/ready` (200 at head, 503 with a reason, DSN never echoed); SQLAlchemy 2 models for all twenty-three canonical entities with the brief's field names and enums; reversible Alembic baseline `0001` (`pg_trgm`, enums, foreign-key and event-time indexes, trigram and JSONB GIN indexes, unique FJC `nid` expression index, grants that deny `judgemetrics_app` on `person_identifier` and `correction_request`); `normalization/names.py`; Typer CLI `judgemetrics` (`db upgrade|downgrade|current`, `serve`, `ingest list-sources`); `infra/docker/api.Dockerfile` (multi-stage, locked runtime deps, non-root, no `.env`, HEALTHCHECK) with the compose `api` service (profile `app`) and the CI `container` job (build, smoke, Trivy HIGH/CRITICAL gate) required by `test`; `migrate` and `dev-api` targets; unit tests (settings, scrubber, names, CLI) and integration tests (migration round trip, `Decision` requires `source_record_id`, app-role grants, both health probes) against the CI `postgres:17` service with the three roles created from the Compose init scripts. |
 | 2026-09-16 | **Phase 1 Step 1.** Apache-2.0 `LICENSE`; `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and PR templates; fail-closed `pre-commit` gate (ruff, mypy, bandit, detect-secrets with baseline, pip-audit over `uv.lock` at pre-push) observed to block a planted synthetic credential; `ci.yml` (`python`, `security`, aggregate `test`) with SHA-pinned actions and read-only `contents` permissions; `dependabot.yml` (uv, github-actions); `docker-compose.yml` with PostgreSQL 17 (`pg_trgm`, roles `judgemetrics_app`/`_ingest`/`_admin`) and MinIO (`judgemetrics-raw`, versioning on); `.env.example`; `up`/`down`/`gate` tasks; branch protection (`enforce_admins`, linear history, required `test`), squash-only merges, secret scanning and push protection; `tests/unit/test_repo_hygiene.py`. |
 
 ## Unresolved data-access questions
@@ -45,11 +47,22 @@ session per [`docs/phase01-roadmap.md`](phase01-roadmap.md).
 
 ## Known issues and limitations
 
-- No application code or ingested data exists yet; the Compose database
-  has `pg_trgm` and the three roles but no schema until Step 2.
-- On the maintainer's machine a native PostgreSQL holds port 5432 and
-  Windows reserves 9000, so the local `.env` overrides `POSTGRES_PORT`
-  and `MINIO_API_PORT`; CI and fresh machines use the defaults.
+- The schema exists but no data is ingested yet; `ingest list-sources`
+  prints an empty registry until Step 3 registers the FJC connector.
+- `judicial_discretion_classification`, case status, charge disposition,
+  release type, position type, and event type are free text until the
+  versioned attribution rules and registries of Phases 2 and 5 define
+  their vocabularies; the brief fixes only the enums the baseline creates.
+- `correction_request.requester_contact` is Fernet-encrypted under
+  `JUDGEMETRICS_CORRECTION_CONTACT_KEY` (`judgemetrics.security.crypto`);
+  the corrections workflow that writes it arrives in Phase 3.
+- The API image reports `git_sha: unknown` unless built with
+  `--build-arg GIT_SHA=…` (CI passes `GITHUB_SHA`; Compose reads
+  `GIT_SHA` from the environment).
+- On the maintainer's machine native PostgreSQL instances hold ports
+  5432 and 5433 and Windows reserves 9000, so the local `.env` overrides
+  `POSTGRES_PORT` (5440) and `MINIO_API_PORT`; CI and fresh machines use
+  the defaults.
 - MinIO's community images are pulled from `quay.io/minio` (Docker Hub
   no longer serves them) and MinIO has announced maintenance mode for
   the community edition; the raw store is S3-compatible, so swapping

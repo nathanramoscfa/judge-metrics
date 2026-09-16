@@ -1,0 +1,12 @@
+# .dockerignore
+# Only what the API image needs reaches the build context; never `.env`.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+!alembic/
+!alembic.ini
+**/__pycache__/
+**/*.py[cod]
