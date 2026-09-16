@@ -103,13 +103,21 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "ix_judge_normalized_name_trgm" in indexes["judge"]
     assert "ix_judge_external_ids" in indexes["judge"]
     assert "uq_judge_external_ids_fjc_nid" in indexes["judge"]
+    # Revision 0002: provenance references, natural keys, court.state_code.
+    for table in ("jurisdiction", "court", "judge"):
+        assert f"ix_{table}_source_record_id" in indexes[table], table
+    assert "uq_jurisdiction_name_type" in indexes["jurisdiction"]
+    assert "uq_court_canonical_name_court_type" in indexes["court"]
+    assert "ix_court_state_code" in indexes["court"]
+    assert "uq_judge_service_natural_key" in indexes["judge_service"]
+    assert "uq_source_record_source_external_sha256" in indexes["source_record"]
     assert "ix_court_canonical_name_trgm" in indexes["court"]
     assert "ix_court_external_ids" in indexes["court"]
     assert "ix_metric_observation_subject_period" in indexes["metric_observation"]
     uniques = snapshot.uniques
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
-    assert current_revision(migrated_database) == head_revision() == "0001"
+    assert current_revision(migrated_database) == head_revision() == "0002"
 
 
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
@@ -155,6 +163,7 @@ def test_source_record_chain_round_trips(db_session: Session) -> None:
         started_at=datetime.now(tz=UTC),
         status=IngestRunStatus.RUNNING,
         code_version="0" * 40,
+        parser_version="1",
     )
     db_session.add(run)
     db_session.flush()

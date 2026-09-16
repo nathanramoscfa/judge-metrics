@@ -6,6 +6,11 @@ it was parsed from: immutable object path plus sha256), and every source
 record points at the ``ingest_run`` that fetched it, so
 ``judgemetrics provenance trace`` can walk from a published number back to
 raw bytes.
+
+A ``source_record`` is one retrieved artifact (one file, one hash): it is
+unique on ``(source_id, external_record_id, raw_sha256)``, which is what
+makes reruns idempotent — an unchanged artifact maps to the existing
+record and is not parsed again.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,12 +56,22 @@ class IngestRun(UUIDPrimaryKey, Timestamps, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[IngestRunStatus] = mapped_column(pg_enum(IngestRunStatus), nullable=False)
+    # Source rows parsed; canonical rows inserted; canonical rows whose
+    # substantive columns changed; source rows that could not be normalized
+    # or resolved (each rejection also leaves a data_quality_issue).
     records_seen: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     records_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     records_updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     records_rejected: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # Git SHA of the connector code that produced the run.
+    # Git SHA of the connector code that produced the run, and the
+    # connector's own parser version.
     code_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    parser_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Incremental state returned by a checkpointing connector after a
+    # successful run; handed back to the connector at the next run.
+    checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONBDict)
+    # Why a run ended `failed` or `refused` (never a raw row or a secret).
+    failure_reason: Mapped[str | None] = mapped_column(Text)
 
     source: Mapped[Source] = relationship(back_populates="runs")
     records: Mapped[list[SourceRecord]] = relationship(back_populates="ingest_run")
@@ -64,6 +79,17 @@ class IngestRun(UUIDPrimaryKey, Timestamps, Base):
 
 class SourceRecord(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "source_record"
+    __table_args__ = (
+        # One record per retrieved artifact per content hash.
+        Index(
+            "uq_source_record_source_external_sha256",
+            "source_id",
+            "external_record_id",
+            "raw_sha256",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
 
     source_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("source.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -80,6 +106,12 @@ class SourceRecord(UUIDPrimaryKey, Timestamps, Base):
         ForeignKey("ingest_run.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
+    )
+    # Retrieval facts with no column of their own: the artifact URI, the
+    # export page, and the HTTP validators (etag, last_modified) that the
+    # next run sends as If-None-Match / If-Modified-Since.
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONBDict, nullable=False, default=dict, server_default="{}"
     )
 
     source: Mapped[Source] = relationship(back_populates="records")

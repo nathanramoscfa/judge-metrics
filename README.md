@@ -20,8 +20,11 @@ progress: the governance chassis (license, security gate, CI, branch
 protection, Compose services) and the application core (settings, JSON
 logging, the FastAPI app with health probes, the twenty-three canonical
 tables behind a reversible Alembic baseline, the `judgemetrics` CLI, and
-the scanned API container image) are in place; the ingest framework and
-the FJC connector are next. See:
+the scanned API container image) and the ingest framework with its
+first real connector (`uv run poe ingest-fjc` loads the Federal Judicial
+Center's judges, courts, and service records into an immutable raw lake
+and the canonical tables, idempotently, with provenance down to the
+stored bytes) are in place; the public API v1 is next. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -56,12 +59,13 @@ uv sync                 # creates .venv with the dev and planning groups
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
-uv run poe migrate      # Alembic baseline: every canonical table, as the admin role
+uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
+uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
 uv run poe dev-api      # http://127.0.0.1:8000/api/v1/health and /api/v1/ready
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs
 ```
 
 The API image builds with `docker build -f infra/docker/api.Dockerfile .`
@@ -107,29 +111,31 @@ judge-metrics/
 ├── docs/
 │   ├── ROADMAP.md          status, open questions, next milestones
 │   ├── DATA_SOURCES.md     source register with verification status
+│   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles
+│   ├── DATA_MODEL.md       the twenty-three tables, natural keys, indexes, grants
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
-├── alembic/                migration environment and versions (0001_baseline)
+├── alembic/                migration environment and versions (0001, 0002)
+├── data/                   reference tables (tracked); raw lake and synthetic data (untracked)
 ├── alembic.ini             Alembic config (the URL comes from settings, never the ini)
 ├── infra/docker/           api.Dockerfile and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
-├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, db/, normalization/
-├── tests/unit/, tests/integration/
+├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, db/, ingest/, quality/, normalization/
+├── tests/unit/, tests/integration/, tests/fixtures/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks
 └── uv.lock
 ```
 
-Planned from later Phase 1 steps: `web/` (Next.js), `data/` (reference
-tables and fixtures; the raw lake and generated synthetic data are
-untracked).
+Planned from later Phase 1 steps: `web/` (Next.js).
 
 ## Data
 
 Sources enter only through the due-diligence register in
 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md). The first ingested
-sources are the Federal Judicial Center's biographical directory export
-(Phase 1) and a deterministic synthetic justice dataset (Phase 2); the
+source is the Federal Judicial Center's biographical directory export
+(Phase 1: `uv run poe ingest-fjc`, see `docs/ARCHITECTURE.md`),
+followed by a deterministic synthetic justice dataset (Phase 2); the
 first real state-court corpus is the Cook County State's Attorney's
 case-level datasets (Phase 5), with the Florida pilot following once
 lawful access is secured (Phase 7).
