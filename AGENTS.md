@@ -123,17 +123,43 @@ affected.
 
 ```sh
 uv sync                    # environment (make install)
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 uv run poe check           # lint + format check + type check + tests
 uv run poe test            # tests only
 uv run poe lint            # ruff check
 uv run poe fmt             # ruff format
 uv run poe typecheck       # mypy --strict
+uv run poe gate            # the security gate: all hooks + pre-push stage
+uv run poe up              # docker compose: postgres + minio healthy, bucket
+uv run poe down            # docker compose down
 uv run poe kit             # refresh the planning kit
-uv run judgemetrics        # CLI (placeholder until Phase 1)
+uv run judgemetrics        # CLI (placeholder until Phase 1 Step 2)
 ```
 
-Later phases add `up`, `down`, `migrate`, `dev-api`, `dev-web`,
-`ingest-fjc`, `seed`, `compute-metrics`, and `bootstrap`.
+Later steps add `migrate`, `dev-api`, `dev-web`, `ingest-fjc`, `seed`,
+`compute-metrics`, and `bootstrap`.
+
+## Architectural decisions that matter for future sessions
+
+- The dependency audit runs `pip-audit --strict --require-hashes` over
+  an export of `uv.lock` (`scripts/audit_deps.py`), not over the live
+  environment: the editable `judgemetrics` project is not on PyPI, so
+  a raw `pip-audit --strict` fails for the wrong reason.
+- `up` is a sequence task: `docker compose up -d --wait postgres minio`
+  and then `docker compose run --rm minio-init`, because `--wait`
+  treats a cleanly exited one-shot job as a failure.
+- MinIO images are pulled from `quay.io/minio` (the Docker Hub
+  repository is no longer served) and pinned to a release tag.
+- Host ports are overridable in `.env` (`POSTGRES_PORT`,
+  `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`); the maintainer's machine has
+  a native PostgreSQL on 5432 and Windows reserves 9000.
+- Database roles: `judgemetrics_app` (read-only), `judgemetrics_ingest`
+  (DML), `judgemetrics_admin` (DDL, not superuser); default privileges
+  are set for objects created by the admin role or the Compose
+  superuser, so migrations may run as either.
+- `detect-secrets` false positives are allowlisted inline with
+  `# pragma: allowlist secret`; the hygiene test strips ` #` inline
+  comments from `.env.example` values the way Docker Compose does.
 
 ## End-of-session report (from the brief)
 

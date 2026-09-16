@@ -15,8 +15,10 @@ the data behind them.
 
 ## Status
 
-Pre-alpha. The repository is scaffolded and the plan is written; Phase 1
-(canonical schema and the judge vertical slice) has not started. See:
+Pre-alpha. Phase 1 (canonical schema and the judge vertical slice) is in
+progress: the governance chassis (license, security gate, CI, branch
+protection, Compose services) is in place; the application core is next.
+See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -48,9 +50,17 @@ Phase 1 onward.
 
 ```sh
 uv sync                 # creates .venv with the dev and planning groups
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+cp .env.example .env    # then replace every change-me
+uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe check        # lint, format check, type check, tests
-uv run judgemetrics     # placeholder CLI until Phase 1
+uv run poe gate         # the fail-closed security gate, on demand
+uv run poe down         # stop the services
+uv run judgemetrics     # placeholder CLI until Phase 1 Step 2
 ```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the command interface, the
+security gate, branch naming, and the step lifecycle.
 
 `uv run poe <task>` is the cross-platform command interface; the
 `Makefile` mirrors every target (`make check`, `make test`, …) where GNU
@@ -78,23 +88,30 @@ Re-export at the start of every phase so the catalog is current.
 judge-metrics/
 ├── ROADMAP.md              project roadmap
 ├── AGENTS.md               operating instructions for AI agents (CLAUDE.md imports it)
+├── CONTRIBUTING.md         command interface, security gate, step lifecycle
+├── SECURITY.md             private vulnerability disclosure
 ├── Makefile                shim over the poe task interface
+├── docker-compose.yml      PostgreSQL 17 (pg_trgm, three roles) and MinIO
+├── .env.example            every environment variable, placeholders only
+├── .pre-commit-config.yaml the fail-closed local security gate
+├── .github/                CI workflow, Dependabot, issue and PR templates
 ├── docs/
 │   ├── ROADMAP.md          status, open questions, next milestones
 │   ├── DATA_SOURCES.md     source register with verification status
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
+├── infra/docker/postgres/  database init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
+├── scripts/                cross-platform helper and verify scripts
 ├── src/judgemetrics/       application package (grows from Phase 1)
-├── tests/                  pytest suite
+├── tests/unit/, tests/integration/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks
 └── uv.lock
 ```
 
-Planned from Phase 1: `web/` (Next.js), `alembic/`, `scripts/`,
-`infra/docker/`, `docker-compose.yml`, `.github/workflows/`, `data/`
-(reference tables and fixtures; the raw lake and generated synthetic
-data are untracked).
+Planned from later Phase 1 steps: `web/` (Next.js), `alembic/`,
+`infra/docker/*.Dockerfile`, `data/` (reference tables and fixtures; the
+raw lake and generated synthetic data are untracked).
 
 ## Data
 
@@ -108,5 +125,5 @@ lawful access is secured (Phase 7).
 
 ## License
 
-To be decided in Phase 1 (Apache-2.0 recommended for the code; the data
-license follows the legal review in Phase 6).
+The code is licensed under the [Apache License 2.0](LICENSE). The data
+license follows the legal review in Phase 6.

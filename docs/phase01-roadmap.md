@@ -836,7 +836,14 @@ phase-boundary hygiene.
       src`, `detect-secrets-hook
       --baseline .secrets.baseline`,
       and `pip-audit --strict` at
-      `stages: [pre-push]`. Include
+      `stages: [pre-push]` (run via
+      `scripts/audit_deps.py`, which
+      exports `uv.lock` with hashes
+      and audits that — the editable
+      project is not on PyPI, so a
+      bare `pip-audit --strict` on
+      the environment fails for the
+      wrong reason). Include
       the upstream `pre-commit-hooks`
       repo pinned to a commit SHA
       for `trailing-whitespace`,
@@ -880,7 +887,8 @@ phase-boundary hygiene.
       `security` (gitleaks action,
       `uv run bandit -c
       pyproject.toml -r src`, `uv
-      run pip-audit --strict`); and
+      run python
+      scripts/audit_deps.py`); and
       `test` (`needs: [python,
       security]`, `if: always()`,
       fails when any needed job did
@@ -951,10 +959,15 @@ phase-boundary hygiene.
       `MINIO_ROOT_PASSWORD`) using
       obvious placeholders such as
       `change-me`. Add poe tasks
-      `up = "docker compose up -d
-      --wait"` and `down = "docker
-      compose down"` and the
-      matching Makefile targets.
+      `up` (a sequence: `docker
+      compose up -d --wait postgres
+      minio`, then `docker compose
+      run --rm minio-init` — `--wait`
+      alone treats the cleanly exited
+      one-shot job as a failure) and
+      `down = "docker compose down"`
+      and the matching Makefile
+      targets.
       Verify `uv run poe up`
       reaches healthy, `SELECT
       extname FROM pg_extension`
@@ -3727,8 +3740,10 @@ hygiene.
         --baseline
         .secrets.baseline`, `uv run
         bandit -c pyproject.toml -r
-        src`, `uv run pip-audit
-        --strict`, and `pnpm --dir
+        src`, `uv run python
+        scripts/audit_deps.py`
+        (pip-audit --strict over
+        uv.lock), and `pnpm --dir
         web audit
         --audit-level=high`;
         CI-safe on Ubuntu; exits

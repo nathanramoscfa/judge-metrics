@@ -12,10 +12,10 @@ guesswork), and the next milestones. The plan itself is the root
 ## Current phase
 
 **Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice.**
-Not started. The operator pre-step in
-[`docs/phase01-roadmap.md`](phase01-roadmap.md) (initial commit and
-GitHub remote) is pending; Step 1 begins on branch
-`feature/phase01-step1-bootstrap` in a fresh session.
+In progress. Step 1 (repository bootstrap, command interface, security
+gate, CI) is complete; Step 2 (application core, canonical schema, API
+image) begins on branch `feature/phase01-step2-app-core` in a fresh
+session per [`docs/phase01-roadmap.md`](phase01-roadmap.md).
 
 ## Completed
 
@@ -27,6 +27,8 @@ GitHub remote) is pending; Step 1 begins on branch
 | 2026-09-15 | Project roadmap (`ROADMAP.md`, v2) and Phase 1 execution roadmap authored with per-step model selections. |
 | 2026-09-15 | Data-source register (`docs/DATA_SOURCES.md`) with live verification of FJC, Cook County, and CourtListener. |
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
+| 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-09-16 | **Phase 1 Step 1.** Apache-2.0 `LICENSE`; `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and PR templates; fail-closed `pre-commit` gate (ruff, mypy, bandit, detect-secrets with baseline, pip-audit over `uv.lock` at pre-push) observed to block a planted synthetic credential; `ci.yml` (`python`, `security`, aggregate `test`) with SHA-pinned actions and read-only `contents` permissions; `dependabot.yml` (uv, github-actions); `docker-compose.yml` with PostgreSQL 17 (`pg_trgm`, roles `judgemetrics_app`/`_ingest`/`_admin`) and MinIO (`judgemetrics-raw`, versioning on); `.env.example`; `up`/`down`/`gate` tasks; branch protection (`enforce_admins`, linear history, required `test`), squash-only merges, secret scanning and push protection; `tests/unit/test_repo_hygiene.py`. |
 
 ## Unresolved data-access questions
 
@@ -43,7 +45,15 @@ GitHub remote) is pending; Step 1 begins on branch
 
 ## Known issues and limitations
 
-- No application code, database, or ingested data exists yet.
+- No application code or ingested data exists yet; the Compose database
+  has `pg_trgm` and the three roles but no schema until Step 2.
+- On the maintainer's machine a native PostgreSQL holds port 5432 and
+  Windows reserves 9000, so the local `.env` overrides `POSTGRES_PORT`
+  and `MINIO_API_PORT`; CI and fresh machines use the defaults.
+- MinIO's community images are pulled from `quay.io/minio` (Docker Hub
+  no longer serves them) and MinIO has announced maintenance mode for
+  the community edition; the raw store is S3-compatible, so swapping
+  the local object store later is a Compose change only.
 - The first real state-court corpus (Cook County) is frozen at
   2024-12-30, lacks judge attribution on pretrial decisions, and has no
   failure-to-appear, rearrest, or release-violation events.

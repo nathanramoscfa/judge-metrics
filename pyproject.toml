@@ -3,6 +3,8 @@ name = "judgemetrics"
 version = "0.1.0"
 description = "Transparent, reproducible analytics over public criminal-court records: judicial assignments, case events, dispositions, sentences, and documented subsequent outcomes, with provenance and uncertainty."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Nathan Ramos", email = "nathan.ramos.github@gmail.com" }
 ]
@@ -27,11 +29,17 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "detect-secrets>=1.5.0",
     "mypy>=2.3.1",
+    "pip-audit>=2.10.1",
     "poethepoet>=0.48.0",
+    "pre-commit>=4.6.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "pyyaml>=6.0.3",
     "ruff>=0.16.7",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 # roadmodel is the planning tool behind ROADMAP.md and docs/phaseNN-roadmap.md
 # (`uv run roadmodel export-kit . --force` refreshes planning/). It is not an
@@ -46,7 +54,7 @@ default-groups = ["dev", "planning"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 # Defaults (E4/E7/E9 + F) plus import order (I), likely bugs (B),
@@ -60,11 +68,20 @@ select = ["E4", "E7", "E9", "F", "I", "B", "S", "UP"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q"
+testpaths = ["tests/unit", "tests/integration"]
+addopts = "-q --strict-markers"
+markers = [
+    "unit: fast tests with no external services",
+    "integration: tests that need the Compose services (`uv run poe up`)",
+]
+
+[tool.bandit]
+# SAST for the application package; tests are excluded (they use asserts and
+# fixtures by design) and are covered by ruff's flake8-bandit rules instead.
+exclude_dirs = ["tests", ".venv", ".worktrees"]
 
 [tool.coverage.run]
 source = ["judgemetrics"]
@@ -73,11 +90,24 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later phases add: up, down, migrate, seed, dev, ingest-fjc, compute-metrics.
+# Later steps add: migrate, dev-api, dev-web, ingest-fjc, seed,
+# compute-metrics, bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
 fmt-check = "ruff format --check ."
 typecheck = "mypy"
 check = ["lint", "fmt-check", "typecheck", "test"]
+# The fail-closed security gate: every pre-commit hook, then the pre-push
+# stage (pip-audit) so one command runs the whole gate on demand.
+gate = ["gate-commit", "gate-push"]
+gate-commit = "pre-commit run --all-files"
+gate-push = "pre-commit run --all-files --hook-stage pre-push"
 kit = "roadmodel export-kit . --force"
+# Local services: PostgreSQL 17 (pg_trgm, three roles) and MinIO. `up` waits
+# for the long-running services to be healthy, then runs the one-shot
+# bucket-creation job (`--wait` alone treats a cleanly exited job as failure).
+up = ["up-services", "up-init"]
+up-services = "docker compose up -d --wait postgres minio"
+up-init = "docker compose run --rm minio-init"
+down = "docker compose down"

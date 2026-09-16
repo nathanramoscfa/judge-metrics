@@ -1,0 +1,131 @@
+# .github/workflows/ci.yml
+# Continuous integration: mirrors the local pre-commit gate (ruff, mypy,
+# bandit, secret scan, dependency audit) and runs the test suite. The
+# aggregate `test` job is the single required status check on `main`.
+#
+# Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
+#   - every third-party action is pinned to a full commit SHA;
+#   - the workflow declares least-privilege `permissions:`;
+#   - no repository secret is exposed to pull-request-triggered runs.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+  UV_LINK_MODE: copy
+
+jobs:
+  python:
+    name: python (lint, format, types, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # CI-only throwaway credentials for the service container; the
+          # database is discarded with the runner. Used from Step 2 on.
+          POSTGRES_USER: judgemetrics
+          POSTGRES_PASSWORD: ci-only-not-a-secret # pragma: allowlist secret
+          POSTGRES_DB: judgemetrics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U judgemetrics -d judgemetrics"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      JUDGEMETRICS_ENV: test
+      JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
+      JUDGEMETRICS_LOG_FORMAT: json
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install (locked)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run poe lint
+
+      - name: Format check
+        run: uv run poe fmt-check
+
+      - name: Type check
+        run: uv run poe typecheck
+
+      - name: Tests
+        run: uv run pytest --cov --cov-report=term-missing
+
+  security:
+    name: security (secret scan, SAST, dependency audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out (full history for the secret scan)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          # The automatic, read-only workflow token (not a repository secret);
+          # gitleaks uses it only to read the PR's commit range.
+          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install (locked)
+        run: uv sync --frozen
+
+      - name: SAST (bandit)
+        run: uv run bandit -c pyproject.toml -r src
+
+      - name: Dependency audit (pip-audit --strict over uv.lock)
+        run: uv run python scripts/audit_deps.py
+
+  test:
+    # The single required status check for `main`: green only when every
+    # job it needs succeeded (a skipped or cancelled job is a failure here).
+    name: test
+    runs-on: ubuntu-latest
+    needs: [python, security]
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Require every needed job to have succeeded
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "job results: $RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled|skipped)"'; then
+            echo "::error::a required job did not succeed"
+            exit 1
+          fi
+          echo "all required jobs succeeded"
