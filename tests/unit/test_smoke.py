@@ -1,4 +1,4 @@
-# tests/test_smoke.py
+# tests/unit/test_smoke.py
 """Environment smoke test: the package imports and reports its version."""
 
 import pytest

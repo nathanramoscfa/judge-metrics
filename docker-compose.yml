@@ -1,0 +1,77 @@
+# docker-compose.yml
+# Local services for development: PostgreSQL 17 (pg_trgm, three application
+# roles) and MinIO (S3-compatible raw object lake). Values come from `.env`
+# (copy `.env.example`; `.env` is never tracked). Step 2 adds the `api`
+# service. `uv run poe up` / `uv run poe down` wrap `docker compose`.
+name: judgemetrics
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      # Read by infra/docker/postgres/02-roles.sql via psql \getenv.
+      JUDGEMETRICS_APP_DB_PASSWORD: ${JUDGEMETRICS_APP_DB_PASSWORD:?set in .env}
+      JUDGEMETRICS_INGEST_DB_PASSWORD: ${JUDGEMETRICS_INGEST_DB_PASSWORD:?set in .env}
+      JUDGEMETRICS_ADMIN_DB_PASSWORD: ${JUDGEMETRICS_ADMIN_DB_PASSWORD:?set in .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/01-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
+      - ./infra/docker/postgres/02-roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  minio:
+    # MinIO publishes its official images on Quay (the Docker Hub repository
+    # is no longer served).
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    # Runs once after MinIO is healthy: creates the raw-lake bucket with
+    # object versioning enabled (the brief's "object-store versioning for
+    # raw data"), then exits.
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      RAW_BUCKET: ${JUDGEMETRICS_RAW_BUCKET:-judgemetrics-raw}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$RAW_BUCKET"
+        mc version enable "local/$$RAW_BUCKET"
+        mc version info "local/$$RAW_BUCKET"
+    restart: "no"
+
+volumes:
+  postgres-data:
+  minio-data:

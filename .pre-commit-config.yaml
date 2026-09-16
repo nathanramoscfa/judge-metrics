@@ -1,0 +1,72 @@
+# .pre-commit-config.yaml
+# The fail-closed local security gate (ROADMAP.md §5 "Per-step security gate").
+# Every tool runs through `uv run` so the hook uses the exact versions pinned
+# in uv.lock; CI (.github/workflows/ci.yml) re-runs the same checks.
+#
+# Install once per clone:
+#   uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+# Run on demand:
+#   uv run poe gate
+minimum_pre_commit_version: "4.0.0"
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0 # pragma: allowlist secret
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (lint incl. flake8-bandit rules)
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format --check
+        entry: uv run ruff format --check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: mypy
+        name: mypy --strict
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+        types_or: [python, pyi, toml]
+        require_serial: true
+
+      - id: bandit
+        name: bandit (SAST on src/)
+        entry: uv run bandit -c pyproject.toml -r src -q
+        language: system
+        pass_filenames: false
+        types_or: [python, toml]
+        require_serial: true
+
+      - id: detect-secrets
+        name: detect-secrets (secret / credential scan)
+        entry: uv run detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        exclude: ^(uv\.lock|\.secrets\.baseline)$
+        require_serial: true
+
+      - id: pip-audit
+        name: pip-audit --strict (uv.lock, pre-push)
+        entry: uv run python scripts/audit_deps.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+        require_serial: true
