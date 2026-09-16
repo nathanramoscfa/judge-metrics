@@ -31,6 +31,7 @@ NON_SECRET_CONSTANTS = {
     "s3://judgemetrics-raw",
     "http://localhost:9000",
     "5432",
+    "8000",
     "9000",
     "9001",
 }
@@ -44,7 +45,17 @@ SECRET_SHAPES = [
     re.compile(r"[A-Za-z0-9+/]{40,}={0,2}"),  # long base64
 ]
 GATE_TOOLS = ("ruff", "mypy", "bandit", "detect-secrets", "pip-audit")
-SHARED_TARGETS = ("up", "down", "check", "test", "lint", "typecheck", "gate")
+SHARED_TARGETS = (
+    "up",
+    "down",
+    "check",
+    "test",
+    "lint",
+    "typecheck",
+    "gate",
+    "migrate",
+    "dev-api",
+)
 SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
 
 
@@ -127,6 +138,9 @@ def test_env_example_has_only_placeholders() -> None:
     expected_keys = {
         "JUDGEMETRICS_ENV",
         "JUDGEMETRICS_DATABASE_URL",
+        "JUDGEMETRICS_ADMIN_DATABASE_URL",
+        "JUDGEMETRICS_INGEST_DATABASE_URL",
+        "JUDGEMETRICS_CORRECTION_CONTACT_KEY",
         "JUDGEMETRICS_RAW_STORE_URL",
         "JUDGEMETRICS_S3_ENDPOINT_URL",
         "JUDGEMETRICS_S3_ACCESS_KEY_ID",
@@ -151,8 +165,17 @@ def test_env_example_has_only_placeholders() -> None:
         assert is_placeholder or is_placeholder_url or value in NON_SECRET_CONSTANTS, (
             f"{key}={value!r} is neither a change-me placeholder nor a known constant"
         )
-    for key in ("POSTGRES_PASSWORD", "MINIO_ROOT_PASSWORD", "JUDGEMETRICS_S3_SECRET_ACCESS_KEY"):
+    for key in (
+        "POSTGRES_PASSWORD",
+        "MINIO_ROOT_PASSWORD",
+        "JUDGEMETRICS_S3_SECRET_ACCESS_KEY",
+        "JUDGEMETRICS_CORRECTION_CONTACT_KEY",
+    ):
         assert values[key] == "change-me", key
+    for key in ("JUDGEMETRICS_DATABASE_URL", "JUDGEMETRICS_ADMIN_DATABASE_URL"):
+        assert values[key].startswith("postgresql+psycopg://"), key
+    assert "judgemetrics_app:" in values["JUDGEMETRICS_DATABASE_URL"]
+    assert "judgemetrics_admin:" in values["JUDGEMETRICS_ADMIN_DATABASE_URL"]
 
 
 def test_no_dotenv_is_tracked() -> None:
@@ -219,20 +242,36 @@ def test_ci_declares_least_privilege_permissions() -> None:
 def test_ci_has_required_jobs_and_aggregate_gate() -> None:
     workflow = _yaml(".github/workflows/ci.yml")
     jobs = workflow["jobs"]
-    assert {"python", "security", "test"} <= jobs.keys()
-    assert jobs["test"]["needs"] == ["python", "security"]
+    assert {"python", "security", "container", "test"} <= jobs.keys()
+    assert jobs["test"]["needs"] == ["python", "security", "container"]
     assert jobs["test"]["if"] == "always()"
     assert "postgres:17" == jobs["python"]["services"]["postgres"]["image"]
+    python_env = jobs["python"]["env"]
+    assert python_env["JUDGEMETRICS_ENV"] == "test"
+    assert python_env["JUDGEMETRICS_DATABASE_URL"].startswith(
+        "postgresql+psycopg://judgemetrics_app:"
+    )
+    role_steps = [s for s in jobs["python"]["steps"] if "02-roles.sql" in s.get("run", "")]
+    assert role_steps, "the python job must create the three database roles"
+    container_steps = " ".join(
+        f"{s.get('uses', '')} {s.get('run', '')}" for s in jobs["container"]["steps"]
+    )
+    assert "docker build -f infra/docker/api.Dockerfile" in container_steps
+    assert "trivy-action" in container_steps
+    scan = next(s for s in jobs["container"]["steps"] if "trivy-action" in s.get("uses", ""))
+    assert scan["with"]["severity"] == "HIGH,CRITICAL"
+    assert str(scan["with"]["exit-code"]) == "1"
     triggers = workflow.get("on") or workflow.get(True)
     assert triggers["push"]["branches"] == ["main"]
     assert "pull_request" in triggers
     assert workflow["concurrency"]["cancel-in-progress"] is True
 
 
-def test_dependabot_covers_uv_and_actions() -> None:
+def test_dependabot_covers_uv_actions_and_docker() -> None:
     config = _yaml(".github/dependabot.yml")
     ecosystems = {u["package-ecosystem"]: u for u in config["updates"]}
-    assert {"uv", "github-actions"} <= ecosystems.keys()
+    assert {"uv", "github-actions", "docker"} <= ecosystems.keys()
+    assert ecosystems["docker"]["directory"] == "/infra/docker"
     for update in ecosystems.values():
         assert update["schedule"]["interval"] == "weekly"
 
@@ -240,7 +279,13 @@ def test_dependabot_covers_uv_and_actions() -> None:
 def test_compose_defines_postgres_and_minio() -> None:
     compose = _yaml("docker-compose.yml")
     services = compose["services"]
-    assert {"postgres", "minio", "minio-init"} <= services.keys()
+    assert {"postgres", "minio", "minio-init", "api"} <= services.keys()
+    api = services["api"]
+    assert api["profiles"] == ["app"]
+    assert api["build"]["dockerfile"] == "infra/docker/api.Dockerfile"
+    assert api["env_file"] == ".env"
+    assert api["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert any(str(port).endswith(":8000") for port in api["ports"])
     postgres = services["postgres"]
     assert postgres["image"] == "postgres:17"
     assert "healthcheck" in postgres and "pg_isready" in " ".join(postgres["healthcheck"]["test"])
@@ -270,6 +315,20 @@ def test_compose_reads_secrets_from_env_only() -> None:
         assert re.search(rf"{key}: \$\{{{key}:\?", text), f"{key} must be required from .env"
 
 
+def test_api_dockerfile_is_hardened() -> None:
+    dockerfile = _read("infra/docker/api.Dockerfile")
+    assert dockerfile.startswith("# infra/docker/api.Dockerfile")
+    assert "FROM python:3.13-slim" in dockerfile
+    assert "uv sync --frozen --no-dev --no-group planning" in dockerfile
+    assert "USER judgemetrics" in dockerfile
+    assert "HEALTHCHECK" in dockerfile and "/api/v1/health" in dockerfile
+    assert 'CMD ["judgemetrics", "serve", "--host", "0.0.0.0"]' in dockerfile
+    assert "COPY .env" not in dockerfile
+    assert ".env" not in [
+        line.strip() for line in _read(".dockerignore").splitlines() if line.startswith("!")
+    ]
+
+
 def test_command_interface_targets_present() -> None:
     tasks = _pyproject()["tool"]["poe"]["tasks"]
     makefile = _read("Makefile")
@@ -286,6 +345,9 @@ def test_command_interface_targets_present() -> None:
     assert "docker compose up -d --wait" in tasks["up-services"]
     assert tasks["gate"] == ["gate-commit", "gate-push"]
     assert tasks["gate-commit"] == "pre-commit run --all-files"
+    assert tasks["migrate"] == "judgemetrics db upgrade"
+    assert tasks["dev-api"] == "judgemetrics serve --reload"
+    assert _pyproject()["project"]["scripts"]["judgemetrics"] == "judgemetrics.cli:main"
 
 
 def test_pytest_config_has_markers_and_testpaths() -> None:
@@ -311,6 +373,9 @@ def test_bandit_configured_to_exclude_tests() -> None:
         (".github/dependabot.yml", "# "),
         ("docker-compose.yml", "# "),
         (".env.example", "# "),
+        (".dockerignore", "# "),
+        ("alembic.ini", "# "),
+        ("infra/docker/api.Dockerfile", "# "),
         ("infra/docker/postgres/01-extensions.sql", "-- "),
         ("infra/docker/postgres/02-roles.sql", "-- "),
         ("CONTRIBUTING.md", "<!-- "),
@@ -341,3 +406,17 @@ def test_issue_templates_carry_path_after_front_matter(relative: str) -> None:
     closing = lines.index("---", 1)
     after = [line for line in lines[closing + 1 :] if line.strip()]
     assert after[0] == f"<!-- {relative} -->", after[0]
+
+
+def _python_sources() -> list[str]:
+    sources: list[str] = []
+    for top in ("src", "tests", "scripts", "alembic"):
+        for path in sorted((REPO_ROOT / top).rglob("*.py")):
+            sources.append(path.relative_to(REPO_ROOT).as_posix())
+    return sources
+
+
+@pytest.mark.parametrize("relative", _python_sources())
+def test_every_python_file_starts_with_its_path(relative: str) -> None:
+    first = _read(relative).splitlines()[0]
+    assert first == f"# {relative}", f"{relative}: first line {first!r}"

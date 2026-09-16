@@ -133,11 +133,13 @@ uv run poe gate            # the security gate: all hooks + pre-push stage
 uv run poe up              # docker compose: postgres + minio healthy, bucket
 uv run poe down            # docker compose down
 uv run poe kit             # refresh the planning kit
-uv run judgemetrics        # CLI (placeholder until Phase 1 Step 2)
+uv run poe migrate         # alembic upgrade head as the admin role
+uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
+uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources
 ```
 
-Later steps add `migrate`, `dev-api`, `dev-web`, `ingest-fjc`, `seed`,
-`compute-metrics`, and `bootstrap`.
+Later steps add `dev-web`, `ingest-fjc`, `seed`, `compute-metrics`, and
+`bootstrap`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -160,6 +162,32 @@ Later steps add `migrate`, `dev-api`, `dev-web`, `ingest-fjc`, `seed`,
 - `detect-secrets` false positives are allowlisted inline with
   `# pragma: allowlist secret`; the hygiene test strips ` #` inline
   comments from `.env.example` values the way Docker Compose does.
+- Settings carry one URL per database role: `JUDGEMETRICS_DATABASE_URL`
+  is the API's read-only `judgemetrics_app`; `JUDGEMETRICS_ADMIN_DATABASE_URL`
+  (migrations, `alembic/env.py`) and `JUDGEMETRICS_INGEST_DATABASE_URL`
+  (the ingest runner) fall back to it when unset, which is how CI runs
+  everything as the service container's owner. `JUDGEMETRICS_ENV` is read
+  from the process environment only; `.env` is loaded when it is `local`.
+- The Alembic config is built in code (`judgemetrics.db.migrations`):
+  `alembic/` is resolved relative to the package so the CLI, the
+  container, and pytest find the same scripts, and the URL never comes
+  from `alembic.ini`. Migrations are self-contained (they never import
+  the models); enums are created and dropped explicitly with
+  `create_type=False` on the columns; grants revoke the app role on
+  `person_identifier` and `correction_request`. `uv run alembic check`
+  must report no drift between the models and the head.
+- The API image installs the project editable so `alembic/` sits beside
+  `src/` under `/app`; the runtime stage applies Debian security
+  updates and removes pip (its vendored packages are what image
+  scanners flag) so the Trivy HIGH/CRITICAL gate stays clean.
+- Logging: `configure_logging` replaces only its own root handler (a
+  marker subclass) so pytest's capture keeps working; uvicorn's access
+  log is disabled in favour of the request-id-bound middleware, and
+  `alembic.runtime.migration` is raised to WARNING because
+  `/api/v1/ready` asks Alembic for the current revision on every probe.
+- `make_engine` sets a 5-second psycopg `connect_timeout`; without it a
+  readiness probe against an unreachable host hangs for minutes on
+  Windows.
 
 ## End-of-session report (from the brief)
 

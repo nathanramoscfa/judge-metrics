@@ -1,8 +1,9 @@
 # docker-compose.yml
 # Local services for development: PostgreSQL 17 (pg_trgm, three application
 # roles) and MinIO (S3-compatible raw object lake). Values come from `.env`
-# (copy `.env.example`; `.env` is never tracked). Step 2 adds the `api`
-# service. `uv run poe up` / `uv run poe down` wrap `docker compose`.
+# (copy `.env.example`; `.env` is never tracked). The `api` service (profile
+# `app`) builds the API image and is opt-in: `docker compose --profile app up`.
+# `uv run poe up` / `uv run poe down` wrap `docker compose`.
 name: judgemetrics
 
 services:
@@ -71,6 +72,32 @@ services:
         mc version enable "local/$$RAW_BUCKET"
         mc version info "local/$$RAW_BUCKET"
     restart: "no"
+
+  api:
+    # The API image (infra/docker/api.Dockerfile), reachable on port 8000.
+    # Configuration comes from `.env`; the in-network hostnames for the
+    # database and object store override the localhost values in `.env`.
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+      args:
+        # `GIT_SHA=$(git rev-parse HEAD) docker compose --profile app build`
+        # stamps /api/v1/health; unset, the image reports `unknown`.
+        GIT_SHA: ${GIT_SHA:-unknown}
+    image: judgemetrics-api:local
+    env_file: .env
+    environment:
+      JUDGEMETRICS_ENV: local
+      JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:${JUDGEMETRICS_APP_DB_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics_admin:${JUDGEMETRICS_ADMIN_DB_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
+      JUDGEMETRICS_S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres-data:

@@ -17,8 +17,11 @@ the data behind them.
 
 Pre-alpha. Phase 1 (canonical schema and the judge vertical slice) is in
 progress: the governance chassis (license, security gate, CI, branch
-protection, Compose services) is in place; the application core is next.
-See:
+protection, Compose services) and the application core (settings, JSON
+logging, the FastAPI app with health probes, the twenty-three canonical
+tables behind a reversible Alembic baseline, the `judgemetrics` CLI, and
+the scanned API container image) are in place; the ingest framework and
+the FJC connector are next. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -53,11 +56,17 @@ uv sync                 # creates .venv with the dev and planning groups
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
 cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
+uv run poe migrate      # Alembic baseline: every canonical table, as the admin role
+uv run poe dev-api      # http://127.0.0.1:8000/api/v1/health and /api/v1/ready
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics     # placeholder CLI until Phase 1 Step 2
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources
 ```
+
+The API image builds with `docker build -f infra/docker/api.Dockerfile .`
+and runs beside the services with `docker compose --profile app up`
+(port 8000; CI builds and vulnerability-scans it on every pull request).
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the command interface, the
 security gate, branch naming, and the step lifecycle.
@@ -100,18 +109,20 @@ judge-metrics/
 │   ├── DATA_SOURCES.md     source register with verification status
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
-├── infra/docker/postgres/  database init scripts (extensions, roles)
+├── alembic/                migration environment and versions (0001_baseline)
+├── alembic.ini             Alembic config (the URL comes from settings, never the ini)
+├── infra/docker/           api.Dockerfile and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
-├── src/judgemetrics/       application package (grows from Phase 1)
+├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, db/, normalization/
 ├── tests/unit/, tests/integration/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks
 └── uv.lock
 ```
 
-Planned from later Phase 1 steps: `web/` (Next.js), `alembic/`,
-`infra/docker/*.Dockerfile`, `data/` (reference tables and fixtures; the
-raw lake and generated synthetic data are untracked).
+Planned from later Phase 1 steps: `web/` (Next.js), `data/` (reference
+tables and fixtures; the raw lake and generated synthetic data are
+untracked).
 
 ## Data
 

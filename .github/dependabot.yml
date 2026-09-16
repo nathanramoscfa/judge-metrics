@@ -1,6 +1,6 @@
 # .github/dependabot.yml
-# Scheduled dependency update PRs. Step 2 adds `docker` for /infra/docker and
-# Step 5 adds `npm` for /web.
+# Scheduled dependency update PRs (uv, GitHub Actions, the API image's base
+# images). Step 5 adds `npm` for /web.
 version: 2
 updates:
   - package-ecosystem: uv
@@ -21,3 +21,11 @@ updates:
       day: monday
     commit-message:
       prefix: "chore(ci)"
+
+  - package-ecosystem: docker
+    directory: /infra/docker
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(docker)"

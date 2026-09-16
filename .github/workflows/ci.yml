@@ -1,6 +1,7 @@
 # .github/workflows/ci.yml
 # Continuous integration: mirrors the local pre-commit gate (ruff, mypy,
-# bandit, secret scan, dependency audit) and runs the test suite. The
+# bandit, secret scan, dependency audit), runs the test suite against a
+# PostgreSQL service, and builds and vulnerability-scans the API image. The
 # aggregate `test` job is the single required status check on `main`.
 #
 # Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
@@ -48,8 +49,19 @@ jobs:
           --health-retries 10
     env:
       JUDGEMETRICS_ENV: test
-      JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
+      # The API role for the tests' read-only engine and the readiness probe;
+      # migrations and write fixtures run as the container's owner. The
+      # three application roles are created below from the Compose init
+      # scripts with these CI-only passwords.
+      JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:ci-only-app@localhost:5432/judgemetrics # pragma: allowlist secret
+      JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_LOG_FORMAT: json
+      JUDGEMETRICS_APP_DB_PASSWORD: ci-only-app # pragma: allowlist secret
+      JUDGEMETRICS_INGEST_DB_PASSWORD: ci-only-ingest # pragma: allowlist secret
+      JUDGEMETRICS_ADMIN_DB_PASSWORD: ci-only-admin # pragma: allowlist secret
+      POSTGRES_USER: judgemetrics
+      POSTGRES_DB: judgemetrics
+      PGPASSWORD: ci-only-not-a-secret # pragma: allowlist secret
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -63,6 +75,10 @@ jobs:
 
       - name: Install (locked)
         run: uv sync --frozen
+
+      - name: Create the database roles (same init scripts as Compose)
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB"             -f infra/docker/postgres/01-extensions.sql             -f infra/docker/postgres/02-roles.sql
 
       - name: Lint
         run: uv run poe lint
@@ -105,17 +121,46 @@ jobs:
         run: uv sync --frozen
 
       - name: SAST (bandit)
-        run: uv run bandit -c pyproject.toml -r src
+        run: uv run bandit -c pyproject.toml -r src alembic
 
       - name: Dependency audit (pip-audit --strict over uv.lock)
         run: uv run python scripts/audit_deps.py
+
+  container:
+    name: container (API image build and vulnerability scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the API image
+        run: docker build -f infra/docker/api.Dockerfile --build-arg "GIT_SHA=$GITHUB_SHA" -t judgemetrics-api:ci .
+
+      - name: Smoke the image (non-root, no .env, CLI answers)
+        run: |
+          test "$(docker run --rm judgemetrics-api:ci id -u)" = "10001"
+          docker run --rm judgemetrics-api:ci sh -c '! test -e /app/.env'
+          docker run --rm judgemetrics-api:ci judgemetrics --version
+
+      - name: Vulnerability scan (fail on HIGH or CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: judgemetrics-api:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
 
   test:
     # The single required status check for `main`: green only when every
     # job it needs succeeded (a skipped or cancelled job is a failure here).
     name: test
     runs-on: ubuntu-latest
-    needs: [python, security]
+    needs: [python, security, container]
     if: always()
     timeout-minutes: 5
     steps:
