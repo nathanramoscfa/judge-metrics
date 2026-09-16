@@ -1,0 +1,57 @@
+# .gitignore
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Environment and secrets — only .env.example is tracked
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / Next.js (web/)
+node_modules/
+.next/
+out/
+web/coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Data: the raw lake, snapshots, and local databases are never tracked;
+# small fixtures and curated reference tables under data/ are.
+data/lake/
+data/raw/
+data/snapshots/
+# Generated synthetic datasets are reproducible from a seed; the golden
+# fixture lives under tests/fixtures/golden/ and is tracked.
+data/synthetic/
+*.duckdb
+*.duckdb.wal
+
+# Planning kit: the operator context is personal; regenerate it with
+# `uv run roadmodel export-kit . --force`.
+planning/user-context.md
+
+# Git worktrees for declared-parallel steps (ROADMAP.md §5)
+.worktrees/
+
+# Editors and OS
+.idea/
+.vscode/
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
+*.log

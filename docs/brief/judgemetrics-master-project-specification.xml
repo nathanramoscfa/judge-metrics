@@ -1,0 +1,2327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project_handoff name="JudgeMetrics" version="1.0">
+
+  <meta>
+    <working_title>JudgeMetrics</working_title>
+    <project_type>Full-stack public judicial outcomes analytics platform</project_type>
+    <starting_state>Empty folder opened in VS Code</starting_state>
+    <primary_language>Python</primary_language>
+    <frontend_language>TypeScript</frontend_language>
+    <initial_scope>United States criminal courts, beginning with a single-jurisdiction proof of concept and expanding incrementally</initial_scope>
+    <development_mode>Build a working vertical slice first, then expand data coverage</development_mode>
+  </meta>
+
+  <agent_role>
+    <instruction>
+      You are the lead software architect, senior Python engineer, senior data engineer,
+      statistical-modeling engineer, database architect, frontend engineer, DevOps engineer,
+      QA engineer, and technical writer for this project.
+    </instruction>
+
+    <instruction>
+      Begin from the empty directory currently open in VS Code. Do not merely describe what
+      should be built. Create the project, source files, schemas, migrations, tests,
+      documentation, development environment, seed data, and initial working application.
+    </instruction>
+
+    <instruction>
+      Work iteratively. At every major milestone, run the relevant code, linters, type checkers,
+      migrations, tests, and builds. Fix failures before progressing.
+    </instruction>
+
+    <instruction>
+      Keep the application runnable throughout development. Favor a functioning vertical slice
+      over generating hundreds of disconnected placeholder files.
+    </instruction>
+
+    <instruction>
+      Do not fabricate data-source capabilities. Where government APIs, bulk files, court
+      websites, access agreements, credentials, fees, or public-record requests are required,
+      implement the connector interface and document what remains necessary.
+    </instruction>
+
+    <instruction>
+      Never claim that an arrest proves commission of a crime. Keep arrest, charge, conviction,
+      dismissal, acquittal, release, sentencing, and later court events as separate concepts.
+    </instruction>
+
+    <instruction>
+      The application must report documented judicial outcomes and comparative statistics.
+      Do not create an opaque ideological, partisan, "good judge", "bad judge", "best judge",
+      or "worst judge" score. Users may sort objective measures, but the application must
+      preserve the distinction between observed outcomes and normative conclusions.
+    </instruction>
+  </agent_role>
+
+  <mission>
+    <statement>
+      Build a transparent data platform that connects publicly available court records,
+      judicial assignments, case events, criminal-case dispositions, pretrial decisions,
+      sentencing information, and subsequent observable justice-system events in order to
+      measure and compare judicial outcomes.
+    </statement>
+
+    <statement>
+      The central product is not a news site or subjective judge-review site. It is a
+      reproducible public-data analytics system where every important statistic can be traced
+      back to source records and a documented methodology.
+    </statement>
+
+    <statement>
+      The long-term strategic asset is the normalized event-level justice dataset and its
+      provenance graph. The website is an interface to that dataset.
+    </statement>
+  </mission>
+
+  <core_questions>
+    <question>
+      After a defendant receives a particular pretrial disposition, what observable outcomes
+      occur within 30, 90, 180, 365, 730, and 1095 days?
+    </question>
+
+    <question>
+      How often are defendants rearrested, charged in a new case, convicted in a new case,
+      reported as failing to appear, or found to have violated release conditions?
+    </question>
+
+    <question>
+      How do those outcomes compare with defendants of similar observable risk and case
+      characteristics handled within the same jurisdiction and time period?
+    </question>
+
+    <question>
+      Which decisions were actually made by the judge, which were initiated by prosecutors,
+      which resulted from statutes or mandatory rules, and which cannot confidently be
+      attributed to a particular actor?
+    </question>
+
+    <question>
+      How much statistical uncertainty exists around every judge-level outcome estimate?
+    </question>
+
+    <question>
+      Can every published metric be reproduced from versioned source data and code?
+    </question>
+  </core_questions>
+
+  <non_goals>
+    <item>Do not infer that an arrest means guilt.</item>
+    <item>Do not infer that correlation proves a judge caused a later offense.</item>
+    <item>Do not attribute prosecutorial dismissals to judges.</item>
+    <item>Do not compare judges across incompatible case populations without risk adjustment.</item>
+    <item>Do not expose sealed, expunged, juvenile, or otherwise legally restricted records.</item>
+    <item>Do not create an overall political or ideological judge rating.</item>
+    <item>Do not merge defendants merely because their names match.</item>
+    <item>Do not scrape systems in violation of access rules, robots restrictions, contractual terms, or law.</item>
+  </non_goals>
+
+  <product_principles>
+    <principle id="P1">Source every material claim.</principle>
+    <principle id="P2">Preserve raw source records immutably.</principle>
+    <principle id="P3">Separate facts from derived statistics.</principle>
+    <principle id="P4">Separate observed outcomes from causal claims.</principle>
+    <principle id="P5">Separate judicial actions from prosecutor, legislature, jury, clerk, and law-enforcement actions.</principle>
+    <principle id="P6">Show uncertainty, sample size, and missing-data limitations.</principle>
+    <principle id="P7">Make methodology inspectable and reproducible.</principle>
+    <principle id="P8">Prefer APIs and bulk public data over brittle scraping.</principle>
+    <principle id="P9">Minimize public exposure of personally identifying defendant information.</principle>
+    <principle id="P10">Treat data lineage as a first-class feature.</principle>
+  </product_principles>
+
+  <high_level_schematic>
+    <![CDATA[
+
+                                JUDGEMETRICS
+
+     ┌─────────────────────────────────────────────────────────────┐
+     │                    PUBLIC DATA SOURCES                      │
+     ├─────────────────────────────────────────────────────────────┤
+     │ Court records       Arrest/event data      Judge rosters    │
+     │ Case dockets        Corrections data       Court metadata   │
+     │ Charges             Dispositions           Public filings   │
+     │ Sentences           Release decisions      Government CSVs  │
+     └───────────────┬─────────────┬───────────────┬───────────────┘
+                     │             │               │
+                     └─────────────┴───────┬───────┘
+                                           ▼
+                              ┌─────────────────────┐
+                              │    INGEST LAYER     │
+                              │ API / CSV / XML     │
+                              │ HTML / PDF / JSON   │
+                              │ Public-record files │
+                              └──────────┬──────────┘
+                                         ▼
+                              ┌─────────────────────┐
+                              │   RAW DATA LAKE     │
+                              │ Immutable originals │
+                              │ Checksums/versioning│
+                              └──────────┬──────────┘
+                                         ▼
+                              ┌─────────────────────┐
+                              │ NORMALIZATION LAYER │
+                              │ Canonical schemas   │
+                              │ Validation          │
+                              │ Deduplication       │
+                              └──────────┬──────────┘
+                                         ▼
+                        ┌──────────────────────────────┐
+                        │     ENTITY RESOLUTION        │
+                        │ Courts                       │
+                        │ Judges                       │
+                        │ Cases                        │
+                        │ Persons/defendants           │
+                        │ Charges/events               │
+                        └──────────────┬───────────────┘
+                                       ▼
+                      ┌─────────────────────────────────┐
+                      │  CANONICAL EVENT DATABASE       │
+                      │                                 │
+                      │ Person ─ Case ─ Judge            │
+                      │   │       │       │              │
+                      │   │       ├─ Charge              │
+                      │   │       ├─ Court event         │
+                      │   │       ├─ Decision            │
+                      │   │       ├─ Disposition         │
+                      │   │       └─ Sentence            │
+                      │   │                              │
+                      │   └──────── Subsequent case      │
+                      └──────────────┬──────────────────┘
+                                     ▼
+                      ┌─────────────────────────────────┐
+                      │ ANALYTICS / STATISTICAL LAYER   │
+                      │ Cohorts                         │
+                      │ Exposure windows                │
+                      │ Rearrest/recharge/reconviction  │
+                      │ Expected outcomes               │
+                      │ Observed outcomes               │
+                      │ Confidence intervals            │
+                      │ Risk adjustment                 │
+                      └──────────────┬──────────────────┘
+                                     ▼
+                      ┌─────────────────────────────────┐
+                      │        APPLICATION API          │
+                      │ Search                          │
+                      │ Judge profiles                  │
+                      │ Court profiles                  │
+                      │ Case timelines                  │
+                      │ Comparative metrics             │
+                      │ Methodology                     │
+                      └──────────────┬──────────────────┘
+                                     ▼
+                      ┌─────────────────────────────────┐
+                      │          WEB FRONTEND           │
+                      │ Search / dashboards             │
+                      │ Maps / charts / tables          │
+                      │ Judge pages                     │
+                      │ Case drill-down                 │
+                      │ Source provenance               │
+                      │ Corrections / feedback          │
+                      └─────────────────────────────────┘
+
+    ]]>
+  </high_level_schematic>
+
+  <technology_stack>
+
+    <backend>
+      <language>Python 3.12 or newer stable version supported by dependencies</language>
+      <framework>FastAPI</framework>
+      <validation>Pydantic</validation>
+      <orm>SQLAlchemy 2.x</orm>
+      <migrations>Alembic</migrations>
+      <package_manager>uv preferred</package_manager>
+      <cli>Typer</cli>
+      <dataframes>Polars preferred; Pandas allowed when library compatibility requires it</dataframes>
+      <local_analytics>DuckDB</local_analytics>
+      <http_client>httpx</http_client>
+      <testing>pytest</testing>
+      <typing>mypy or pyright</typing>
+      <linting>ruff</linting>
+    </backend>
+
+    <database>
+      <primary>PostgreSQL</primary>
+      <extensions>
+        <item>pg_trgm for fuzzy text matching</item>
+        <item>PostGIS only when geographic functionality justifies it</item>
+      </extensions>
+      <object_storage>
+        Use filesystem or MinIO locally and S3-compatible object storage in production.
+      </object_storage>
+    </database>
+
+    <frontend>
+      <framework>Next.js using the current stable release</framework>
+      <language>TypeScript</language>
+      <css>Tailwind CSS</css>
+      <components>Use a high-quality accessible component library such as shadcn/ui where appropriate</components>
+      <charts>Recharts or equivalent</charts>
+      <tables>TanStack Table or equivalent</tables>
+      <maps>MapLibre preferred to minimize vendor lock-in</maps>
+      <testing>Vitest plus Playwright for end-to-end testing</testing>
+      <package_manager>pnpm</package_manager>
+    </frontend>
+
+    <infrastructure>
+      <local>Docker Compose</local>
+      <containers>Docker</containers>
+      <ci>GitHub Actions</ci>
+      <production>
+        Keep deployment vendor-neutral. Require containerized API, managed PostgreSQL,
+        S3-compatible object storage, HTTPS, CDN, secrets management, backups, and monitoring.
+      </production>
+    </infrastructure>
+
+    <observability>
+      <structured_logging>JSON structured logs</structured_logging>
+      <errors>Sentry-compatible exception tracking</errors>
+      <metrics>OpenTelemetry-compatible instrumentation</metrics>
+      <health_checks>/health and /ready endpoints</health_checks>
+    </observability>
+
+  </technology_stack>
+
+  <repository_structure>
+    <![CDATA[
+
+JudgeMetrics/
+├── README.md
+├── AGENTS.md
+├── LICENSE
+├── .gitignore
+├── .editorconfig
+├── .env.example
+├── docker-compose.yml
+├── Makefile
+├── pyproject.toml
+├── pnpm-workspace.yaml
+│
+├── apps/
+│   ├── api/
+│   │   ├── src/
+│   │   │   └── judgemetrics/
+│   │   │       ├── __init__.py
+│   │   │       ├── main.py
+│   │   │       ├── config.py
+│   │   │       ├── logging.py
+│   │   │       │
+│   │   │       ├── api/
+│   │   │       │   ├── dependencies.py
+│   │   │       │   └── routes/
+│   │   │       │       ├── health.py
+│   │   │       │       ├── judges.py
+│   │   │       │       ├── courts.py
+│   │   │       │       ├── cases.py
+│   │   │       │       ├── jurisdictions.py
+│   │   │       │       ├── metrics.py
+│   │   │       │       └── methodology.py
+│   │   │       │
+│   │   │       ├── db/
+│   │   │       │   ├── base.py
+│   │   │       │   ├── session.py
+│   │   │       │   └── models/
+│   │   │       │
+│   │   │       ├── schemas/
+│   │   │       ├── services/
+│   │   │       ├── repositories/
+│   │   │       │
+│   │   │       ├── ingest/
+│   │   │       │   ├── base.py
+│   │   │       │   ├── registry.py
+│   │   │       │   ├── fjc/
+│   │   │       │   ├── courtlistener/
+│   │   │       │   ├── pacer/
+│   │   │       │   └── florida/
+│   │   │       │
+│   │   │       ├── normalization/
+│   │   │       ├── entity_resolution/
+│   │   │       ├── analytics/
+│   │   │       ├── metrics/
+│   │   │       ├── provenance/
+│   │   │       └── security/
+│   │   │
+│   │   ├── tests/
+│   │   │   ├── unit/
+│   │   │   ├── integration/
+│   │   │   ├── data_quality/
+│   │   │   └── fixtures/
+│   │   └── alembic/
+│   │
+│   └── web/
+│       ├── app/
+│       ├── components/
+│       ├── lib/
+│       ├── hooks/
+│       ├── types/
+│       ├── tests/
+│       └── public/
+│
+├── data/
+│   ├── README.md
+│   ├── fixtures/
+│   ├── reference/
+│   └── samples/
+│
+├── pipelines/
+│   ├── ingest.py
+│   ├── normalize.py
+│   ├── resolve_entities.py
+│   ├── compute_metrics.py
+│   └── validate.py
+│
+├── notebooks/
+│   ├── README.md
+│   ├── entity_resolution_experiments.ipynb
+│   └── outcome_model_experiments.ipynb
+│
+├── scripts/
+│   ├── bootstrap.sh
+│   ├── dev.sh
+│   ├── seed_demo.py
+│   └── reset_database.py
+│
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── DATA_MODEL.md
+│   ├── DATA_SOURCES.md
+│   ├── METHODOLOGY.md
+│   ├── ENTITY_RESOLUTION.md
+│   ├── PRIVACY.md
+│   ├── SECURITY.md
+│   ├── API.md
+│   ├── DEPLOYMENT.md
+│   └── ROADMAP.md
+│
+└── infra/
+    ├── docker/
+    └── production/
+
+    ]]>
+  </repository_structure>
+
+  <data_source_strategy>
+
+    <source id="FJC">
+      <name>Federal Judicial Center Biographical Directory</name>
+      <type>Official federal government source</type>
+      <use>
+        Federal judge identity, court service, judicial appointments, service dates,
+        and reference data.
+      </use>
+      <integration>Bulk CSV/Excel importer</integration>
+      <priority>High for judge master-data prototype</priority>
+    </source>
+
+    <source id="PACER">
+      <name>PACER</name>
+      <type>Official federal judiciary source</type>
+      <use>
+        Federal cases, parties, nationwide case index, dockets, and documents where applicable.
+      </use>
+      <integration>
+        Authentication API and PACER Case Locator API where appropriate.
+      </integration>
+      <warning>
+        PACER access may involve fees and operational restrictions. Implement budget controls
+        and never make uncontrolled paid requests.
+      </warning>
+    </source>
+
+    <source id="COURTLISTENER">
+      <name>CourtListener / RECAP</name>
+      <type>Non-government public legal-data source</type>
+      <use>
+        Federal dockets, RECAP material, parties, attorneys, judges, filings, case law,
+        and PACER-derived information.
+      </use>
+      <integration>REST API</integration>
+      <priority>High for prototype development</priority>
+    </source>
+
+    <source id="FL_UCR">
+      <name>Florida Uniform Case Reporting</name>
+      <type>Official Florida judicial data specification</type>
+      <use>
+        Understand Florida's canonical court-event structure and fields for judicial officers,
+        case events, and related reporting.
+      </use>
+      <warning>
+        Do not assume the OSCA service is anonymously publicly readable. Current documentation
+        requires coordinated credentials for web-service interaction. Treat direct access as a
+        data-access workstream.
+      </warning>
+    </source>
+
+    <source id="COUNTY_CLERKS">
+      <name>Florida county clerks and state trial-court sources</name>
+      <type>Official local government sources</type>
+      <use>
+        Criminal case data, parties, charges, dockets, judicial assignments, dispositions,
+        and sentences where legally and technically available.
+      </use>
+      <integration_priority>
+        Prefer bulk exports, APIs, machine-readable downloads, or public-record requests before
+        web scraping.
+      </integration_priority>
+    </source>
+
+    <source id="FBI_CDE">
+      <name>FBI Crime Data Explorer</name>
+      <type>Official federal statistical source</type>
+      <use>
+        Jurisdiction and agency crime context. Do not treat it as a nationwide public
+        person-level criminal-history API.
+      </use>
+    </source>
+
+    <source id="BJS">
+      <name>Bureau of Justice Statistics</name>
+      <type>Official federal statistical source</type>
+      <use>
+        Reference statistics, corrections data, recidivism research, and methodology.
+      </use>
+    </source>
+
+    <source_policy>
+      Before implementing a production connector, record:
+      source owner,
+      source documentation,
+      access method,
+      terms,
+      update frequency,
+      cost,
+      rate limits,
+      fields available,
+      fields prohibited,
+      retention restrictions,
+      and provenance requirements.
+    </source_policy>
+
+  </data_source_strategy>
+
+  <canonical_data_model>
+
+    <entity name="jurisdiction">
+      <field>id UUID PK</field>
+      <field>name</field>
+      <field>type: federal/state/county/city/district/circuit</field>
+      <field>state_code</field>
+      <field>fips_code nullable</field>
+      <field>parent_jurisdiction_id nullable</field>
+    </entity>
+
+    <entity name="court">
+      <field>id UUID PK</field>
+      <field>jurisdiction_id FK</field>
+      <field>canonical_name</field>
+      <field>court_type</field>
+      <field>external_ids JSONB</field>
+      <field>active_from</field>
+      <field>active_to</field>
+    </entity>
+
+    <entity name="judge">
+      <field>id UUID PK</field>
+      <field>canonical_name</field>
+      <field>normalized_name</field>
+      <field>external_ids JSONB</field>
+      <field>status</field>
+      <field>metadata JSONB</field>
+    </entity>
+
+    <entity name="judge_service">
+      <field>id UUID PK</field>
+      <field>judge_id FK</field>
+      <field>court_id FK</field>
+      <field>position_type</field>
+      <field>start_date</field>
+      <field>end_date</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="person">
+      <description>
+        Internal resolved person entity. Public UI should use pseudonymous IDs by default.
+      </description>
+      <field>id UUID PK</field>
+      <field>public_person_key</field>
+      <field>resolution_status</field>
+      <field>resolution_confidence</field>
+      <field>created_at</field>
+    </entity>
+
+    <entity name="person_identifier">
+      <description>
+        Store normalized source identifiers securely. Do not expose this table publicly.
+      </description>
+      <field>id UUID PK</field>
+      <field>person_id FK</field>
+      <field>identifier_type</field>
+      <field>value_hash</field>
+      <field>encrypted_value nullable</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="case">
+      <field>id UUID PK</field>
+      <field>court_id FK</field>
+      <field>case_number</field>
+      <field>case_number_normalized</field>
+      <field>case_type</field>
+      <field>filed_date</field>
+      <field>closed_date nullable</field>
+      <field>status</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="case_party">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>person_id nullable FK</field>
+      <field>party_type</field>
+      <field>source_party_label</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="judge_assignment">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>judge_id FK</field>
+      <field>assignment_type</field>
+      <field>start_at</field>
+      <field>end_at nullable</field>
+      <field>confidence</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="charge">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>person_id FK</field>
+      <field>statute_code nullable</field>
+      <field>description</field>
+      <field>offense_category</field>
+      <field>severity</field>
+      <field>violent_flag nullable</field>
+      <field>filed_at</field>
+      <field>disposed_at nullable</field>
+      <field>disposition nullable</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="court_event">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>person_id nullable FK</field>
+      <field>judge_id nullable FK</field>
+      <field>event_type</field>
+      <field>event_at</field>
+      <field>description</field>
+      <field>actor_type nullable</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="decision">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>person_id FK</field>
+      <field>judge_id nullable FK</field>
+      <field>decision_type</field>
+      <field>decision_at</field>
+      <field>decision_value JSONB</field>
+      <field>actor_type</field>
+      <field>judicial_discretion_classification</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="pretrial_release">
+      <field>id UUID PK</field>
+      <field>decision_id FK</field>
+      <field>release_type</field>
+      <field>bond_amount nullable</field>
+      <field>conditions JSONB</field>
+      <field>release_at nullable</field>
+      <field>detained_flag</field>
+    </entity>
+
+    <entity name="sentence">
+      <field>id UUID PK</field>
+      <field>case_id FK</field>
+      <field>person_id FK</field>
+      <field>judge_id nullable FK</field>
+      <field>sentence_at</field>
+      <field>incarceration_days nullable</field>
+      <field>probation_days nullable</field>
+      <field>fine_amount nullable</field>
+      <field>sentence_components JSONB</field>
+      <field>source_record_id FK</field>
+    </entity>
+
+    <entity name="justice_event">
+      <description>
+        Generalized subsequent event used for longitudinal person timelines.
+      </description>
+      <field>id UUID PK</field>
+      <field>person_id FK</field>
+      <field>event_type: arrest/new_case/new_charge/conviction/FTA/revocation/release/etc</field>
+      <field>event_at</field>
+      <field>related_case_id nullable FK</field>
+      <field>source_record_id FK</field>
+      <field>confidence</field>
+    </entity>
+
+    <entity name="source">
+      <field>id UUID PK</field>
+      <field>name</field>
+      <field>owner</field>
+      <field>source_type</field>
+      <field>jurisdiction_id nullable</field>
+      <field>access_method</field>
+      <field>terms_metadata JSONB</field>
+    </entity>
+
+    <entity name="source_record">
+      <field>id UUID PK</field>
+      <field>source_id FK</field>
+      <field>external_record_id nullable</field>
+      <field>retrieved_at</field>
+      <field>effective_at nullable</field>
+      <field>raw_object_path</field>
+      <field>raw_sha256</field>
+      <field>parser_version</field>
+      <field>ingest_run_id</field>
+    </entity>
+
+    <entity name="ingest_run">
+      <field>id UUID PK</field>
+      <field>source_id FK</field>
+      <field>started_at</field>
+      <field>completed_at nullable</field>
+      <field>status</field>
+      <field>records_seen</field>
+      <field>records_created</field>
+      <field>records_updated</field>
+      <field>records_rejected</field>
+      <field>code_version</field>
+    </entity>
+
+    <entity name="entity_resolution_candidate">
+      <field>id UUID PK</field>
+      <field>entity_type</field>
+      <field>left_record_id</field>
+      <field>right_record_id</field>
+      <field>match_probability</field>
+      <field>decision: matched/rejected/review</field>
+      <field>features JSONB</field>
+      <field>model_version</field>
+    </entity>
+
+    <entity name="metric_definition">
+      <field>id</field>
+      <field>slug</field>
+      <field>name</field>
+      <field>description</field>
+      <field>numerator_definition</field>
+      <field>denominator_definition</field>
+      <field>eligibility_definition</field>
+      <field>version</field>
+    </entity>
+
+    <entity name="metric_observation">
+      <field>id</field>
+      <field>metric_definition_id FK</field>
+      <field>subject_type: judge/court/jurisdiction</field>
+      <field>subject_id</field>
+      <field>period_start</field>
+      <field>period_end</field>
+      <field>cohort_size</field>
+      <field>observed_count</field>
+      <field>expected_count nullable</field>
+      <field>observed_rate nullable</field>
+      <field>expected_rate nullable</field>
+      <field>standardized_ratio nullable</field>
+      <field>lower_confidence_bound nullable</field>
+      <field>upper_confidence_bound nullable</field>
+      <field>suppressed_flag</field>
+      <field>methodology_version</field>
+      <field>computed_at</field>
+    </entity>
+
+    <entity name="data_quality_issue">
+      <field>id</field>
+      <field>source_record_id nullable</field>
+      <field>entity_type</field>
+      <field>entity_id nullable</field>
+      <field>severity</field>
+      <field>issue_code</field>
+      <field>description</field>
+      <field>status</field>
+    </entity>
+
+    <entity name="correction_request">
+      <field>id</field>
+      <field>target_type</field>
+      <field>target_id</field>
+      <field>requester_contact encrypted</field>
+      <field>reason</field>
+      <field>supporting_material_path nullable</field>
+      <field>status</field>
+      <field>created_at</field>
+      <field>resolved_at nullable</field>
+    </entity>
+
+  </canonical_data_model>
+
+  <event_attribution_model>
+
+    <actor_types>
+      <actor>judge</actor>
+      <actor>prosecutor</actor>
+      <actor>defense</actor>
+      <actor>jury</actor>
+      <actor>clerk</actor>
+      <actor>law_enforcement</actor>
+      <actor>legislature_or_mandatory_rule</actor>
+      <actor>appellate_court</actor>
+      <actor>unknown</actor>
+    </actor_types>
+
+    <requirement>
+      Every derived judicial metric must use only events whose attribution satisfies the
+      metric's documented inclusion rules.
+    </requirement>
+
+    <example>
+      A prosecutor's voluntary dismissal must not be counted as a judicial dismissal merely
+      because the dismissal occurred in a case assigned to that judge.
+    </example>
+
+    <example>
+      Mandatory release required by statute must not automatically be characterized as an
+      independently discretionary decision by the assigned judge.
+    </example>
+
+  </event_attribution_model>
+
+  <entity_resolution>
+
+    <objective>
+      Connect records belonging to the same real-world judge, court, case, or person while
+      aggressively limiting false-positive merges.
+    </objective>
+
+    <judge_resolution>
+      <signal>Official judge identifier when available</signal>
+      <signal>Canonicalized full name</signal>
+      <signal>Court</signal>
+      <signal>Service dates</signal>
+      <signal>Judicial position</signal>
+      <signal>External source identifiers</signal>
+    </judge_resolution>
+
+    <case_resolution>
+      <signal>Court identifier</signal>
+      <signal>Normalized case number</signal>
+      <signal>Filing year</signal>
+      <signal>Source-specific unique identifier</signal>
+    </case_resolution>
+
+    <person_resolution>
+      <rule>Never merge people on name alone.</rule>
+      <signal>Source-specific stable identifier where lawfully available</signal>
+      <signal>Normalized full name</signal>
+      <signal>Date of birth or partial DOB when lawfully available</signal>
+      <signal>Age</signal>
+      <signal>Case linkage</signal>
+      <signal>Attorney relationships</signal>
+      <signal>Temporal consistency</signal>
+      <signal>Geographic consistency</signal>
+      <signal>Other high-quality non-sensitive identifiers available in public records</signal>
+    </person_resolution>
+
+    <matching_strategy>
+      <stage>Deterministic exact matching on trustworthy identifiers.</stage>
+      <stage>Rule-based matching for highly reliable combinations.</stage>
+      <stage>Probabilistic record linkage for ambiguous candidates.</stage>
+      <stage>Manual-review queue for uncertain high-impact matches.</stage>
+    </matching_strategy>
+
+    <thresholds>
+      <auto_match>Use a deliberately high probability threshold.</auto_match>
+      <auto_reject>Use a deliberately low probability threshold.</auto_reject>
+      <manual_review>Everything materially ambiguous falls between the two.</manual_review>
+    </thresholds>
+
+    <auditability>
+      Store match features, model version, score, disposition, timestamp, and reviewer when
+      applicable.
+    </auditability>
+
+  </entity_resolution>
+
+  <outcome_definitions>
+
+    <outcome id="new_case">
+      A new criminal court case involving the resolved person after the index event.
+    </outcome>
+
+    <outcome id="new_charge">
+      A qualifying new criminal charge after the index event.
+    </outcome>
+
+    <outcome id="rearrest">
+      A separately sourced arrest event after the index event. Label explicitly as rearrest,
+      never as proof of a new offense.
+    </outcome>
+
+    <outcome id="reconviction">
+      A subsequent conviction after the index event.
+    </outcome>
+
+    <outcome id="failure_to_appear">
+      A documented failure-to-appear event where the source and definition permit reliable
+      identification.
+    </outcome>
+
+    <outcome id="release_violation">
+      A documented violation of release conditions.
+    </outcome>
+
+    <outcome id="revocation">
+      A documented probation, parole, or release revocation.
+    </outcome>
+
+    <observation_windows>
+      <window days="30"/>
+      <window days="90"/>
+      <window days="180"/>
+      <window days="365"/>
+      <window days="730"/>
+      <window days="1095"/>
+    </observation_windows>
+
+  </outcome_definitions>
+
+  <analytics_methodology>
+
+    <rule>
+      Always publish raw descriptive rates before sophisticated adjusted statistics.
+    </rule>
+
+    <descriptive_metrics>
+      <metric>Number of eligible cases</metric>
+      <metric>Number of defendants</metric>
+      <metric>Number and percentage released pretrial</metric>
+      <metric>Number and percentage detained where classification is reliable</metric>
+      <metric>Failure-to-appear rate</metric>
+      <metric>Documented release-condition violation rate</metric>
+      <metric>New-case rate within each observation window</metric>
+      <metric>Rearrest rate within each observation window where arrest data exists</metric>
+      <metric>New-charge rate</metric>
+      <metric>Reconviction rate</metric>
+      <metric>Case disposition distribution</metric>
+      <metric>Judicial-dismissal rate where actor attribution is reliable</metric>
+      <metric>Median time to disposition</metric>
+      <metric>Sentence distribution by offense cohort</metric>
+    </descriptive_metrics>
+
+    <risk_adjustment>
+      <objective>
+        Compare observed outcomes with expected outcomes for defendants having similar
+        observable case characteristics.
+      </objective>
+
+      <baseline_model>
+        Begin with an interpretable regularized logistic regression or hierarchical logistic
+        model before introducing complex machine-learning models.
+      </baseline_model>
+
+      <candidate_features>
+        <feature>Offense category</feature>
+        <feature>Offense severity</feature>
+        <feature>Number of charges</feature>
+        <feature>Prior qualifying cases</feature>
+        <feature>Prior qualifying convictions where data is complete enough</feature>
+        <feature>Prior failures to appear where reliably observed</feature>
+        <feature>Pending-case indicator where available</feature>
+        <feature>Age band when lawfully and reliably available</feature>
+        <feature>Jurisdiction</feature>
+        <feature>Court</feature>
+        <feature>Calendar period</feature>
+        <feature>Relevant case-processing characteristics</feature>
+      </candidate_features>
+
+      <excluded_or_sensitive_features>
+        Do not automatically use protected characteristics or proxies merely because they are
+        available. Any sensitive-variable use must have a documented methodological purpose,
+        legal review, fairness analysis, and publication rationale.
+      </excluded_or_sensitive_features>
+
+      <expected_probability>
+        For eligible observation i, compute an expected outcome probability p_i using the
+        versioned model.
+      </expected_probability>
+
+      <expected_count><![CDATA[
+Expected_j = SUM(p_i) for all eligible observations attributed to subject j
+      ]]></expected_count>
+
+      <observed_expected_ratio><![CDATA[
+O_E_j = Observed_j / Expected_j
+      ]]></observed_expected_ratio>
+
+      <interpretation>
+        An O/E ratio above 1 means observed outcomes exceeded the model's expected count for
+        the defined cohort. A ratio below 1 means observed outcomes were below the model's
+        expected count. It must not be described as proof that the judge caused the difference.
+      </interpretation>
+
+      <uncertainty>
+        Calculate confidence or credible intervals using an appropriate documented method.
+        Consider hierarchical partial pooling because judges with small samples otherwise
+        produce unstable extreme values.
+      </uncertainty>
+
+      <minimum_sample_size>
+        Suppress or flag judge-level comparative measures when the eligible sample is too small.
+        Configure thresholds per metric and document them publicly.
+      </minimum_sample_size>
+
+      <temporal_controls>
+        Compare contemporaneous cohorts where possible. Criminal law, crime levels,
+        prosecutorial practices, bail regimes, and court procedures change over time.
+      </temporal_controls>
+
+      <jurisdiction_controls>
+        Default comparisons should be within comparable courts and jurisdictions rather than
+        indiscriminately comparing judges operating under different legal regimes.
+      </jurisdiction_controls>
+
+      <model_validation>
+        <test>Train/test temporal split</test>
+        <test>Calibration curves</test>
+        <test>Brier score</test>
+        <test>ROC AUC as a secondary diagnostic, not the only metric</test>
+        <test>Subgroup calibration analysis where legally appropriate</test>
+        <test>Feature stability</test>
+        <test>Missing-data sensitivity analysis</test>
+        <test>Bootstrap stability of judge-level estimates</test>
+      </model_validation>
+
+    </risk_adjustment>
+
+  </analytics_methodology>
+
+  <metric_presentation>
+
+    <judge_profile_example>
+      <![CDATA[
+
+Judge Jane Example
+Circuit Criminal Division
+Coverage: Jan 2022 - Dec 2025
+
+CASES
+Eligible criminal cases:                     4,821
+Eligible defendants:                         3,940
+
+PRETRIAL
+Recorded pretrial releases:                  2,140
+Recorded detentions:                           821
+Other/unknown:                                 979
+
+OUTCOMES AFTER QUALIFYING RELEASE
+New criminal case within 90 days:             6.4%
+New criminal case within 365 days:            14.2%
+Documented rearrest within 365 days:           9.7%
+Failure to appear:                            11.7%
+
+RISK-ADJUSTED 365-DAY NEW-CASE MEASURE
+Observed qualifying events:                    304
+Model-expected events:                         276
+Observed / expected:                          1.10
+95% interval:                             0.99-1.21
+
+COMPARISON COHORT
+Same court
+Same general case period
+Comparable offense/risk mix
+Minimum sample threshold satisfied
+
+IMPORTANT
+These statistics describe associations in available records.
+They do not prove that a judicial decision caused a later event.
+
+      ]]>
+    </judge_profile_example>
+
+    <presentation_rules>
+      <rule>Always show numerator and denominator.</rule>
+      <rule>Always show date range.</rule>
+      <rule>Always show source coverage.</rule>
+      <rule>Always show sample size.</rule>
+      <rule>Always show uncertainty for adjusted estimates.</rule>
+      <rule>Clearly label incomplete data.</rule>
+      <rule>Link methodology from every adjusted statistic.</rule>
+      <rule>Allow users to inspect underlying eligible cases where legally appropriate.</rule>
+      <rule>Do not present one composite judge score as objective truth.</rule>
+    </presentation_rules>
+
+  </metric_presentation>
+
+  <application_pages>
+
+    <page id="home">
+      <route>/</route>
+      <features>
+        <feature>Global search: judge, court, jurisdiction, or case number</feature>
+        <feature>Coverage summary</feature>
+        <feature>Interactive United States coverage map</feature>
+        <feature>Recently updated jurisdictions</feature>
+        <feature>Prominent methodology link</feature>
+      </features>
+    </page>
+
+    <page id="search">
+      <route>/search</route>
+      <features>
+        <feature>Autocomplete</feature>
+        <feature>Judge filtering</feature>
+        <feature>Court filtering</feature>
+        <feature>Jurisdiction filtering</feature>
+        <feature>Case filtering</feature>
+      </features>
+    </page>
+
+    <page id="judge">
+      <route>/judges/[judgeId]</route>
+      <features>
+        <feature>Judge identity and current/historical service</feature>
+        <feature>Coverage dates</feature>
+        <feature>Case count</feature>
+        <feature>Pretrial outcome metrics</feature>
+        <feature>Disposition metrics</feature>
+        <feature>Sentencing distributions</feature>
+        <feature>Subsequent-event metrics</feature>
+        <feature>Risk-adjusted metrics</feature>
+        <feature>Confidence intervals</feature>
+        <feature>Comparison cohort selector</feature>
+        <feature>Case drill-down</feature>
+        <feature>Source coverage panel</feature>
+        <feature>Methodology version</feature>
+        <feature>Correction/report-data-error action</feature>
+      </features>
+    </page>
+
+    <page id="court">
+      <route>/courts/[courtId]</route>
+      <features>
+        <feature>Court statistics</feature>
+        <feature>Judges serving during selected period</feature>
+        <feature>Case volume trends</feature>
+        <feature>Outcome distributions</feature>
+        <feature>Comparable judge metric table</feature>
+      </features>
+    </page>
+
+    <page id="jurisdiction">
+      <route>/jurisdictions/[jurisdictionId]</route>
+      <features>
+        <feature>Jurisdiction-level trends</feature>
+        <feature>Courts</feature>
+        <feature>Available years</feature>
+        <feature>Data completeness</feature>
+        <feature>Metric distributions</feature>
+      </features>
+    </page>
+
+    <page id="compare">
+      <route>/compare</route>
+      <features>
+        <feature>Select one objective metric at a time</feature>
+        <feature>Filter to comparable jurisdiction/court/time period</feature>
+        <feature>Sortable descriptive table</feature>
+        <feature>Sample-size column</feature>
+        <feature>Confidence intervals</feature>
+        <feature>Coverage warnings</feature>
+      </features>
+    </page>
+
+    <page id="case">
+      <route>/cases/[caseId]</route>
+      <features>
+        <feature>Case timeline</feature>
+        <feature>Charges</feature>
+        <feature>Judge assignments</feature>
+        <feature>Attributed decisions</feature>
+        <feature>Disposition</feature>
+        <feature>Sentence where available</feature>
+        <feature>Source citations</feature>
+      </features>
+    </page>
+
+    <page id="person_timeline">
+      <route>/subjects/[publicKey]</route>
+      <availability>Internal/admin by default during MVP</availability>
+      <features>
+        <feature>Pseudonymous longitudinal timeline</feature>
+        <feature>Cases</feature>
+        <feature>Events</feature>
+        <feature>Entity-resolution confidence</feature>
+      </features>
+    </page>
+
+    <page id="methodology">
+      <route>/methodology</route>
+      <features>
+        <feature>Definitions</feature>
+        <feature>Metric formulas</feature>
+        <feature>Risk-model description</feature>
+        <feature>Exclusions</feature>
+        <feature>Sample thresholds</feature>
+        <feature>Known limitations</feature>
+        <feature>Methodology changelog</feature>
+      </features>
+    </page>
+
+    <page id="coverage">
+      <route>/coverage</route>
+      <features>
+        <feature>Jurisdictions covered</feature>
+        <feature>Dates covered</feature>
+        <feature>Sources</feature>
+        <feature>Completeness estimates</feature>
+        <feature>Known gaps</feature>
+      </features>
+    </page>
+
+    <page id="corrections">
+      <route>/corrections</route>
+      <features>
+        <feature>Submit data correction</feature>
+        <feature>Provide supporting source</feature>
+        <feature>Explain correction process</feature>
+      </features>
+    </page>
+
+  </application_pages>
+
+  <frontend_design>
+
+    <visual_direction>
+      Professional institutional analytics interface resembling a modern financial-data
+      terminal or government-data research platform rather than a sensational news website.
+    </visual_direction>
+
+    <characteristics>
+      <item>Dense but readable information hierarchy</item>
+      <item>Responsive desktop-first design</item>
+      <item>Accessible typography</item>
+      <item>Light and dark mode</item>
+      <item>Keyboard-friendly navigation</item>
+      <item>Strong table interfaces</item>
+      <item>Interactive filtering</item>
+      <item>Confidence-interval visualizations</item>
+      <item>Time-series charts</item>
+      <item>Distribution charts</item>
+      <item>Source and methodology tooltips</item>
+    </characteristics>
+
+    <homepage_schematic>
+      <![CDATA[
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ JudgeMetrics         Search    Coverage    Methodology    About     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│              Judicial outcomes, measured from data                  │
+│                                                                     │
+│    [ Search judge, court, county, state, or case number... ] [🔍]  │
+│                                                                     │
+├─────────────────────┬───────────────────────┬───────────────────────┤
+│ Jurisdictions       │ Cases indexed         │ Court events          │
+│ covered             │                       │ analyzed              │
+├─────────────────────┴───────────────────────┴───────────────────────┤
+│                                                                     │
+│                       UNITED STATES MAP                             │
+│                 coverage / completeness layer                      │
+│                                                                     │
+├─────────────────────────────────────────────────────────────────────┤
+│ Explore                                                              │
+│ [Pretrial] [Disposition] [Sentencing] [Subsequent Outcomes]         │
+├─────────────────────────────────────────────────────────────────────┤
+│ Coverage updates                 | Methodology                       │
+│ Latest ingestion status          | How metrics are computed          │
+└─────────────────────────────────────────────────────────────────────┘
+
+      ]]>
+    </homepage_schematic>
+
+    <judge_profile_schematic>
+      <![CDATA[
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ Judge Jane Example                                                  │
+│ Circuit Criminal Division              Coverage: 2022-2025          │
+├─────────────────────────────────────────────────────────────────────┤
+│ Overview | Pretrial | Dispositions | Sentencing | Cases | Sources   │
+├─────────────────────────────────────────────────────────────────────┤
+│ CASE COVERAGE                                                       │
+│ 4,821 cases     3,940 defendants      completeness: 91%             │
+├─────────────────────────────────────────────────────────────────────┤
+│ PRETRIAL OUTCOMES                                                   │
+│ Released                           2,140                             │
+│ 365-day new-case rate             14.2%                             │
+│ FTA rate                           11.7%                             │
+│ Risk-adjusted O/E                  1.10 [0.99 - 1.21]               │
+├───────────────────────────────────────┬─────────────────────────────┤
+│ TREND                                 │ COMPARABLE COHORT           │
+│ [time-series chart]                   │ [distribution chart]        │
+├───────────────────────────────────────┴─────────────────────────────┤
+│ CASES                                                               │
+│ date | case | offense cohort | decision | later observable outcome │
+├─────────────────────────────────────────────────────────────────────┤
+│ Data sources | Methodology v1.3 | Report data issue                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+      ]]>
+    </judge_profile_schematic>
+
+  </frontend_design>
+
+  <api_design>
+
+    <endpoint method="GET" path="/api/v1/health"/>
+    <endpoint method="GET" path="/api/v1/judges"/>
+    <endpoint method="GET" path="/api/v1/judges/{judge_id}"/>
+    <endpoint method="GET" path="/api/v1/judges/{judge_id}/service"/>
+    <endpoint method="GET" path="/api/v1/judges/{judge_id}/metrics"/>
+    <endpoint method="GET" path="/api/v1/judges/{judge_id}/cases"/>
+    <endpoint method="GET" path="/api/v1/courts"/>
+    <endpoint method="GET" path="/api/v1/courts/{court_id}"/>
+    <endpoint method="GET" path="/api/v1/courts/{court_id}/metrics"/>
+    <endpoint method="GET" path="/api/v1/cases/{case_id}"/>
+    <endpoint method="GET" path="/api/v1/cases/{case_id}/timeline"/>
+    <endpoint method="GET" path="/api/v1/jurisdictions"/>
+    <endpoint method="GET" path="/api/v1/jurisdictions/{jurisdiction_id}"/>
+    <endpoint method="GET" path="/api/v1/metrics"/>
+    <endpoint method="GET" path="/api/v1/metrics/compare"/>
+    <endpoint method="GET" path="/api/v1/search"/>
+    <endpoint method="GET" path="/api/v1/coverage"/>
+    <endpoint method="POST" path="/api/v1/corrections"/>
+
+    <api_rules>
+      <rule>Version every public API.</rule>
+      <rule>Use pagination.</rule>
+      <rule>Validate filters strictly.</rule>
+      <rule>Return methodology metadata with derived statistics.</rule>
+      <rule>Return sample size and coverage metadata with metrics.</rule>
+      <rule>Do not return private internal identifiers unnecessarily.</rule>
+      <rule>Generate OpenAPI documentation automatically.</rule>
+    </api_rules>
+
+  </api_design>
+
+  <ingestion_framework>
+
+    <connector_interface>
+      <![CDATA[
+
+class SourceConnector(Protocol):
+
+    async def discover(self) -> list[SourceArtifact]:
+        ...
+
+    async def fetch(self, artifact: SourceArtifact) -> RawArtifact:
+        ...
+
+    def validate_raw(self, artifact: RawArtifact) -> ValidationResult:
+        ...
+
+    def parse(self, artifact: RawArtifact) -> Iterable[SourceRecord]:
+        ...
+
+    def normalize(self, record: SourceRecord) -> Iterable[CanonicalRecord]:
+        ...
+
+      ]]>
+    </connector_interface>
+
+    <pipeline>
+      <step order="1">Discover source artifacts</step>
+      <step order="2">Download or retrieve</step>
+      <step order="3">Calculate cryptographic hash</step>
+      <step order="4">Save immutable raw object</step>
+      <step order="5">Create source_record metadata</step>
+      <step order="6">Parse</step>
+      <step order="7">Schema validate</step>
+      <step order="8">Normalize</step>
+      <step order="9">Deduplicate</step>
+      <step order="10">Resolve entities</step>
+      <step order="11">Run data-quality checks</step>
+      <step order="12">Publish canonical rows</step>
+      <step order="13">Recompute affected metrics</step>
+      <step order="14">Record lineage and run statistics</step>
+    </pipeline>
+
+    <idempotency>
+      Every ingestion pipeline must be rerunnable without creating duplicate canonical records.
+    </idempotency>
+
+    <incremental_updates>
+      Design source connectors to support checkpoints, cursoring, modified timestamps, or
+      source-specific incremental strategies.
+    </incremental_updates>
+
+  </ingestion_framework>
+
+  <data_quality>
+
+    <checks>
+      <check>Case numbers unique within appropriate court namespace</check>
+      <check>Judge service dates temporally valid</check>
+      <check>Judge assignment overlaps inspected</check>
+      <check>Event timestamps not impossibly ordered</check>
+      <check>Disposition occurs after filing</check>
+      <check>Subsequent outcome occurs after index event</check>
+      <check>No sealed/expunged exclusion violations</check>
+      <check>Source hashes present</check>
+      <check>Source provenance complete</check>
+      <check>Entity-resolution confidence available</check>
+      <check>Unknown categories measured rather than silently discarded</check>
+      <check>Metric denominators reproducible</check>
+    </checks>
+
+    <coverage_metrics>
+      <metric>Percent of cases with identified judge</metric>
+      <metric>Percent with disposition</metric>
+      <metric>Percent with usable defendant resolution</metric>
+      <metric>Percent with adequate follow-up period</metric>
+      <metric>Percent with complete charge classification</metric>
+      <metric>Percent with source provenance</metric>
+    </coverage_metrics>
+
+  </data_quality>
+
+  <privacy_and_legal_design>
+
+    <rule>
+      Use only lawfully obtained data and respect sealing, expungement, juvenile-record,
+      privacy, copyright, contractual, and jurisdiction-specific restrictions.
+    </rule>
+
+    <rule>
+      Public availability at the source does not automatically mean unrestricted bulk
+      republication is appropriate. Track source-specific publication restrictions.
+    </rule>
+
+    <rule>
+      Public-facing defendant timelines should remain pseudonymous during the MVP unless
+      counsel and source rules support broader publication.
+    </rule>
+
+    <rule>
+      Provide a correction process and rapid suppression mechanism for demonstrably incorrect,
+      sealed, expunged, misidentified, or legally restricted information.
+    </rule>
+
+    <rule>
+      Maintain an immutable internal audit trail when records are corrected while ensuring
+      restricted data is no longer publicly exposed.
+    </rule>
+
+    <rule>
+      Every judge-level page must clearly explain that associations do not establish individual
+      causation.
+    </rule>
+
+    <rule>
+      Before public nationwide launch, obtain legal review covering defamation,
+      privacy, public-record republication, court-record restrictions, terms of service,
+      data licensing, and state-specific laws.
+    </rule>
+
+  </privacy_and_legal_design>
+
+  <security>
+
+    <requirement>No secrets committed to Git.</requirement>
+    <requirement>.env.example contains placeholders only.</requirement>
+    <requirement>Use parameterized database access through ORM/query builders.</requirement>
+    <requirement>Validate all user input.</requirement>
+    <requirement>Rate-limit expensive search endpoints.</requirement>
+    <requirement>Separate public and administrative permissions.</requirement>
+    <requirement>Encrypt sensitive administrative/contact information at rest.</requirement>
+    <requirement>Use HTTPS in production.</requirement>
+    <requirement>Log administrative changes.</requirement>
+    <requirement>Automated database backups.</requirement>
+    <requirement>Object-store versioning for raw data.</requirement>
+    <requirement>Dependency and container vulnerability scanning in CI.</requirement>
+
+  </security>
+
+  <testing_strategy>
+
+    <unit_tests>
+      <area>Normalization</area>
+      <area>Case-number parsing</area>
+      <area>Name normalization</area>
+      <area>Entity-resolution scoring</area>
+      <area>Outcome-window calculations</area>
+      <area>Metric formulas</area>
+      <area>Actor attribution</area>
+    </unit_tests>
+
+    <property_tests>
+      <test>A subsequent event can never precede its index event.</test>
+      <test>Metric numerator can never exceed its eligible denominator unless explicitly defined otherwise.</test>
+      <test>Rerunning an ingestion job produces no duplicates.</test>
+      <test>Identical deterministic identifiers resolve consistently.</test>
+    </property_tests>
+
+    <integration_tests>
+      <test>Database migrations from empty database</test>
+      <test>Fixture ingestion through canonical database</test>
+      <test>API query against populated fixture database</test>
+      <test>Metric computation against known expected fixture output</test>
+    </integration_tests>
+
+    <frontend_tests>
+      <test>Search flow</test>
+      <test>Judge page</test>
+      <test>Case page</test>
+      <test>Metric filters</test>
+      <test>Coverage warnings</test>
+      <test>Correction form</test>
+    </frontend_tests>
+
+    <golden_dataset>
+      Create a small synthetic justice dataset with known relationships and exact expected
+      results. Use this as a permanent regression fixture for entity resolution and analytics.
+    </golden_dataset>
+
+  </testing_strategy>
+
+  <synthetic_demo_dataset>
+
+    <requirements>
+      <item>At least 5 courts</item>
+      <item>At least 20 judges</item>
+      <item>At least 5,000 synthetic cases</item>
+      <item>At least 3,000 synthetic defendants</item>
+      <item>Multiple judge assignments</item>
+      <item>Multiple offense categories</item>
+      <item>Pretrial release and detention events</item>
+      <item>Dismissals attributed separately to judges and prosecutors</item>
+      <item>Convictions</item>
+      <item>Sentences</item>
+      <item>Subsequent cases</item>
+      <item>Failures to appear</item>
+      <item>Intentional duplicate source records</item>
+      <item>Intentional ambiguous person matches</item>
+      <item>Missing-data examples</item>
+    </requirements>
+
+    <purpose>
+      The complete website and analytics engine must be demonstrable before production
+      jurisdiction data is available.
+    </purpose>
+
+  </synthetic_demo_dataset>
+
+  <initial_mvp>
+
+    <definition>
+      A complete vertical slice that works locally using synthetic data plus at least one
+      genuine public judge-data connector.
+    </definition>
+
+    <must_have>
+      <item>Dockerized PostgreSQL</item>
+      <item>FastAPI backend</item>
+      <item>Next.js frontend</item>
+      <item>Alembic migrations</item>
+      <item>FJC judge importer</item>
+      <item>Source/provenance tracking</item>
+      <item>Synthetic criminal-case generator</item>
+      <item>Entity-resolution framework</item>
+      <item>Outcome metric engine</item>
+      <item>Judge search</item>
+      <item>Judge profile page</item>
+      <item>Court page</item>
+      <item>Case timeline page</item>
+      <item>Comparative metric table</item>
+      <item>Methodology page</item>
+      <item>Coverage page</item>
+      <item>Automated tests</item>
+      <item>README containing one-command local startup instructions</item>
+    </must_have>
+
+  </initial_mvp>
+
+  <florida_pilot>
+
+    <objective>
+      After the architecture works against synthetic data, ingest real state criminal-court
+      records from one Florida jurisdiction with the best lawful machine-readable data access.
+    </objective>
+
+    <selection_process>
+      <step>Evaluate Florida jurisdictions for data accessibility.</step>
+      <step>Document available fields and history.</step>
+      <step>Confirm judge assignment information.</step>
+      <step>Confirm charges and dispositions.</step>
+      <step>Confirm defendant matching fields that may lawfully be processed.</step>
+      <step>Confirm pretrial/release information.</step>
+      <step>Confirm follow-up event feasibility.</step>
+      <step>Estimate extraction and maintenance cost.</step>
+      <step>Select the jurisdiction with the strongest data rather than selecting solely by population.</step>
+    </selection_process>
+
+    <possible_candidates>
+      Broward County and Miami-Dade County may be evaluated, but do not assume either is the
+      best pilot until current source access is verified.
+    </possible_candidates>
+
+    <first_real_metric>
+      Prefer a metric based on new criminal court cases after a clearly identified qualifying
+      pretrial event because court-case linkage may be more obtainable than complete independent
+      arrest records during the earliest pilot.
+    </first_real_metric>
+
+  </florida_pilot>
+
+  <development_phases>
+
+    <phase number="0" name="Repository Bootstrap">
+      <tasks>
+        <task>Initialize Git repository.</task>
+        <task>Create README.md and AGENTS.md.</task>
+        <task>Create Python environment using uv.</task>
+        <task>Create Next.js frontend using TypeScript and pnpm.</task>
+        <task>Create Docker Compose PostgreSQL service.</task>
+        <task>Create environment configuration.</task>
+        <task>Create Makefile or equivalent common commands.</task>
+        <task>Configure Ruff, typing, pytest, frontend linting, and formatting.</task>
+        <task>Create GitHub Actions CI.</task>
+      </tasks>
+      <exit_criteria>
+        API, frontend, PostgreSQL, linting, and tests run successfully from a clean checkout.
+      </exit_criteria>
+    </phase>
+
+    <phase number="1" name="Database Foundation">
+      <tasks>
+        <task>Implement core SQLAlchemy models.</task>
+        <task>Create initial Alembic migration.</task>
+        <task>Create repository/service layers.</task>
+        <task>Create source and provenance tables.</task>
+        <task>Add database indexes.</task>
+      </tasks>
+      <exit_criteria>
+        Empty database can be migrated to latest schema and rolled back safely.
+      </exit_criteria>
+    </phase>
+
+    <phase number="2" name="Synthetic Justice Dataset">
+      <tasks>
+        <task>Create deterministic seeded synthetic generator.</task>
+        <task>Generate cases, judges, defendants, events, decisions, and subsequent outcomes.</task>
+        <task>Add intentional data-quality edge cases.</task>
+        <task>Load data through the same normalization interfaces intended for real data.</task>
+      </tasks>
+      <exit_criteria>
+        Local database contains a realistic synthetic dataset with known expected outcomes.
+      </exit_criteria>
+    </phase>
+
+    <phase number="3" name="First Real Data Connector">
+      <tasks>
+        <task>Implement Federal Judicial Center judge import.</task>
+        <task>Persist raw artifact and checksum.</task>
+        <task>Normalize federal judge records.</task>
+        <task>Track service history and provenance.</task>
+        <task>Make import idempotent.</task>
+      </tasks>
+      <exit_criteria>
+        A real public data source can be ingested repeatedly without duplication.
+      </exit_criteria>
+    </phase>
+
+    <phase number="4" name="Core API">
+      <tasks>
+        <task>Judge search endpoint.</task>
+        <task>Judge detail endpoint.</task>
+        <task>Court endpoints.</task>
+        <task>Case detail/timeline endpoint.</task>
+        <task>Coverage endpoint.</task>
+        <task>Pagination.</task>
+        <task>OpenAPI documentation.</task>
+      </tasks>
+      <exit_criteria>
+        API exposes synthetic criminal data and real judge reference data cleanly.
+      </exit_criteria>
+    </phase>
+
+    <phase number="5" name="Metrics Engine">
+      <tasks>
+        <task>Define index events.</task>
+        <task>Implement observation windows.</task>
+        <task>Compute raw outcome rates.</task>
+        <task>Implement cohort filtering.</task>
+        <task>Implement expected outcome model.</task>
+        <task>Implement O/E measures.</task>
+        <task>Implement uncertainty estimates.</task>
+        <task>Implement minimum sample suppression.</task>
+        <task>Version methodology.</task>
+      </tasks>
+      <exit_criteria>
+        Synthetic expected metrics exactly match golden test expectations.
+      </exit_criteria>
+    </phase>
+
+    <phase number="6" name="Web Application">
+      <tasks>
+        <task>Create navigation shell.</task>
+        <task>Create homepage.</task>
+        <task>Create search experience.</task>
+        <task>Create judge profile.</task>
+        <task>Create court profile.</task>
+        <task>Create case timeline.</task>
+        <task>Create comparative metric table.</task>
+        <task>Create methodology page.</task>
+        <task>Create coverage page.</task>
+        <task>Create correction form.</task>
+      </tasks>
+      <exit_criteria>
+        User can navigate from search to judge to metric to source case using local demo data.
+      </exit_criteria>
+    </phase>
+
+    <phase number="7" name="CourtListener Prototype">
+      <tasks>
+        <task>Research current API authentication and usage rules.</task>
+        <task>Implement connector behind an interface.</task>
+        <task>Download a deliberately small development dataset.</task>
+        <task>Map docket/case/judge fields to canonical model.</task>
+        <task>Store provenance.</task>
+      </tasks>
+      <exit_criteria>
+        CourtListener data flows through raw, normalized, and canonical layers.
+      </exit_criteria>
+    </phase>
+
+    <phase number="8" name="Florida Source Research">
+      <tasks>
+        <task>Create docs/florida-data-inventory.md.</task>
+        <task>Inventory state and county sources.</task>
+        <task>Record access method, fields, limits, terms, and costs.</task>
+        <task>Determine whether bulk public-record requests are preferable to scraping.</task>
+        <task>Select first pilot jurisdiction.</task>
+      </tasks>
+      <exit_criteria>
+        A documented lawful acquisition plan exists for the first Florida criminal-court dataset.
+      </exit_criteria>
+    </phase>
+
+    <phase number="9" name="First Real State Court Pipeline">
+      <tasks>
+        <task>Implement selected Florida connector.</task>
+        <task>Ingest limited historical sample.</task>
+        <task>Normalize cases.</task>
+        <task>Resolve judges.</task>
+        <task>Resolve defendants conservatively.</task>
+        <task>Construct timelines.</task>
+        <task>Calculate coverage statistics.</task>
+      </tasks>
+      <exit_criteria>
+        At least one meaningful real-world jurisdiction can be analyzed end to end.
+      </exit_criteria>
+    </phase>
+
+    <phase number="10" name="Methodological Validation">
+      <tasks>
+        <task>Audit random case samples manually.</task>
+        <task>Estimate person-linkage false-positive rate.</task>
+        <task>Estimate false-negative rate.</task>
+        <task>Validate judicial attribution.</task>
+        <task>Analyze missingness.</task>
+        <task>Validate observation-period completeness.</task>
+        <task>Run model calibration diagnostics.</task>
+      </tasks>
+      <exit_criteria>
+        The system has quantified known error rates rather than merely assuming data correctness.
+      </exit_criteria>
+    </phase>
+
+    <phase number="11" name="Production Hardening">
+      <tasks>
+        <task>Authentication for admin functions.</task>
+        <task>Rate limiting.</task>
+        <task>Backups.</task>
+        <task>Monitoring.</task>
+        <task>Error reporting.</task>
+        <task>Object-store versioning.</task>
+        <task>Security scanning.</task>
+        <task>Performance indexes.</task>
+        <task>Caching.</task>
+      </tasks>
+    </phase>
+
+    <phase number="12" name="Geographic Expansion">
+      <strategy>
+        Add one jurisdiction at a time. Every new source gets a dedicated connector,
+        mapping tests, coverage report, provenance record, and methodology compatibility review.
+      </strategy>
+    </phase>
+
+  </development_phases>
+
+  <performance_strategy>
+
+    <database>
+      <item>Indexes on court_id, judge_id, person_id, case_number_normalized, event_at, and source external IDs.</item>
+      <item>Composite indexes based on common metric filters.</item>
+      <item>Materialized aggregate tables for expensive public dashboard queries.</item>
+      <item>Partition very large event tables by time or jurisdiction only when actual scale requires it.</item>
+    </database>
+
+    <analytics>
+      <item>Use Polars/DuckDB for large batch transformations.</item>
+      <item>Do not calculate expensive longitudinal metrics synchronously in web requests.</item>
+      <item>Precompute versioned metric observations.</item>
+      <item>Incrementally recompute only impacted subjects after new data ingestion.</item>
+    </analytics>
+
+    <api>
+      <item>Cache stable public metric responses.</item>
+      <item>Paginate case lists.</item>
+      <item>Set strict maximum page sizes.</item>
+      <item>Avoid N+1 ORM queries.</item>
+    </api>
+
+  </performance_strategy>
+
+  <provenance_requirement>
+
+    <statement>
+      A user or analyst must eventually be able to trace:
+    </statement>
+
+    <chain>
+      <![CDATA[
+
+Published metric
+      ↓
+metric_observation
+      ↓
+eligible canonical events
+      ↓
+canonical cases / decisions / outcomes
+      ↓
+source_record
+      ↓
+raw source artifact
+      ↓
+source system + retrieval timestamp + checksum + parser version
+
+      ]]>
+    </chain>
+
+    <requirement>
+      If this chain cannot be reconstructed, the metric is not production-ready.
+    </requirement>
+
+  </provenance_requirement>
+
+  <admin_tools>
+
+    <feature>Ingestion-run dashboard</feature>
+    <feature>Failed-record queue</feature>
+    <feature>Entity-resolution review queue</feature>
+    <feature>Duplicate judge review</feature>
+    <feature>Duplicate person review</feature>
+    <feature>Data-quality alerts</feature>
+    <feature>Correction-request queue</feature>
+    <feature>Source coverage dashboard</feature>
+    <feature>Metric recomputation controls</feature>
+
+  </admin_tools>
+
+  <documentation_requirements>
+
+    <document file="README.md">
+      Project purpose, local setup, commands, architecture summary, and development workflow.
+    </document>
+
+    <document file="AGENTS.md">
+      Instructions that future coding agents must follow, including architecture boundaries,
+      testing requirements, provenance rules, and commands that must be run before completing work.
+    </document>
+
+    <document file="docs/ARCHITECTURE.md">
+      System architecture and data flow.
+    </document>
+
+    <document file="docs/DATA_MODEL.md">
+      Canonical entities and relationships.
+    </document>
+
+    <document file="docs/DATA_SOURCES.md">
+      Source registry and acquisition status.
+    </document>
+
+    <document file="docs/METHODOLOGY.md">
+      Definitions, equations, cohort construction, models, and limitations.
+    </document>
+
+    <document file="docs/ENTITY_RESOLUTION.md">
+      Matching methodology, thresholds, and validation.
+    </document>
+
+    <document file="docs/PRIVACY.md">
+      Publication, suppression, correction, and PII policy.
+    </document>
+
+    <document file="docs/SECURITY.md">
+      Threat model and security practices.
+    </document>
+
+    <document file="docs/API.md">
+      Public API usage.
+    </document>
+
+    <document file="docs/ROADMAP.md">
+      Current phase, completed items, unresolved issues, and next milestones.
+    </document>
+
+  </documentation_requirements>
+
+  <ci_pipeline>
+
+    <on_pull_request>
+      <step>Python formatting/linting</step>
+      <step>Python type checking</step>
+      <step>Python unit tests</step>
+      <step>Database integration tests</step>
+      <step>Frontend linting</step>
+      <step>Frontend type checking</step>
+      <step>Frontend tests</step>
+      <step>Production frontend build</step>
+      <step>Container build</step>
+    </on_pull_request>
+
+  </ci_pipeline>
+
+  <local_development_commands>
+    <desired_interface>
+      <![CDATA[
+
+make install
+make up
+make migrate
+make seed
+make dev
+make test
+make lint
+make typecheck
+make ingest-fjc
+make compute-metrics
+
+      ]]>
+    </desired_interface>
+
+    <requirement>
+      If Make is not the optimal cross-platform abstraction, provide equivalent documented
+      scripts while preserving simple top-level commands.
+    </requirement>
+  </local_development_commands>
+
+  <definition_of_done_for_any_feature>
+    <item>Feature implemented.</item>
+    <item>Types added.</item>
+    <item>Database migration added if required.</item>
+    <item>Unit tests added.</item>
+    <item>Integration tests added when relevant.</item>
+    <item>Relevant documentation updated.</item>
+    <item>Lint passes.</item>
+    <item>Type checking passes.</item>
+    <item>Tests pass.</item>
+    <item>Frontend production build passes when frontend affected.</item>
+    <item>No credentials committed.</item>
+    <item>Data lineage preserved when data affected.</item>
+  </definition_of_done_for_any_feature>
+
+  <long_term_scaling_model>
+
+    <stage name="Prototype">
+      One real judge directory plus synthetic court outcomes.
+    </stage>
+
+    <stage name="Pilot">
+      One state-court jurisdiction with complete end-to-end longitudinal analysis.
+    </stage>
+
+    <stage name="State">
+      Multiple counties/circuits normalized into a common Florida schema.
+    </stage>
+
+    <stage name="Multi-state">
+      Connector framework extended to states having usable machine-readable court data.
+    </stage>
+
+    <stage name="National">
+      State-specific adapters feed a shared canonical justice-event model.
+    </stage>
+
+    <strategic_moat>
+      The durable asset is the continuously updated cross-jurisdictional canonical dataset,
+      entity-resolution graph, historical provenance, source adapters, data-quality history,
+      and reproducible outcome methodology.
+    </strategic_moat>
+
+  </long_term_scaling_model>
+
+  <future_features>
+    <feature>Interactive national coverage map</feature>
+    <feature>Downloadable research datasets subject to source restrictions</feature>
+    <feature>Public read-only API</feature>
+    <feature>Historical judge trend analysis</feature>
+    <feature>Court-level comparison</feature>
+    <feature>Prosecutorial-outcome module kept analytically distinct from judicial metrics</feature>
+    <feature>Sentencing distribution explorer</feature>
+    <feature>Pretrial release explorer</feature>
+    <feature>Failure-to-appear analytics</feature>
+    <feature>Appellate reversal analytics with careful attribution</feature>
+    <feature>Researcher methodology notebooks</feature>
+    <feature>Automated source-change detection</feature>
+    <feature>Public data corrections workflow</feature>
+    <feature>Source completeness scoring</feature>
+  </future_features>
+
+  <important_statistical_warnings>
+
+    <warning>
+      A judge who handles a disproportionately high-risk docket may exhibit higher raw
+      subsequent-event rates even if decision-making has no causal effect. Raw rates must
+      therefore be accompanied by case-mix context.
+    </warning>
+
+    <warning>
+      Selection effects can occur when defendants are not randomly assigned to judges.
+    </warning>
+
+    <warning>
+      Changes in prosecutors, policing, statutes, bail law, crime conditions, court procedures,
+      and reporting systems can create apparent changes in outcomes.
+    </warning>
+
+    <warning>
+      Rearrest measures are partly functions of law-enforcement activity and do not equal
+      proven offending.
+    </warning>
+
+    <warning>
+      Missing subsequent events outside the covered jurisdiction can bias longitudinal
+      measures downward.
+    </warning>
+
+    <warning>
+      Entity-resolution mistakes can severely distort repeat-event calculations.
+    </warning>
+
+    <warning>
+      Small samples create extreme but unstable observed rates.
+    </warning>
+
+    <warning>
+      Never conceal these limitations merely because a simplified number is easier to market.
+    </warning>
+
+  </important_statistical_warnings>
+
+  <first_session_execution_plan>
+
+    <instruction>
+      Begin implementation immediately after reading this specification.
+    </instruction>
+
+    <step number="1">
+      Inspect the currently open directory and confirm it is safe to initialize.
+    </step>
+
+    <step number="2">
+      Initialize Git and create the base repository structure.
+    </step>
+
+    <step number="3">
+      Create README.md and AGENTS.md before substantial implementation so future agents inherit
+      the architectural constraints.
+    </step>
+
+    <step number="4">
+      Bootstrap the FastAPI backend using uv.
+    </step>
+
+    <step number="5">
+      Bootstrap the Next.js TypeScript frontend using pnpm.
+    </step>
+
+    <step number="6">
+      Add PostgreSQL through Docker Compose.
+    </step>
+
+    <step number="7">
+      Implement configuration and database connectivity.
+    </step>
+
+    <step number="8">
+      Create the initial canonical SQLAlchemy models and Alembic migration.
+    </step>
+
+    <step number="9">
+      Add /health and /ready endpoints and verify database connectivity.
+    </step>
+
+    <step number="10">
+      Build the deterministic synthetic-data generator.
+    </step>
+
+    <step number="11">
+      Seed enough synthetic records to demonstrate judge search, case timelines, and outcome
+      calculations.
+    </step>
+
+    <step number="12">
+      Implement the first raw descriptive metrics.
+    </step>
+
+    <step number="13">
+      Implement API endpoints for search, judges, cases, courts, and metrics.
+    </step>
+
+    <step number="14">
+      Implement the initial frontend pages and connect them to the API.
+    </step>
+
+    <step number="15">
+      Add tests and run the complete local test/build suite.
+    </step>
+
+    <step number="16">
+      Implement the Federal Judicial Center import as the first real external-data pipeline.
+    </step>
+
+    <step number="17">
+      Update README with exact working commands and screenshots or descriptions of the current
+      application state.
+    </step>
+
+  </first_session_execution_plan>
+
+  <first_milestone_expected_result>
+    <![CDATA[
+
+When the first milestone is complete, I should be able to:
+
+1. Clone/open the project.
+2. Run one documented setup command.
+3. Start PostgreSQL.
+4. Run migrations.
+5. Seed the synthetic dataset.
+6. Start the FastAPI backend.
+7. Start the Next.js frontend.
+8. Open the website.
+9. Search for a synthetic judge.
+10. Open the judge's profile.
+11. View case volume and objective outcome metrics.
+12. Open an underlying synthetic case.
+13. View its event timeline and provenance.
+14. Return to the judge page.
+15. Compare the same metric against the judge's defined comparison cohort.
+16. Open the methodology page and see exactly how that metric was calculated.
+17. Run the complete automated test suite successfully.
+
+No production court data is required to satisfy this first milestone.
+
+    ]]>
+  </first_milestone_expected_result>
+
+  <agent_working_rules>
+
+    <rule>
+      Do not spend the entire session writing architecture documents. Build working software.
+    </rule>
+
+    <rule>
+      Do not prematurely implement national-scale infrastructure before the vertical slice works.
+    </rule>
+
+    <rule>
+      Do not create fake production integrations merely to make the application appear complete.
+    </rule>
+
+    <rule>
+      When external access is unavailable, create a proper adapter interface plus fixtures and
+      document exactly what credential/access step remains.
+    </rule>
+
+    <rule>
+      Prefer explicit readable code over excessive abstraction during the MVP.
+    </rule>
+
+    <rule>
+      Use migrations from the beginning.
+    </rule>
+
+    <rule>
+      Use deterministic random seeds for synthetic test data.
+    </rule>
+
+    <rule>
+      Keep source-specific parsing separate from canonical-domain logic.
+    </rule>
+
+    <rule>
+      Keep statistical methodology separate from presentation logic.
+    </rule>
+
+    <rule>
+      Never overwrite raw source artifacts.
+    </rule>
+
+    <rule>
+      Any transformation from source record to published metric must be reproducible.
+    </rule>
+
+    <rule>
+      Keep a TODO/roadmap containing unresolved data-access questions instead of silently
+      inventing answers.
+    </rule>
+
+    <rule>
+      Update AGENTS.md whenever an architectural decision is important for future AI coding
+      sessions.
+    </rule>
+
+  </agent_working_rules>
+
+  <source_verification_instructions>
+
+    <instruction>
+      Before implementing live integrations, verify the latest official documentation rather
+      than relying permanently on this specification.
+    </instruction>
+
+    <currently_relevant_sources>
+      <source>Federal Judicial Center Biographical Directory export</source>
+      <source>PACER Developer Resources</source>
+      <source>PACER Authentication API</source>
+      <source>PACER Case Locator API</source>
+      <source>CourtListener REST API</source>
+      <source>CourtListener RECAP APIs</source>
+      <source>Florida Courts Judicial Data Management Services</source>
+      <source>Florida Uniform Case Reporting specifications</source>
+      <source>Florida county clerk court-record systems</source>
+      <source>FBI Crime Data Explorer</source>
+      <source>Bureau of Justice Statistics</source>
+    </currently_relevant_sources>
+
+  </source_verification_instructions>
+
+  <ultimate_product_concept>
+    <![CDATA[
+
+The finished platform should behave like a data terminal for the American court system:
+
+SEARCH
+  ↓
+JUDGE / COURT / JURISDICTION
+  ↓
+OBJECTIVE CASE AND OUTCOME METRICS
+  ↓
+RISK-ADJUSTED COMPARISON
+  ↓
+CONFIDENCE / SAMPLE SIZE / COVERAGE
+  ↓
+UNDERLYING CASES
+  ↓
+EVENT TIMELINES
+  ↓
+ORIGINAL SOURCE PROVENANCE
+  ↓
+PUBLIC METHODOLOGY
+
+The platform's credibility must come from traceability rather than rhetoric.
+
+A user should be able to move from:
+
+"Why does this statistic look unusual?"
+
+to:
+
+"What cases generated it?"
+
+to:
+
+"What decision occurred?"
+
+to:
+
+"Who was the responsible actor?"
+
+to:
+
+"What later observable event was counted?"
+
+to:
+
+"What government/public source supports it?"
+
+to:
+
+"How was this number calculated?"
+
+without leaving the analytical framework.
+
+    ]]>
+  </ultimate_product_concept>
+
+  <start_now>
+    <instruction>
+      Start with Phase 0 immediately.
+    </instruction>
+
+    <instruction>
+      Build the first runnable vertical slice rather than returning another design proposal.
+    </instruction>
+
+    <instruction>
+      Make reasonable engineering decisions autonomously when this specification leaves a minor
+      implementation detail open.
+    </instruction>
+
+    <instruction>
+      Do not ask for confirmation for ordinary technical choices that can easily be changed
+      later.
+    </instruction>
+
+    <instruction>
+      Stop and request user intervention only when credentials, paid access, legally restricted
+      data, destructive operations, or an externally consequential choice genuinely requires it.
+    </instruction>
+
+    <instruction>
+      At the end of each implementation session, report:
+      files created or changed,
+      architecture implemented,
+      commands executed,
+      test results,
+      what currently works,
+      known issues,
+      external access still needed,
+      and the next concrete development milestone.
+    </instruction>
+  </start_now>
+
+</project_handoff>

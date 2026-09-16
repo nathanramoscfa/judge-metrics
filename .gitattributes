@@ -1,0 +1,11 @@
+# .gitattributes
+# Normalize every text file to LF in the repository and in checkouts,
+# so Windows and Linux contributors produce identical diffs.
+*               text=auto eol=lf
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.woff          binary
+*.woff2         binary
+*.parquet       binary
+*.duckdb        binary

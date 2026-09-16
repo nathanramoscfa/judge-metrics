@@ -1,0 +1,83 @@
+[project]
+name = "judgemetrics"
+version = "0.1.0"
+description = "Transparent, reproducible analytics over public criminal-court records: judicial assignments, case events, dispositions, sentences, and documented subsequent outcomes, with provenance and uncertainty."
+readme = "README.md"
+authors = [
+    { name = "Nathan Ramos", email = "nathan.ramos.github@gmail.com" }
+]
+requires-python = ">=3.13"
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+dependencies = []
+
+[project.scripts]
+judgemetrics = "judgemetrics:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+    "poethepoet>=0.48.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.7",
+]
+# roadmodel is the planning tool behind ROADMAP.md and docs/phaseNN-roadmap.md
+# (`uv run roadmodel export-kit . --force` refreshes planning/). It is not an
+# application dependency.
+planning = [
+    "roadmodel>=0.2.33",
+]
+
+[tool.uv]
+default-groups = ["dev", "planning"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Defaults (E4/E7/E9 + F) plus import order (I), likely bugs (B),
+# flake8-bandit security rules (S), and modern-syntax upgrades (UP).
+select = ["E4", "E7", "E9", "F", "I", "B", "S", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately use bare asserts.
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["judgemetrics"]
+branch = true
+
+[tool.poe.tasks]
+# Cross-platform command interface: `uv run poe <task>`. The Makefile at the
+# repo root mirrors these targets for environments that have GNU make.
+# Later phases add: up, down, migrate, seed, dev, ingest-fjc, compute-metrics.
+test = "pytest"
+lint = "ruff check ."
+fmt = "ruff format ."
+fmt-check = "ruff format --check ."
+typecheck = "mypy"
+check = ["lint", "fmt-check", "typecheck", "test"]
+kit = "roadmodel export-kit . --force"
