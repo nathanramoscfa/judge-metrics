@@ -224,6 +224,35 @@ Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
   selection, never by editing a real record.
 - The API image copies `data/reference/` so connectors that read
   curated tables (`us_states.csv`) work inside the container.
+- API v1 (docs/ARCHITECTURE.md "Public API v1", docs/API.md): routes →
+  services → repositories → models, with `schemas/` as the only shapes
+  that leave the API. `create_app` binds the engine and a session
+  factory to `app.state`; `api.deps.get_session` opens sessions from
+  it, so a test app built with explicit settings never uses the
+  process-wide engine (`db.session` keeps only the factories). Lists
+  paginate with `count(*) OVER ()` in the page query (one statement; a
+  plain count only for an empty page); `limit` ≤ 100 is enforced by the
+  route and again in `paginate`. Unknown query parameters are rejected
+  by an explicit `StrictQuery` allow-list per route, checked against
+  the OpenAPI parameters by `tests/unit/test_openapi.py`. Search and
+  the judges `q` filter set `pg_trgm.similarity_threshold` per request
+  with `set_config(…, true)` (bound parameter) and match with `%` so
+  the GIN trigram indexes apply; similarity is over the whole
+  normalized name, so a lone misspelt surname only matches when it is
+  a large share of the name. Every non-2xx response is an `ErrorBody`;
+  `SQLAlchemyError` is a 503 whose text is never echoed. The `/search`
+  token-bucket limiter lives in `app.state.search_limiter`, is `None`
+  under `env == test` unless `search_rate_limit_enabled` is set, and
+  keys on the rightmost `X-Forwarded-For` entry only when
+  `trust_proxy` is true. `docs/openapi.json` is a committed snapshot:
+  regenerate it with `uv run judgemetrics openapi export` after any
+  route or schema change or the unit test fails. `tests/` is a package
+  (`__init__.py` files) so `tests/integration/conftest.py` can coexist
+  with the root conftest under mypy and its helpers can be imported;
+  API integration tests ingest the FJC fixture per module, committed,
+  and purge exactly that run afterwards, asserting through the
+  fixture's FJC ids rather than absolute totals because a developer's
+  database may also hold the live ingest.
 
 ## End-of-session report (from the brief)
 

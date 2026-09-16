@@ -20,11 +20,13 @@ progress: the governance chassis (license, security gate, CI, branch
 protection, Compose services) and the application core (settings, JSON
 logging, the FastAPI app with health probes, the twenty-three canonical
 tables behind a reversible Alembic baseline, the `judgemetrics` CLI, and
-the scanned API container image) and the ingest framework with its
-first real connector (`uv run poe ingest-fjc` loads the Federal Judicial
+the scanned API container image), the ingest framework with its first
+real connector (`uv run poe ingest-fjc` loads the Federal Judicial
 Center's judges, courts, and service records into an immutable raw lake
 and the canonical tables, idempotently, with provenance down to the
-stored bytes) are in place; the public API v1 is next. See:
+stored bytes), and the public API v1 (paginated, strictly validated,
+rate-limited search, provenance on every entity) are in place; the web
+foundation is next. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -61,12 +63,33 @@ cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
-uv run poe dev-api      # http://127.0.0.1:8000/api/v1/health and /api/v1/ready
+uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs (Swagger UI over the API below)
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export
 ```
+
+## API v1
+
+The read-only API ([`docs/API.md`](docs/API.md); OpenAPI document
+committed at [`docs/openapi.json`](docs/openapi.json)) serves the
+canonical tables with pagination (`limit` ≤ 100), strict filter
+validation (unknown parameters are 422), a uniform error envelope,
+`Cache-Control` on lists and details, provenance on every entity, and a
+rate-limited trigram search:
+
+| Endpoint                                   | Purpose                                   |
+|--------------------------------------------|-------------------------------------------|
+| `GET /api/v1/health`, `/ready`             | liveness and readiness probes             |
+| `GET /api/v1/judges`                       | list; filters `q`, `court_id`, `active_on`, `status` |
+| `GET /api/v1/judges/{id}`                  | detail with service records and provenance |
+| `GET /api/v1/judges/{id}/service`          | service records, oldest first             |
+| `GET /api/v1/courts`                       | list; filters `jurisdiction_id`, `court_type` |
+| `GET /api/v1/courts/{id}`                  | detail with provenance                    |
+| `GET /api/v1/jurisdictions`                | list                                      |
+| `GET /api/v1/jurisdictions/{id}`           | detail with provenance                    |
+| `GET /api/v1/search?q=`                    | judges and courts by name similarity (rate limited) |
 
 The API image builds with `docker build -f infra/docker/api.Dockerfile .`
 and runs beside the services with `docker compose --profile app up`
@@ -111,7 +134,9 @@ judge-metrics/
 ├── docs/
 │   ├── ROADMAP.md          status, open questions, next milestones
 │   ├── DATA_SOURCES.md     source register with verification status
-│   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles
+│   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles, API layering
+│   ├── API.md              the API contract: pagination, filters, errors, rate limits, provenance
+│   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export)
 │   ├── DATA_MODEL.md       the twenty-three tables, natural keys, indexes, grants
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
@@ -121,7 +146,7 @@ judge-metrics/
 ├── infra/docker/           api.Dockerfile and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
-├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, db/, ingest/, quality/, normalization/
+├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/
 ├── tests/unit/, tests/integration/, tests/fixtures/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks
 └── uv.lock

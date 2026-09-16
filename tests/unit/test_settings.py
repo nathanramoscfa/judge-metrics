@@ -118,3 +118,22 @@ def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     assert get_settings() is first
     get_settings.cache_clear()
     assert get_settings() is not first
+
+
+def test_search_rate_limit_is_off_under_test_unless_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings(env="local").effective_search_rate_limit_enabled is True
+    assert Settings(env="production").effective_search_rate_limit_enabled is True
+    assert Settings(env="test").effective_search_rate_limit_enabled is False
+    assert Settings(env="test", search_rate_limit_enabled=True).effective_search_rate_limit_enabled
+    monkeypatch.setenv("JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED", "false")
+    assert Settings(env="production").effective_search_rate_limit_enabled is False
+    defaults = Settings(env="test")
+    assert (defaults.search_rate_limit_per_minute, defaults.search_rate_limit_burst) == (60, 10)
+    assert defaults.search_similarity_threshold == 0.3
+    assert defaults.trust_proxy is False
+    with pytest.raises(ValidationError):
+        Settings(env="test", search_similarity_threshold=0)
+    with pytest.raises(ValidationError):
+        Settings(env="test", search_rate_limit_burst=0)

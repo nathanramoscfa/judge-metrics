@@ -2,8 +2,8 @@
 """The ``judgemetrics`` command-line interface (Typer).
 
 Groups: ``db`` (migrations, run as the admin role), ``serve`` (uvicorn),
-and ``ingest`` (``list-sources``, ``run <source>`` as the ingest role,
-``runs`` as the read-only role).
+``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``runs``
+as the read-only role), and ``openapi`` (``export`` the API document).
 """
 
 from __future__ import annotations
@@ -23,8 +23,10 @@ app = typer.Typer(
 )
 db_app = typer.Typer(help="Database migrations (Alembic), run as the admin role.")
 ingest_app = typer.Typer(help="Source connectors and ingest runs.")
+openapi_app = typer.Typer(help="The generated OpenAPI document.")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
+app.add_typer(openapi_app, name="openapi")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -277,6 +279,27 @@ def ingest_runs(
         typer.echo(
             "  ".join(str(value).ljust(width) for value, width in zip(row, widths, strict=True))
         )
+
+
+@openapi_app.command("export")
+def openapi_export(
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out", help="Where to write the document.", dir_okay=False, resolve_path=True
+        ),
+    ] = Path("docs/openapi.json"),
+) -> None:
+    """Write the app's OpenAPI document to OUT (sorted keys, two-space indent, LF, trailing newline).
+
+    The committed ``docs/openapi.json`` must equal this output
+    (``tests/unit/test_openapi.py``), so regenerate it after any route change.
+    """
+    from judgemetrics.openapi import render_openapi
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(render_openapi().encode("utf-8"))
+    typer.echo(f"wrote {out}")
 
 
 def main() -> None:
