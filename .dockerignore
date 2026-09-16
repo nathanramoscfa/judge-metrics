@@ -8,5 +8,6 @@
 !src/
 !alembic/
 !alembic.ini
+!data/reference/
 **/__pycache__/
 **/*.py[cod]
