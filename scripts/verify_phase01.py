@@ -263,7 +263,8 @@ def check_04() -> str | None:
 
 
 def check_05() -> str | None:
-    return _missing(".secrets.baseline")
+    # Alarm exercise (Step 6 acceptance): deliberately broken; reverted next commit.
+    return _missing(".secrets.baseline.missing")
 
 
 def _unpinned_uses(relative: str) -> str | None:
@@ -681,7 +682,8 @@ def run_command(
     executable = tool(argv[0])
     if executable is None:
         return report(Outcome(item_id, description, "FAIL", f"`{argv[0]}` not on PATH"))
-    print(f"\n$ {' '.join(argv)}", flush=True)
+    where = "" if cwd == REPO_ROOT else f" (in {cwd.relative_to(REPO_ROOT).as_posix()}/)"
+    print(f"\n$ {' '.join(argv)}{where}", flush=True)
     completed = subprocess.run(  # noqa: S603 - fixed argv over PATH-resolved tools, no shell
         [executable, *argv[1:]], cwd=cwd, check=False
     )
@@ -734,8 +736,16 @@ def py_suites() -> list[Outcome]:
     return outcomes
 
 
-def pnpm(script: str, *args: str) -> list[str]:
-    return ["pnpm", "--dir", str(WEB_DIR), script, *args]
+def pnpm(item_id: str, script: str, *args: str) -> Outcome:
+    """``pnpm <script>`` run inside web/ (equivalent to ``pnpm --dir web``).
+
+    The working directory matters: corepack reads the ``packageManager``
+    pin from the package.json of the directory it is invoked in, so
+    ``pnpm --dir web`` from the repository root would fetch the latest
+    pnpm and then refuse to run against web/'s pinned version.
+    """
+    argv = ["pnpm", script, *args]
+    return run_command(item_id, f"pnpm --dir web {' '.join(argv[1:])}", argv, cwd=WEB_DIR)
 
 
 def node_suites() -> list[Outcome]:
@@ -743,10 +753,10 @@ def node_suites() -> list[Outcome]:
     # The build precedes the tests, as in CI: the Vitest bundle scan needs a
     # production build to inspect.
     return [
-        run_command("node.lint", "pnpm --dir web lint", pnpm("lint")),
-        run_command("node.types", "pnpm --dir web typecheck", pnpm("typecheck")),
-        run_command("node.build", "pnpm --dir web build", pnpm("build")),
-        run_command("node.test", "pnpm --dir web test", pnpm("test")),
+        pnpm("node.lint", "lint"),
+        pnpm("node.types", "typecheck"),
+        pnpm("node.build", "build"),
+        pnpm("node.test", "test"),
     ]
 
 
@@ -786,7 +796,7 @@ def e2e_suite() -> Outcome:
                 f"web app not serving {web}/methodology (start it: uv run poe dev-web)",
             )
         )
-    return run_command("e2e", "pnpm --dir web e2e", pnpm("e2e"))
+    return pnpm("e2e", "e2e")
 
 
 def secret_scan_batches() -> list[list[str]]:
@@ -847,11 +857,7 @@ def security_suites() -> list[Outcome]:
             "pip-audit --strict over uv.lock (scripts/audit_deps.py)",
             ["uv", "run", "python", "scripts/audit_deps.py"],
         ),
-        run_command(
-            "sec.pnpm-audit",
-            "pnpm --dir web audit --audit-level=high",
-            pnpm("audit", "--audit-level=high"),
-        ),
+        pnpm("sec.pnpm-audit", "audit", "--audit-level=high"),
     ]
 
 

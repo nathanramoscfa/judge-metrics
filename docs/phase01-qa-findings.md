@@ -76,6 +76,7 @@ CI through `.github/workflows/phase-verify.yml`.
 | 6.4 | The `pnpm test` bundle scan needs a production build, so the task block's suite order (lint, typecheck, test, build) would fail under `CI=true`. | Spec rot | `--node` and V5.2 run build before test, as `ci.yml` does. |
 | 6.5 | A check-name mismatch between the workflow and branch protection would leave the new check unrequired without any error. | Process improvement | The job is named `phase-verify (${{ matrix.phase }})`; the required context `phase-verify (01)` is recorded in `CONTRIBUTING.md` "Repository settings" beside `test`; `--post` V6.1 reads that check by name. |
 | 6.6 | Alarm exercise: a deliberately broken static check (check 5 pointed at a non-existent baseline path) was pushed to the pull request. `phase-verify (01)` failed on `[FAIL] 05` and the aggregate `test` check failed through `test_verify_script_fast_exits_zero`; both passed after the fix. See "Alarm exercise" below. | Process improvement (exercise, expected) | The phase's alarm is those two required checks; the unit test ties the `test` check to the verify script so a red `--fast` can never merge. |
+| 6.7 | First CI run of `phase-verify (01)`: `pnpm --dir web audit` from the repository root failed with `ERR_PNPM_BAD_PM_VERSION` — corepack reads the `packageManager` pin from the package.json of the directory it is invoked in, found none at the root, downloaded pnpm 12.4.2, and that pnpm refused to run against `web/`'s pinned 10.14.0. `ci.yml` never hit this because its `web` job sets `working-directory: web`. | Implementation bug (caught by the new check on its own PR) | The script runs every pnpm script with `cwd=web/` (the `pnpm` helper); the `phase-verify` check runs `--security` on every PR, so a regression fails the required check. |
 
 ### Alarm exercise
 
@@ -85,8 +86,8 @@ fix"):
 
 | Event | Commit | `phase-verify (01)` | `test` |
 |-------|--------|---------------------|--------|
-| Deliberate break (check 5 → `.secrets.baseline.missing`) | see PR #7 timeline | fail | fail |
-| Fix (check 5 restored) | see PR #7 timeline | pass | pass |
+| Deliberate break (check 5 → `.secrets.baseline.missing`) | see PR #10 timeline | fail | fail |
+| Fix (check 5 restored) | see PR #10 timeline | pass | pass |
 
 ## Pre-ship items
 
