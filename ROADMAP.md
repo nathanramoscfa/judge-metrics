@@ -387,6 +387,7 @@ golden-testable before any real case data exists.
 **Handles sensitive data:** No real defendant data — synthetic records
 labelled as such on every surface
 
+Execution plan: [`docs/phase02-roadmap.md`](docs/phase02-roadmap.md).
 Brief phases: 2, the case portions of 4 and 6, and the testing
 strategy's property tests and golden dataset.
 
