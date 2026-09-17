@@ -53,7 +53,7 @@ Every commit passes a local, fail-closed gate wired into `pre-commit`
 |--------------------|--------------------------------------------------|------------|
 | Lint and format    | `ruff check` (incl. flake8-bandit rules), `ruff format --check` | pre-commit |
 | Types              | `mypy --strict`                                  | pre-commit |
-| SAST               | `bandit -c pyproject.toml -r src`                | pre-commit |
+| SAST               | `bandit -c pyproject.toml -r src alembic`        | pre-commit |
 | Secret scan        | `detect-secrets-hook --baseline .secrets.baseline` (CI: gitleaks) | pre-commit |
 | Dependency audit   | `pip-audit --strict` over `uv.lock` (`scripts/audit_deps.py`) | pre-push   |
 | Hygiene            | trailing whitespace, EOF newline, YAML/TOML syntax, large files | pre-commit |
@@ -163,7 +163,10 @@ gh repo edit nathanramoscfa/judge-metrics \
 gh api -X PUT repos/nathanramoscfa/judge-metrics/branches/main/protection \
   --input - <<'JSON'
 {
-  "required_status_checks": { "strict": true, "contexts": ["test"] },
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["test", "phase-verify (01)"]
+  },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
   "restrictions": null,
@@ -185,8 +188,19 @@ JSON
 ```
 
 `required_pull_request_reviews` is `null` because the project has a
-single maintainer; the required `test` status check and
-`enforce_admins` are what keep unreviewed or red changes off `main`.
+single maintainer; the required status checks and `enforce_admins` are
+what keep unreviewed or red changes off `main`. Two contexts are
+required: `test`, the aggregate of `ci.yml`, and `phase-verify (01)`,
+the Phase 1 entry of `.github/workflows/phase-verify.yml` (Phase 1
+Step 6). Each later phase adds its matrix entry to the required
+contexts with the same call, replacing the whole list:
+
+```sh
+gh api -X PATCH repos/nathanramoscfa/judge-metrics/branches/main/protection/required_status_checks   --input - <<'JSON'
+{ "strict": true, "contexts": ["test", "phase-verify (01)"] }
+JSON
+```
+
 Verify with:
 
 ```sh

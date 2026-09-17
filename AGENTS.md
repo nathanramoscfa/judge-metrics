@@ -279,6 +279,23 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   replaced (`lib/utils.ts` over clsx + tailwind-merge; the two Radix
   state variants inlined in `globals.css`), so re-running `shadcn add`
   needs the same cleanup.
+- Phase verification (Step 6 of each phase): `scripts/verify_phaseNN.py`
+  is standard-library only, with mutually exclusive argparse modes
+  (`--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`;
+  default `--fast` plus `--py`), numbered static checks over `pathlib`,
+  `re`, `json`, and `git ls-files` (`[PASS] NN` / `[FAIL] NN — reason`),
+  subprocess suites with argument lists over PATH-resolved `uv`, `pnpm`,
+  and `gh`, the phase roadmap's V-matrix in `--post` (read through
+  `gh pr checks` where a check is a CI job), and a summary table; it
+  prints names and paths, never file contents. `phase-verify.yml` runs
+  `--fast` then `--security` per matrix entry and its check
+  `phase-verify (NN)` is a required context on `main` beside `test`
+  (`CONTRIBUTING.md` "Repository settings"). The `--security` mode uses
+  `detect-secrets-hook --baseline` over the tracked files, batched under
+  the Windows argv limit, because `detect-secrets scan --baseline`
+  rewrites the baseline and exits 0. A unit test runs `--fast`, so the
+  aggregate `test` check and the `phase-verify` check fail together on
+  a broken deliverable.
 
 ## End-of-session report (from the brief)
 

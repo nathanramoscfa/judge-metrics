@@ -3728,19 +3728,28 @@ hygiene.
       - --node: static + `pnpm
         --dir web lint`, `pnpm
         --dir web typecheck`, `pnpm
-        --dir web test`, `pnpm
-        --dir web build`.
+        --dir web build`, `pnpm
+        --dir web test` (build
+        before test, as in ci.yml:
+        the Vitest bundle scan
+        needs a production build).
       - --e2e: static + `pnpm --dir
         web e2e` (requires the API
         running; prints a clear
         skip reason otherwise).
       - --security: the gate over
         the phase's surface — `uv
-        run detect-secrets scan
-        --baseline
-        .secrets.baseline`, `uv run
+        run detect-secrets-hook
+        --baseline .secrets.baseline
+        <every tracked file>` (the
+        pre-commit hook's form;
+        `detect-secrets scan
+        --baseline` rewrites the
+        baseline and exits 0, so it
+        cannot fail closed), `uv run
         bandit -c pyproject.toml -r
-        src`, `uv run python
+        src alembic` (the gate's
+        surface), `uv run python
         scripts/audit_deps.py`
         (pip-audit --strict over
         uv.lock), and `pnpm --dir
