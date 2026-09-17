@@ -113,7 +113,7 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later steps add: dev-web, seed, compute-metrics, bootstrap.
+# Later steps add: seed, compute-metrics, bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
@@ -137,6 +137,9 @@ down = "docker compose down"
 # dev-api serves judgemetrics.main:app with auto-reload.
 migrate = "judgemetrics db upgrade"
 dev-api = "judgemetrics serve --reload"
+# Web: the Next.js dev server in web/ (pnpm; NEXT_PUBLIC_API_BASE_URL from
+# web/.env.local, default http://localhost:8000).
+dev-web = "pnpm --dir web dev"
 # Ingest: the FJC connector as the ingest role (JUDGEMETRICS_INGEST_DATABASE_URL)
 # into the raw lake named by JUDGEMETRICS_RAW_STORE_URL.
 ingest-fjc = "judgemetrics ingest run fjc"

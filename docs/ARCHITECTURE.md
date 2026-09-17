@@ -3,8 +3,8 @@
 
 The system-level picture is in the root [`ROADMAP.md`](../ROADMAP.md)
 §3. This document describes what is built: the ingest pipeline (Phase 1
-Step 3), the raw lake, the idempotency rules, the database roles, and
-the public API (Step 4). Step 5 adds the web tier.
+Step 3), the raw lake, the idempotency rules, the database roles, the
+public API (Step 4), and the web tier (Step 5).
 
 ## Ingest pipeline
 
@@ -240,7 +240,7 @@ two-space indent, LF, trailing newline) from an app built with test
 settings, so the document depends on the routes and the package version
 only. `tests/unit/test_openapi.py` fails when the committed file differs
 from the rendered one: a route change must regenerate the document,
-because Step 5 generates the web client from it.
+because the web client is generated from it ("Web tier" below).
 
 ## Command interface for ingest
 
@@ -252,3 +252,87 @@ because Step 5 generates the web client from it.
 
 Logs (structlog, scrubbed) carry counts, identifiers, hashes, and keys
 — never raw rows.
+
+## Web tier
+
+The web application (`web/`, Next.js App Router, TypeScript strict,
+Tailwind CSS, shadcn/ui, TanStack Table, `next-themes`) is a read-only
+presentation layer over API v1. It holds no data, sets no cookies, loads
+no third-party script, and reads exactly one variable,
+`NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`).
+
+```
+   browser ──GET /judges/<id>──▶ Next.js server (web/, port 3000)
+                                   │ server component
+                                   │ lib/api/client.ts  (openapi-fetch,
+                                   │   types from lib/api/schema.d.ts)
+                                   ▼
+                                 API v1 (port 8000) ── PostgreSQL (app role)
+```
+
+- **Generated client.** `pnpm generate:api` runs `openapi-typescript`
+  over the committed `docs/openapi.json` and writes
+  `web/lib/api/schema.d.ts`, which is committed; a Vitest test
+  regenerates it into a temp file and fails on any difference, so a
+  route change reaches the web tier as a type error, not a runtime one.
+  `web/lib/api/client.ts` wraps an `openapi-fetch` client in helpers
+  (`getJudge`, `listJudges`, `getCourt`, `listCourts`,
+  `getJurisdiction`, `listJurisdictions`, `search`, …) that never
+  throw: every call returns `{ ok: true, data }` or `{ ok: false, error }`
+  with the API's stable error code, HTTP status, request id, and
+  `Retry-After`, or `network_error` with status 0 when the API is
+  unreachable. Pages render an `ErrorState` (code, status, request id)
+  or an `EmptyState` for every fetch; a 404 from the API becomes the
+  Next.js not-found page, and a malformed id never reaches the API.
+- **Rendering.** Every data page is `force-dynamic`: it fetches on the
+  server per request, so nothing is baked in at build time (the `web`
+  CI job and the image build run without an API). Static pages
+  (`/methodology`, `/coverage`, `/about`) are prerendered.
+- **Pages.** `/` (headline, global search, coverage tiles from
+  `/jurisdictions` and the list totals, methodology link), `/search`
+  (`?q=` → `/search`, entity-type badges, the 429 wait time when the
+  limiter answers), `/judges/[judgeId]` (identity, status, sortable
+  service table, FJC biography link by `nid`, the "Source coverage"
+  panel: source name, retrieved-at, truncated sha256 with copy, parser
+  version, ingest run, source export link, "Report a data issue" to the
+  GitHub data-source issue form), `/courts/[courtId]` (court, type,
+  jurisdiction, a date form driving `/judges?court_id=&active_on=`,
+  paginated), `/methodology` (the ten principles, the
+  association-is-not-causation statement, the Phase 3 note),
+  `/coverage` (Phase 2 note), `/about`.
+- **Accessibility.** Skip link, `header`/`nav`/`main`/`footer`
+  landmarks, `scope="col"` on every table header, `aria-sort` on the
+  sortable table, visible `:focus-visible` rings, the `/` shortcut
+  focusing search, forms that work without JavaScript (plain GET).
+- **Theme.** `next-themes` writes `data-theme="light|dark"` on `<html>`
+  before paint (preference in `localStorage`, never a cookie); the
+  Tailwind `dark` variant and the shadcn tokens key on that attribute.
+- **Security gate for the web tier.** `pnpm lint` runs ESLint with
+  `eslint-plugin-security` and `--max-warnings 0` (`react/no-danger`
+  and `no-eval` are errors); `pnpm audit --audit-level=high` runs in
+  CI; `tests/unit/bundle-secrets.test.ts` scans the production build
+  for any `JUDGEMETRICS_` variable; the Python hygiene test checks that
+  no `process.env` read outside `NEXT_PUBLIC_*` exists in `web/`.
+  Response headers add `X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, and a strict referrer policy;
+  `poweredByHeader` is off.
+- **Image.** `infra/docker/web.Dockerfile` builds on `node:22-alpine`
+  with pnpm from corepack (the version pinned by `packageManager`), the
+  Next.js standalone output, a non-root user (uid 10001), Alpine
+  security updates, and npm/corepack/yarn removed from the runtime
+  stage (their vendored modules are what scanners flag; only `node`
+  runs the server). `NEXT_PUBLIC_API_BASE_URL` is a build argument
+  because Next.js inlines it at build time; the Compose `web` service
+  (profile `app`, port 3000) builds it with `http://api:8000` unless
+  `WEB_API_BASE_URL` overrides it. CI builds, smokes, and Trivy-scans
+  both images.
+- **Tests.** Vitest (client helpers with a stubbed `fetch`, the
+  provenance panel's truncation and copy, schema freshness, bundle
+  scan); Playwright `web/tests/e2e/smoke.spec.ts` against a running web
+  app and API (home and the `/` shortcut, search by a fixture surname,
+  judge page service rows and source panel, theme toggle, court page by
+  date, 404 and the methodology statement). The Playwright config starts
+  nothing: the `e2e` CI job migrates, ingests the FJC fixture, starts
+  the API and the built web app, and runs Chromium; locally the operator
+  runs `uv run poe dev-api` and `pnpm dev` (or `pnpm build && pnpm
+  start`) first.

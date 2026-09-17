@@ -1,7 +1,9 @@
 # .github/workflows/ci.yml
 # Continuous integration: mirrors the local pre-commit gate (ruff, mypy,
-# bandit, secret scan, dependency audit), runs the test suite against a
-# PostgreSQL service, and builds and vulnerability-scans the API image. The
+# bandit, secret scan, dependency audit), runs the Python test suite against
+# a PostgreSQL service, lints, type-checks, tests, builds, and audits the web
+# application, runs the Playwright smoke test against the API over the FJC
+# fixture, and builds and vulnerability-scans the API and web images. The
 # aggregate `test` job is the single required status check on `main`.
 #
 # Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
@@ -144,10 +146,173 @@ jobs:
       - name: Dependency audit (pip-audit --strict over uv.lock)
         run: uv run python scripts/audit_deps.py
 
-  container:
-    name: container (API image build and vulnerability scan)
+  web:
+    name: web (lint, types, build, tests, audit)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node (version from .node-version)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      # pnpm comes from corepack at the version `packageManager` pins in
+      # web/package.json, after Node so the shims belong to that Node.
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Install (locked)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint (eslint incl. eslint-plugin-security)
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      # The build precedes the tests so the bundle scan (no JUDGEMETRICS_
+      # variable in the output) has a production build to inspect.
+      - name: Production build
+        run: pnpm build
+
+      - name: Unit tests (Vitest; schema freshness; bundle scan)
+        run: pnpm test
+
+      - name: Dependency audit (pnpm audit, high and above)
+        run: pnpm audit --audit-level=high
+
+  e2e:
+    name: e2e (Playwright smoke against the API over the FJC fixture)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          # CI-only throwaway credentials, as in the python job.
+          POSTGRES_USER: judgemetrics
+          POSTGRES_PASSWORD: ci-only-not-a-secret # pragma: allowlist secret
+          POSTGRES_DB: judgemetrics
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U judgemetrics -d judgemetrics"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      JUDGEMETRICS_ENV: test
+      JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:ci-only-app@localhost:5432/judgemetrics # pragma: allowlist secret
+      JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics_admin:ci-only-admin@localhost:5432/judgemetrics # pragma: allowlist secret
+      JUDGEMETRICS_INGEST_DATABASE_URL: postgresql+psycopg://judgemetrics_ingest:ci-only-ingest@localhost:5432/judgemetrics # pragma: allowlist secret
+      JUDGEMETRICS_RAW_STORE_URL: file://./data/lake
+      JUDGEMETRICS_LOG_FORMAT: json
+      JUDGEMETRICS_APP_DB_PASSWORD: ci-only-app # pragma: allowlist secret
+      JUDGEMETRICS_INGEST_DB_PASSWORD: ci-only-ingest # pragma: allowlist secret
+      JUDGEMETRICS_ADMIN_DB_PASSWORD: ci-only-admin # pragma: allowlist secret
+      POSTGRES_USER: judgemetrics
+      POSTGRES_DB: judgemetrics
+      PGPASSWORD: ci-only-not-a-secret # pragma: allowlist secret
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install the API (locked)
+        run: uv sync --frozen
+
+      - name: Create the database roles (same init scripts as Compose)
+        run: |
+          psql -v ON_ERROR_STOP=1 -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -f infra/docker/postgres/01-extensions.sql \
+            -f infra/docker/postgres/02-roles.sql
+
+      - name: Migrate (admin role)
+        run: uv run poe migrate
+
+      - name: Ingest the FJC fixture (ingest role)
+        run: uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc
+
+      - name: Start the API in the background
+        run: |
+          nohup uv run judgemetrics serve --host 127.0.0.1 --port 8000 > api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/v1/ready && break
+            sleep 1
+          done
+          curl -sf http://localhost:8000/api/v1/ready
+
+      - name: Set up Node (version from .node-version)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      # pnpm comes from corepack at the version `packageManager` pins in
+      # web/package.json, after Node so the shims belong to that Node.
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Install the web app (locked)
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and start the web app in the background
+        working-directory: web
+        run: |
+          pnpm build
+          nohup pnpm start > ../web.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:3000/methodology > /dev/null && break
+            sleep 1
+          done
+          curl -sf -o /dev/null http://localhost:3000/methodology
+
+      - name: Install Chromium
+        working-directory: web
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Playwright smoke test
+        working-directory: web
+        run: pnpm e2e
+
+      - name: Server logs (on failure)
+        if: failure()
+        run: |
+          echo "::group::api.log"; cat api.log || true; echo "::endgroup::"
+          echo "::group::web.log"; cat web.log || true; echo "::endgroup::"
+
+      - name: Upload the Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
+
+  container:
+    name: container (API and web image builds and vulnerability scans)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -157,16 +322,41 @@ jobs:
       - name: Build the API image
         run: docker build -f infra/docker/api.Dockerfile --build-arg "GIT_SHA=$GITHUB_SHA" -t judgemetrics-api:ci .
 
-      - name: Smoke the image (non-root, no .env, CLI answers)
+      - name: Smoke the API image (non-root, no .env, CLI answers)
         run: |
           test "$(docker run --rm judgemetrics-api:ci id -u)" = "10001"
           docker run --rm judgemetrics-api:ci sh -c '! test -e /app/.env'
           docker run --rm judgemetrics-api:ci judgemetrics --version
 
-      - name: Vulnerability scan (fail on HIGH or CRITICAL)
+      - name: Vulnerability scan of the API image (fail on HIGH or CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: judgemetrics-api:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      - name: Build the web image
+        run: docker build -f infra/docker/web.Dockerfile -t judgemetrics-web:ci web
+
+      - name: Smoke the web image (non-root, no .env, serves a page)
+        run: |
+          test "$(docker run --rm judgemetrics-web:ci id -u)" = "10001"
+          docker run --rm judgemetrics-web:ci sh -c '! test -e /app/.env'
+          docker run -d --rm --name web -p 3000:3000 judgemetrics-web:ci
+          for _ in $(seq 1 30); do
+            curl -sf http://localhost:3000/methodology > /dev/null && break
+            sleep 1
+          done
+          curl -sf -o /dev/null http://localhost:3000/methodology
+          docker stop web
+
+      - name: Vulnerability scan of the web image (fail on HIGH or CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: judgemetrics-web:ci
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -178,7 +368,7 @@ jobs:
     # job it needs succeeded (a skipped or cancelled job is a failure here).
     name: test
     runs-on: ubuntu-latest
-    needs: [python, security, container]
+    needs: [python, security, container, web, e2e]
     if: always()
     timeout-minutes: 5
     steps:

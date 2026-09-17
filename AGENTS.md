@@ -135,11 +135,14 @@ uv run poe down            # docker compose down
 uv run poe kit             # refresh the planning kit
 uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
+uv run poe dev-web         # Next.js dev server in web/ (pnpm) against the local API
 uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + canonical tables (ingest role)
 uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs
 ```
 
-Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
+In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
+`pnpm e2e`, `pnpm generate:api`. Later steps add `seed`,
+`compute-metrics`, and `bootstrap`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -253,6 +256,29 @@ Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
   and purge exactly that run afterwards, asserting through the
   fixture's FJC ids rather than absolute totals because a developer's
   database may also hold the live ingest.
+- Web tier (docs/ARCHITECTURE.md "Web tier"): `web/lib/api/schema.d.ts`
+  is generated from `docs/openapi.json` by `pnpm generate:api` and
+  committed; a Vitest test regenerates and diffs it, so regenerate both
+  after any route or schema change. The client helpers never throw
+  (`ApiResult`), pages render `ErrorState`/`EmptyState` for every fetch,
+  and every data page is `force-dynamic` so builds need no API. The
+  client resolves `globalThis.fetch` per call (openapi-fetch would
+  otherwise capture it at import time and bypass test stubs).
+  `next-themes` keys on `data-theme`, not a class. `NEXT_PUBLIC_API_BASE_URL`
+  is inlined at build time, hence a Docker build argument; the Compose
+  `web` service bakes `http://api:8000`. ESLint runs
+  `eslint-plugin-security` with `--max-warnings 0`; the `web` CI job
+  builds before it tests so the bundle scan has output to inspect. The
+  Playwright config starts no server; the `e2e` job (and the operator)
+  start the API and web app first. The web runtime image strips
+  npm/corepack/yarn the way the API image strips pip. `eslint-config-next`
+  16 still depends on `eslint-plugin-react` 7, which does not load under
+  ESLint 10, so `web/` stays on ESLint 9 until that plugin supports 10.
+  The shadcn CLI resolves `cn` to a separate `cn` npm package and adds
+  the `shadcn` CLI as a runtime dependency for one CSS file; both were
+  replaced (`lib/utils.ts` over clsx + tailwind-merge; the two Radix
+  state variants inlined in `globals.css`), so re-running `shadcn add`
+  needs the same cleanup.
 
 ## End-of-session report (from the brief)
 

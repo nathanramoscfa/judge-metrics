@@ -59,7 +59,8 @@ repos:
         name: detect-secrets (secret / credential scan)
         entry: uv run detect-secrets-hook --baseline .secrets.baseline
         language: system
-        exclude: ^(uv\.lock|\.secrets\.baseline)$
+        # Lockfiles carry package integrity hashes, not credentials.
+        exclude: ^(uv\.lock|web/pnpm-lock\.yaml|\.secrets\.baseline)$
         require_serial: true
 
       - id: pip-audit
