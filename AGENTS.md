@@ -323,6 +323,13 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `data/reference/case_vocabulary.yaml` is fixed first in
   `synthetic/vocabulary.py` (`non_judicial` added to the discretion
   classifications for prosecutor and jury decisions).
+- The two secret scanners reconcile through `.gitleaks.toml`: the
+  detect-secrets baseline records each allowlisted false positive as a
+  `hashed_secret` sha1 fingerprint, which gitleaks' `generic-api-key`
+  rule matches, so the CI `security` job failed on any baseline entry.
+  The config extends the default rules and allowlists
+  `.secrets.baseline` only; gitleaks (CLI and action) auto-detects it at
+  the repository root.
 
 ## End-of-session report (from the brief)
 

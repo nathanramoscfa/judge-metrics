@@ -62,8 +62,11 @@ Run it on demand with `uv run poe gate`. A finding blocks the commit:
 fix it in the step, never defer it. A `bandit` finding may be
 suppressed only with an inline `# nosec` plus a justification comment;
 a `detect-secrets` false positive is added to the baseline with
-`uv run detect-secrets scan --baseline .secrets.baseline` after you
-have confirmed it is not a secret. Workflow files are a trust boundary:
+`uv run detect-secrets scan --baseline .secrets.baseline <file>` after
+you have confirmed it is not a secret (scan the one file, and keep the
+recorded filenames with forward slashes; the baseline itself is
+allowlisted for the CI gitleaks scan in `.gitleaks.toml`). Workflow
+files are a trust boundary:
 pin every action to a full commit SHA, declare minimum `permissions:`,
 and never expose a secret to a workflow triggered by an untrusted pull
 request.
