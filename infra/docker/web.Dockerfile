@@ -9,7 +9,7 @@
 #   docker compose --profile app up
 
 # --- dependencies ------------------------------------------------------------
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     PNPM_HOME=/pnpm \
@@ -26,7 +26,7 @@ RUN --mount=type=cache,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 # --- build -------------------------------------------------------------------
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
@@ -44,7 +44,7 @@ COPY . .
 RUN pnpm build
 
 # --- runtime -----------------------------------------------------------------
-FROM node:22-alpine AS runtime
+FROM node:26-alpine AS runtime
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
