@@ -530,6 +530,8 @@ def test_bandit_configured_to_exclude_tests() -> None:
         ("docs/DATA_MODEL.md", "<!-- "),
         ("data/README.md", "<!-- "),
         ("tests/fixtures/fjc/README.md", "<!-- "),
+        ("tests/fixtures/golden/README.md", "<!-- "),
+        ("docs/SYNTHETIC_DATA.md", "<!-- "),
         ("SECURITY.md", "<!-- "),
         ("CODE_OF_CONDUCT.md", "<!-- "),
         (".github/PULL_REQUEST_TEMPLATE.md", "<!-- "),

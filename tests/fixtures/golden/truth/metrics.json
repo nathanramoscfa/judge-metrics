@@ -1,0 +1,1512 @@
+{
+  "corpus": {
+    "end": "2021-12-31",
+    "end_exclusive_at": "2022-01-01T00:00:00+00:00",
+    "start": "2019-01-01"
+  },
+  "courts": {
+    "C-0001": {
+      "disposition_distribution": {
+        "acquitted": 4,
+        "convicted_plea": 5,
+        "convicted_verdict": 0,
+        "dismissed": 12
+      },
+      "eligible_cases": 19,
+      "eligible_defendants": 15,
+      "judicial_dismissal_rate": {
+        "denominator": 21,
+        "numerator": 5,
+        "value": 0.238095
+      },
+      "median_days_to_disposition": {
+        "n": 14,
+        "value": 140.0
+      },
+      "pretrial": {
+        "decisions": 12,
+        "detained_count": 5,
+        "release_share": {
+          "denominator": 12,
+          "numerator": 7,
+          "value": 0.583333
+        },
+        "released_count": 7,
+        "statutory_release_count": 6,
+        "unknown_actor_count": 1,
+        "windows": {
+          "1095": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 5,
+              "numerator": 1,
+              "value": 0.2
+            },
+            "followed": 5,
+            "new_case_rate": {
+              "denominator": 5,
+              "numerator": 1,
+              "value": 0.2
+            },
+            "reconviction_rate": {
+              "denominator": 5,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 7,
+              "numerator": 1,
+              "value": 0.142857
+            },
+            "followed": 7,
+            "new_case_rate": {
+              "denominator": 7,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 7,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 3,
+              "numerator": 1,
+              "value": 0.333333
+            },
+            "followed": 3,
+            "new_case_rate": {
+              "denominator": 3,
+              "numerator": 1,
+              "value": 0.333333
+            },
+            "reconviction_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "730": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 7,
+            "failure_to_appear_rate": {
+              "denominator": 5,
+              "numerator": 1,
+              "value": 0.2
+            },
+            "followed": 5,
+            "new_case_rate": {
+              "denominator": 5,
+              "numerator": 1,
+              "value": 0.2
+            },
+            "reconviction_rate": {
+              "denominator": 5,
+              "numerator": 0,
+              "value": 0.0
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 4,
+        "incarceration_days_median": {
+          "n": 1,
+          "value": 930.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "person": {
+            "n": 1,
+            "value": 930.0
+          }
+        },
+        "probation_days_median": {
+          "n": 3,
+          "value": 180.0
+        }
+      }
+    },
+    "C-0002": {
+      "disposition_distribution": {
+        "acquitted": 3,
+        "convicted_plea": 7,
+        "convicted_verdict": 2,
+        "dismissed": 18
+      },
+      "eligible_cases": 21,
+      "eligible_defendants": 15,
+      "judicial_dismissal_rate": {
+        "denominator": 30,
+        "numerator": 8,
+        "value": 0.266667
+      },
+      "median_days_to_disposition": {
+        "n": 17,
+        "value": 115.0
+      },
+      "pretrial": {
+        "decisions": 19,
+        "detained_count": 7,
+        "release_share": {
+          "denominator": 19,
+          "numerator": 12,
+          "value": 0.631579
+        },
+        "released_count": 12,
+        "statutory_release_count": 0,
+        "unknown_actor_count": 2,
+        "windows": {
+          "1095": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 10,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 10,
+            "new_case_rate": {
+              "denominator": 10,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 10,
+              "numerator": 1,
+              "value": 0.1
+            }
+          },
+          "30": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 12,
+            "new_case_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 6,
+            "new_case_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            }
+          },
+          "730": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 4,
+            "new_case_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            },
+            "reconviction_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 11,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 11,
+            "new_case_rate": {
+              "denominator": 11,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 11,
+              "numerator": 1,
+              "value": 0.090909
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 6,
+        "incarceration_days_median": {
+          "n": 2,
+          "value": 776.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "drug": {
+            "n": 1,
+            "value": 1289.0
+          },
+          "property": {
+            "n": 1,
+            "value": 263.0
+          }
+        },
+        "probation_days_median": {
+          "n": 5,
+          "value": 273.0
+        }
+      }
+    },
+    "C-0003": {
+      "disposition_distribution": {
+        "acquitted": 1,
+        "convicted_plea": 7,
+        "convicted_verdict": 6,
+        "dismissed": 6
+      },
+      "eligible_cases": 20,
+      "eligible_defendants": 15,
+      "judicial_dismissal_rate": {
+        "denominator": 20,
+        "numerator": 2,
+        "value": 0.1
+      },
+      "median_days_to_disposition": {
+        "n": 13,
+        "value": 115.0
+      },
+      "pretrial": {
+        "decisions": 18,
+        "detained_count": 3,
+        "release_share": {
+          "denominator": 18,
+          "numerator": 15,
+          "value": 0.833333
+        },
+        "released_count": 15,
+        "statutory_release_count": 2,
+        "unknown_actor_count": 0,
+        "windows": {
+          "1095": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 11,
+              "numerator": 1,
+              "value": 0.090909
+            },
+            "followed": 11,
+            "new_case_rate": {
+              "denominator": 11,
+              "numerator": 1,
+              "value": 0.090909
+            },
+            "reconviction_rate": {
+              "denominator": 11,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 15,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 15,
+            "new_case_rate": {
+              "denominator": 15,
+              "numerator": 2,
+              "value": 0.133333
+            },
+            "reconviction_rate": {
+              "denominator": 15,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 8,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 8,
+            "new_case_rate": {
+              "denominator": 8,
+              "numerator": 3,
+              "value": 0.375
+            },
+            "reconviction_rate": {
+              "denominator": 8,
+              "numerator": 2,
+              "value": 0.25
+            }
+          },
+          "730": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 4,
+            "new_case_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            },
+            "reconviction_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 15,
+            "failure_to_appear_rate": {
+              "denominator": 15,
+              "numerator": 1,
+              "value": 0.066667
+            },
+            "followed": 15,
+            "new_case_rate": {
+              "denominator": 15,
+              "numerator": 2,
+              "value": 0.133333
+            },
+            "reconviction_rate": {
+              "denominator": 15,
+              "numerator": 1,
+              "value": 0.066667
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 10,
+        "incarceration_days_median": {
+          "n": 5,
+          "value": 315.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "drug": {
+            "n": 2,
+            "value": 412.5
+          },
+          "financial": {
+            "n": 2,
+            "value": 409.5
+          },
+          "property": {
+            "n": 1,
+            "value": 315.0
+          }
+        },
+        "probation_days_median": {
+          "n": 6,
+          "value": 188.5
+        }
+      }
+    }
+  },
+  "definitions": {
+    "disposition_distribution": "Counts of the judicial_dismissal_rate denominator charges by disposition value.",
+    "eligible_cases": "Judge: cases with at least one assignment of the judge. Court: cases filed in the court. Duplicate source records count once.",
+    "eligible_defendants": "Distinct true persons among the eligible cases.",
+    "judicial_dismissal_rate": "numerator = charges disposed as dismissed with disposition_actor judge; denominator = charges with a disposition other than pending or missing. Judge: charges whose disposed_at falls inside one of the judge's assignment intervals on that case (start_at <= disposed_at < end_at). Court: charges of the court's cases.",
+    "median_days_to_disposition": "Median over disposed cases of (case disposition date - filed_date) in whole days, where the case disposition is the latest disposed_at among its disposed charges. Judge: cases where the judge was assigned at the case disposition time. Court: the court's disposed cases.",
+    "pretrial.decisions": "Pretrial decisions attributed to the subject under the attribution gate: decision_type pretrial_release, actor judge, discretion discretionary (judge: the deciding judge; court: decided in the court). Statutory releases (legislature_or_mandatory_rule, mandatory) and decisions with an unknown actor are excluded.",
+    "pretrial.detained_count": "Attributed pretrial decisions with detained = true.",
+    "pretrial.release_share": "released_count / (released_count + detained_count).",
+    "pretrial.released_count": "Attributed pretrial decisions with detained = false.",
+    "pretrial.statutory_release_count": "Court only: pretrial decisions with actor legislature_or_mandatory_rule and discretion mandatory (never attributed to a judge).",
+    "pretrial.unknown_actor_count": "Court only: pretrial decisions with actor unknown (the planted missing-judge examples).",
+    "pretrial.windows": "For each window w in days: cohort = attributed released decisions (index_at = release_at); followed = cohort members with release_at + w days strictly before the corpus end (corpus.end_exclusive_at); numerator = followed members with at least one outcome of the type in (index_at, index_at + w days]; value = numerator / followed (null when followed is 0). failure_to_appear counts events in any case of the person; new_case counts another case's filed_at; reconviction counts a convicted charge's disposed_at in another case of the person.",
+    "sentences": "Sentence rows of the subject (judge: sentencing judge_code; court: the court's cases). incarceration_days_median is over sentences with a non-empty incarceration_days; by_offense_category groups those by the offense_category of the case's lead convicted charge (most severe by severity rank, ties broken by charge_id); probation_days_median likewise over non-empty probation_days."
+  },
+  "generator_version": "1",
+  "judges": {
+    "J-0001": {
+      "disposition_distribution": {
+        "acquitted": 0,
+        "convicted_plea": 5,
+        "convicted_verdict": 0,
+        "dismissed": 1
+      },
+      "eligible_cases": 15,
+      "eligible_defendants": 13,
+      "judicial_dismissal_rate": {
+        "denominator": 6,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "median_days_to_disposition": {
+        "n": 5,
+        "value": 232.0
+      },
+      "pretrial": {
+        "decisions": 7,
+        "detained_count": 4,
+        "release_share": {
+          "denominator": 7,
+          "numerator": 3,
+          "value": 0.428571
+        },
+        "released_count": 3,
+        "windows": {
+          "1095": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 3,
+            "new_case_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "730": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "90": {
+            "cohort": 3,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 4,
+        "incarceration_days_median": {
+          "n": 1,
+          "value": 930.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "person": {
+            "n": 1,
+            "value": 930.0
+          }
+        },
+        "probation_days_median": {
+          "n": 3,
+          "value": 180.0
+        }
+      }
+    },
+    "J-0002": {
+      "disposition_distribution": {
+        "acquitted": 2,
+        "convicted_plea": 7,
+        "convicted_verdict": 2,
+        "dismissed": 2
+      },
+      "eligible_cases": 20,
+      "eligible_defendants": 15,
+      "judicial_dismissal_rate": {
+        "denominator": 13,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "median_days_to_disposition": {
+        "n": 7,
+        "value": 187.0
+      },
+      "pretrial": {
+        "decisions": 17,
+        "detained_count": 5,
+        "release_share": {
+          "denominator": 17,
+          "numerator": 12,
+          "value": 0.705882
+        },
+        "released_count": 12,
+        "windows": {
+          "1095": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 10,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 10,
+            "new_case_rate": {
+              "denominator": 10,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 10,
+              "numerator": 1,
+              "value": 0.1
+            }
+          },
+          "30": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 12,
+            "new_case_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 12,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 6,
+            "new_case_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            }
+          },
+          "730": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 4,
+            "new_case_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            },
+            "reconviction_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 12,
+            "failure_to_appear_rate": {
+              "denominator": 11,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 11,
+            "new_case_rate": {
+              "denominator": 11,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 11,
+              "numerator": 1,
+              "value": 0.090909
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 6,
+        "incarceration_days_median": {
+          "n": 2,
+          "value": 776.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "drug": {
+            "n": 1,
+            "value": 1289.0
+          },
+          "property": {
+            "n": 1,
+            "value": 263.0
+          }
+        },
+        "probation_days_median": {
+          "n": 5,
+          "value": 273.0
+        }
+      }
+    },
+    "J-0003": {
+      "disposition_distribution": {
+        "acquitted": 1,
+        "convicted_plea": 4,
+        "convicted_verdict": 4,
+        "dismissed": 2
+      },
+      "eligible_cases": 15,
+      "eligible_defendants": 10,
+      "judicial_dismissal_rate": {
+        "denominator": 11,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "median_days_to_disposition": {
+        "n": 6,
+        "value": 122.5
+      },
+      "pretrial": {
+        "decisions": 10,
+        "detained_count": 1,
+        "release_share": {
+          "denominator": 10,
+          "numerator": 9,
+          "value": 0.9
+        },
+        "released_count": 9,
+        "windows": {
+          "1095": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            },
+            "followed": 6,
+            "new_case_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 9,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 9,
+            "new_case_rate": {
+              "denominator": 9,
+              "numerator": 1,
+              "value": 0.111111
+            },
+            "reconviction_rate": {
+              "denominator": 9,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 4,
+            "new_case_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            },
+            "reconviction_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            }
+          },
+          "730": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 3,
+            "new_case_rate": {
+              "denominator": 3,
+              "numerator": 1,
+              "value": 0.333333
+            },
+            "reconviction_rate": {
+              "denominator": 3,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 9,
+            "failure_to_appear_rate": {
+              "denominator": 9,
+              "numerator": 1,
+              "value": 0.111111
+            },
+            "followed": 9,
+            "new_case_rate": {
+              "denominator": 9,
+              "numerator": 1,
+              "value": 0.111111
+            },
+            "reconviction_rate": {
+              "denominator": 9,
+              "numerator": 0,
+              "value": 0.0
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 6,
+        "incarceration_days_median": {
+          "n": 1,
+          "value": 315.0
+        },
+        "incarceration_days_median_by_offense_category": {
+          "property": {
+            "n": 1,
+            "value": 315.0
+          }
+        },
+        "probation_days_median": {
+          "n": 4,
+          "value": 132.0
+        }
+      }
+    },
+    "J-0004": {
+      "disposition_distribution": {
+        "acquitted": 0,
+        "convicted_plea": 0,
+        "convicted_verdict": 0,
+        "dismissed": 0
+      },
+      "eligible_cases": 9,
+      "eligible_defendants": 9,
+      "judicial_dismissal_rate": {
+        "denominator": 0,
+        "numerator": 0,
+        "value": null
+      },
+      "median_days_to_disposition": {
+        "n": 0,
+        "value": null
+      },
+      "pretrial": {
+        "decisions": 5,
+        "detained_count": 3,
+        "release_share": {
+          "denominator": 5,
+          "numerator": 2,
+          "value": 0.4
+        },
+        "released_count": 2,
+        "windows": {
+          "1095": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "730": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 0,
+        "incarceration_days_median": {
+          "n": 0,
+          "value": null
+        },
+        "incarceration_days_median_by_offense_category": {},
+        "probation_days_median": {
+          "n": 0,
+          "value": null
+        }
+      }
+    },
+    "J-0005": {
+      "disposition_distribution": {
+        "acquitted": 0,
+        "convicted_plea": 3,
+        "convicted_verdict": 2,
+        "dismissed": 0
+      },
+      "eligible_cases": 11,
+      "eligible_defendants": 10,
+      "judicial_dismissal_rate": {
+        "denominator": 5,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "median_days_to_disposition": {
+        "n": 4,
+        "value": 141.5
+      },
+      "pretrial": {
+        "decisions": 8,
+        "detained_count": 2,
+        "release_share": {
+          "denominator": 8,
+          "numerator": 6,
+          "value": 0.75
+        },
+        "released_count": 6,
+        "windows": {
+          "1095": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 5,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 5,
+            "new_case_rate": {
+              "denominator": 5,
+              "numerator": 1,
+              "value": 0.2
+            },
+            "reconviction_rate": {
+              "denominator": 5,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 6,
+            "new_case_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            },
+            "reconviction_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 4,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 4,
+            "new_case_rate": {
+              "denominator": 4,
+              "numerator": 2,
+              "value": 0.5
+            },
+            "reconviction_rate": {
+              "denominator": 4,
+              "numerator": 1,
+              "value": 0.25
+            }
+          },
+          "730": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "90": {
+            "cohort": 6,
+            "failure_to_appear_rate": {
+              "denominator": 6,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "followed": 6,
+            "new_case_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            },
+            "reconviction_rate": {
+              "denominator": 6,
+              "numerator": 1,
+              "value": 0.166667
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 4,
+        "incarceration_days_median": {
+          "n": 4,
+          "value": 409.5
+        },
+        "incarceration_days_median_by_offense_category": {
+          "drug": {
+            "n": 2,
+            "value": 412.5
+          },
+          "financial": {
+            "n": 2,
+            "value": 409.5
+          }
+        },
+        "probation_days_median": {
+          "n": 2,
+          "value": 987.0
+        }
+      }
+    },
+    "J-0006": {
+      "disposition_distribution": {
+        "acquitted": 0,
+        "convicted_plea": 0,
+        "convicted_verdict": 0,
+        "dismissed": 0
+      },
+      "eligible_cases": 6,
+      "eligible_defendants": 5,
+      "judicial_dismissal_rate": {
+        "denominator": 0,
+        "numerator": 0,
+        "value": null
+      },
+      "median_days_to_disposition": {
+        "n": 0,
+        "value": null
+      },
+      "pretrial": {
+        "decisions": 2,
+        "detained_count": 0,
+        "release_share": {
+          "denominator": 2,
+          "numerator": 2,
+          "value": 1.0
+        },
+        "released_count": 2,
+        "windows": {
+          "1095": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "180": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 1,
+              "value": 0.5
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 1,
+              "value": 0.5
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "30": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 1,
+              "value": 0.5
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "365": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 1,
+              "numerator": 1,
+              "value": 1.0
+            },
+            "followed": 1,
+            "new_case_rate": {
+              "denominator": 1,
+              "numerator": 1,
+              "value": 1.0
+            },
+            "reconviction_rate": {
+              "denominator": 1,
+              "numerator": 0,
+              "value": 0.0
+            }
+          },
+          "730": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "followed": 0,
+            "new_case_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            },
+            "reconviction_rate": {
+              "denominator": 0,
+              "numerator": 0,
+              "value": null
+            }
+          },
+          "90": {
+            "cohort": 2,
+            "failure_to_appear_rate": {
+              "denominator": 2,
+              "numerator": 1,
+              "value": 0.5
+            },
+            "followed": 2,
+            "new_case_rate": {
+              "denominator": 2,
+              "numerator": 1,
+              "value": 0.5
+            },
+            "reconviction_rate": {
+              "denominator": 2,
+              "numerator": 0,
+              "value": 0.0
+            }
+          }
+        }
+      },
+      "sentences": {
+        "count": 0,
+        "incarceration_days_median": {
+          "n": 0,
+          "value": null
+        },
+        "incarceration_days_median_by_offense_category": {},
+        "probation_days_median": {
+          "n": 0,
+          "value": null
+        }
+      }
+    }
+  },
+  "scale": "golden",
+  "seed": 7,
+  "truth_version": "1",
+  "windows_days": [
+    30,
+    90,
+    180,
+    365,
+    730,
+    1095
+  ]
+}

@@ -3,11 +3,14 @@
 
 Groups: ``db`` (migrations, run as the admin role), ``serve`` (uvicorn),
 ``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``runs``
-as the read-only role), and ``openapi`` (``export`` the API document).
+as the read-only role), ``openapi`` (``export`` the API document), and
+``synthetic`` (``generate`` a deterministic synthetic dataset, ``verify``
+one against its manifest).
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
 
@@ -24,12 +27,25 @@ app = typer.Typer(
 db_app = typer.Typer(help="Database migrations (Alembic), run as the admin role.")
 ingest_app = typer.Typer(help="Source connectors and ingest runs.")
 openapi_app = typer.Typer(help="The generated OpenAPI document.")
+synthetic_app = typer.Typer(
+    help="The deterministic synthetic justice dataset (docs/SYNTHETIC_DATA.md)."
+)
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(openapi_app, name="openapi")
+app.add_typer(synthetic_app, name="synthetic")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
+
+DEFAULT_SYNTHETIC_SEED = 20260916
+SYNTHETIC_DATA_DIR = Path("data") / "synthetic"
+
+
+class SyntheticScale(StrEnum):
+    golden = "golden"
+    demo = "demo"
+    tiny = "tiny"
 
 
 def _version_callback(value: bool) -> None:
@@ -300,6 +316,76 @@ def openapi_export(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(render_openapi().encode("utf-8"))
     typer.echo(f"wrote {out}")
+
+
+@synthetic_app.command("generate")
+def synthetic_generate(
+    seed: Annotated[
+        int, typer.Option("--seed", help="The seed every stream derives from.")
+    ] = DEFAULT_SYNTHETIC_SEED,
+    scale: Annotated[
+        SyntheticScale, typer.Option("--scale", help="World size: golden, demo, or tiny.")
+    ] = SyntheticScale.demo,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Output directory (default data/synthetic/<seed>).",
+            file_okay=False,
+            resolve_path=True,
+        ),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Regenerate over an existing manifest.")
+    ] = False,
+) -> None:
+    """Write source/, truth/, and manifest.json for SEED at SCALE (byte-identical per seed)."""
+    from judgemetrics.config import get_settings
+    from judgemetrics.logging import configure_logging, get_logger
+    from judgemetrics.synthetic.generate import DatasetExistsError, generate_dataset
+
+    configure_logging(get_settings())
+    log = get_logger("judgemetrics.synthetic")
+    target = (SYNTHETIC_DATA_DIR / str(seed)).resolve() if out is None else out
+    log.info("synthetic.generate.start", seed=seed, scale=scale.value, out=str(target))
+    try:
+        manifest = generate_dataset(seed, scale.value, target, force=force)
+    except DatasetExistsError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc
+    log.info(
+        "synthetic.generate.done",
+        seed=seed,
+        scale=scale.value,
+        generator_version=manifest.generator_version,
+        counts=manifest.counts,
+    )
+    for relative, count in sorted(manifest.counts.items()):
+        typer.echo(f"{relative}\t{count}")
+    typer.echo(f"wrote {manifest.path}")
+
+
+@synthetic_app.command("verify")
+def synthetic_verify(
+    directory: Annotated[
+        Path,
+        typer.Argument(
+            help="A generated dataset directory holding manifest.json.",
+            exists=True,
+            file_okay=False,
+            resolve_path=True,
+        ),
+    ],
+) -> None:
+    """Recompute every file hash in DIRECTORY against its manifest; exit 1 on any mismatch."""
+    from judgemetrics.synthetic.generate import verify_dataset
+
+    problems = verify_dataset(directory)
+    if problems:
+        for problem in problems:
+            typer.echo(f"mismatch: {problem}", err=True)
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+    typer.echo(f"verified {directory}")
 
 
 def main() -> None:

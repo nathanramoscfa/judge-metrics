@@ -32,7 +32,10 @@ Playwright smoke test and a scanned web image) are in place, verified
 by `scripts/verify_phase01.py` (43 static checks, the tool suites, and
 the V1–V6 matrix; `docs/phase01-qa-findings.md`) under the required
 `phase-verify (01)` check. Phase 2 (the synthetic justice dataset,
-entity resolution, and case timelines) is next. See:
+entity resolution, and case timelines) is in progress: Step 1 shipped
+the deterministic synthetic generator (`uv run judgemetrics synthetic
+generate`, [`docs/SYNTHETIC_DATA.md`](docs/SYNTHETIC_DATA.md)) and its
+golden fixture. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -69,12 +72,13 @@ cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
+uv run judgemetrics synthetic generate   # deterministic synthetic dataset → data/synthetic/20260916/{source,truth,manifest.json}
 uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs (Swagger UI over the API below)
 uv run poe dev-web      # http://localhost:3000 (the web app, against the API above)
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify
 ```
 
 ## API v1
@@ -172,6 +176,7 @@ judge-metrics/
 │   ├── API.md              the API contract: pagination, filters, errors, rate limits, provenance
 │   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export); the web client is generated from it
 │   ├── DATA_MODEL.md       the twenty-three tables, natural keys, indexes, grants
+│   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
 ├── alembic/                migration environment and versions (0001, 0002)
@@ -180,7 +185,7 @@ judge-metrics/
 ├── infra/docker/           api.Dockerfile, web.Dockerfile, and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
-├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/
+├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/, synthetic/
 ├── tests/unit/, tests/integration/, tests/fixtures/
 ├── web/                    Next.js app: app/ (pages), components/, lib/api/ (generated client), tests/unit, tests/e2e
 ├── .node-version           Node 22 for web/
@@ -194,7 +199,8 @@ Sources enter only through the due-diligence register in
 [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md). The first ingested
 source is the Federal Judicial Center's biographical directory export
 (Phase 1: `uv run poe ingest-fjc`, see `docs/ARCHITECTURE.md`),
-followed by a deterministic synthetic justice dataset (Phase 2); the
+followed by a deterministic synthetic justice dataset (Phase 2:
+`uv run judgemetrics synthetic generate`, `docs/SYNTHETIC_DATA.md`); the
 first real state-court corpus is the Cook County State's Attorney's
 case-level datasets (Phase 5), with the Florida pilot following once
 lawful access is secured (Phase 7).
