@@ -15,8 +15,8 @@ the data behind them.
 
 ## Status
 
-Pre-alpha. Phase 1 (canonical schema and the judge vertical slice) is in
-progress: the governance chassis (license, security gate, CI, branch
+Pre-alpha. Phase 1 (canonical schema and the judge vertical slice) is
+complete (`v0.1.0-phase-1`): the governance chassis (license, security gate, CI, branch
 protection, Compose services) and the application core (settings, JSON
 logging, the FastAPI app with health probes, the twenty-three canonical
 tables behind a reversible Alembic baseline, the `judgemetrics` CLI, and
@@ -28,14 +28,17 @@ stored bytes), the public API v1 (paginated, strictly validated,
 rate-limited search, provenance on every entity), and the web
 foundation (`web/`: Next.js pages for home, search, judge, court, and
 methodology over a client generated from the OpenAPI document, with a
-Playwright smoke test and a scanned web image) are in place; Phase 1
-QA and verification is next. See:
+Playwright smoke test and a scanned web image) are in place, verified
+by `scripts/verify_phase01.py` (43 static checks, the tool suites, and
+the V1–V6 matrix; `docs/phase01-qa-findings.md`) under the required
+`phase-verify (01)` check. Phase 2 (the synthetic justice dataset,
+entity resolution, and case timelines) is next. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
   items, unresolved data-access questions, next milestones.
-- [`docs/phase01-roadmap.md`](docs/phase01-roadmap.md) — the next
-  executable step.
+- [`docs/phase01-roadmap.md`](docs/phase01-roadmap.md) — the Phase 1
+  execution plan and its post-implementation verification.
 - [`docs/brief/`](docs/brief/) — the product specification.
 
 ## Principles

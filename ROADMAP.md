@@ -358,8 +358,13 @@ Brief phases: 0, 1, 3, and the judge portions of 4 and 6.
   check are green locally and in CI; the API and web images build and
   pass the vulnerability scan in CI; `main` is protected and a direct
   push is rejected.
-- `scripts/verify_phase01.py --fast` exits 0 on Ubuntu CI under the
-  `phase-verify.yml` matrix entry `01`.
+- `scripts/verify_phase01.py --fast` (43 static checks) and
+  `--security` (secret scan, SAST, dependency audits) exit 0 on Ubuntu
+  CI under the `phase-verify.yml` matrix entry `01`, whose check
+  `phase-verify (01)` is a required context on `main` beside `test`;
+  `--post` reports the V1–V6 matrix of `docs/phase01-roadmap.md` green
+  on the maintainer's machine before the phase is tagged
+  `v0.1.0-phase-1`.
 - **Deployed & verified:** no deployed surface in this phase; the local
   `/api/v1/health` endpoint reports the package version, git SHA, and
   Alembic head that match the merged commit.

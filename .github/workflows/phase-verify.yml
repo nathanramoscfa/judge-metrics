@@ -1,0 +1,70 @@
+# .github/workflows/phase-verify.yml
+# Phase verification: one matrix entry per completed phase runs that
+# phase's `scripts/verify_phaseNN.py` in its `--fast` mode (the static
+# deliverable checks, under 30 seconds) and then its `--security` mode
+# (the secret scan against the baseline, bandit, pip-audit over uv.lock,
+# and pnpm audit). The resulting check, `phase-verify (NN)`, is a
+# required status check on `main` beside the aggregate `test` check of
+# ci.yml (CONTRIBUTING.md "Repository settings").
+#
+# Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
+#   - every third-party action is pinned to a full commit SHA;
+#   - the workflow declares least-privilege `permissions:`;
+#   - no repository secret is exposed to pull-request-triggered runs.
+name: phase-verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase-verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+  UV_LINK_MODE: copy
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  verify:
+    name: phase-verify (${{ matrix.phase }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        phase: ["01"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+
+      - name: Install (locked)
+        run: uv sync --frozen
+
+      - name: Static deliverable checks (--fast)
+        run: uv run python scripts/verify_phase${{ matrix.phase }}.py --fast
+
+      # Node and pnpm (corepack, at the version web/package.json pins) for
+      # the `pnpm audit` leg of the security mode.
+      - name: Set up Node (version from .node-version)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+
+      - name: Enable pnpm (corepack)
+        run: corepack enable
+
+      - name: Security gate over the phase's surface (--security)
+        run: uv run python scripts/verify_phase${{ matrix.phase }}.py --security
