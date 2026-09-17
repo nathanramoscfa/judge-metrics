@@ -1,0 +1,19 @@
+# .gitleaks.toml
+# Repository configuration for the CI secret scan (gitleaks in
+# .github/workflows/ci.yml, job `security`). It extends the built-in
+# rules unchanged and allowlists one file:
+#
+# `.secrets.baseline` is the detect-secrets baseline of the pre-commit gate.
+# It never holds a secret, only the sha1 fingerprint (`hashed_secret`) and
+# location of each allowlisted false positive, such as the sha256 digests
+# in `tests/fixtures/golden/manifest.json`. gitleaks' generic-api-key rule
+# matches those fingerprints on the keyword `secret`, so the two scanners
+# would otherwise disagree about the file that reconciles them.
+title = "JudgeMetrics gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "detect-secrets baseline: fingerprints of allowlisted false positives, not secrets"
+paths = ['''^\.secrets\.baseline$''']
