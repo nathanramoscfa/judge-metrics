@@ -1,0 +1,106 @@
+charge_id,case_number,court_code,participant_id,statute_code,description,offense_category,severity,violent_flag,filed_at,disposed_at,disposition,disposition_actor
+CH-000001,SYN-2019-000001,C-0002,PT-000001,SYN-504,Obstruction of justice,public_order,felony_3,false,2019-01-21T16:50:00+00:00,2019-03-25T15:28:00+00:00,dismissed,prosecutor
+CH-000002,SYN-2019-000001,C-0002,PT-000001,SYN-308,Kidnapping,person,felony_1,true,2019-01-21T16:50:00+00:00,2019-03-25T15:28:00+00:00,dismissed,prosecutor
+CH-000003,SYN-2019-000002,C-0002,PT-000002,SYN-201,Theft under the felony threshold,property,misdemeanor_a,false,2019-03-12T10:07:00+00:00,2019-11-08T11:33:00+00:00,convicted_plea,judge
+CH-000004,SYN-2019-000002,C-0002,PT-000002,SYN-307,Domestic battery,person,misdemeanor_a,true,2019-03-12T10:07:00+00:00,2019-11-08T11:33:00+00:00,convicted_plea,judge
+CH-000005,SYN-2019-000002,C-0002,PT-000002,SYN-101,Possession of a controlled substance,drug,misdemeanor_a,false,2019-03-12T10:07:00+00:00,2019-11-08T11:33:00+00:00,convicted_plea,judge
+CH-000006,SYN-2019-000003,C-0002,PT-000003,SYN-202,Theft over the felony threshold,property,felony_3,false,2019-03-15T12:52:00+00:00,2020-09-09T16:28:00+00:00,dismissed,prosecutor
+CH-000007,SYN-2019-000004,C-0003,PT-000004,SYN-207,Retail theft,property,misdemeanor_b,false,2019-04-27T16:58:00+00:00,2019-06-18T13:54:00+00:00,convicted_plea,judge
+CH-000008,SYN-2019-000005,C-0002,PT-000005,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2019-05-25T08:06:00+00:00,2019-07-18T08:22:00+00:00,dismissed,judge
+CH-000009,SYN-2019-000005,C-0002,PT-000005,SYN-602,Driving on a suspended license,traffic,misdemeanor_b,false,2019-05-25T08:06:00+00:00,2019-07-18T08:22:00+00:00,dismissed,judge
+CH-000008,syn 2019 000005,C-0002,PT-000005,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2019-05-25T08:06:00+00:00,2019-07-18T08:22:00+00:00,dismissed,judge
+CH-000009,syn 2019 000005,C-0002,PT-000005,SYN-602,Driving on a suspended license,traffic,misdemeanor_b,false,2019-05-25T08:06:00+00:00,2019-07-18T08:22:00+00:00,dismissed,judge
+CH-000010,SYN-2019-000006,C-0001,PT-000006,SYN-206,Motor vehicle theft,property,felony_3,false,2019-06-01T14:59:00+00:00,2020-06-29T13:59:00+00:00,acquitted,jury
+CH-000011,SYN-2019-000007,C-0003,PT-000007,SYN-301,Battery,person,misdemeanor_a,true,2019-06-15T16:16:00+00:00,2019-12-18T16:07:00+00:00,acquitted,jury
+CH-000012,SYN-2019-000007,C-0003,PT-000007,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2019-06-15T16:16:00+00:00,2019-12-18T16:07:00+00:00,convicted_verdict,jury
+CH-000013,SYN-2019-000008,C-0002,PT-000008,SYN-203,Burglary of a dwelling,property,felony_2,false,2019-06-30T15:20:00+00:00,2020-05-30T15:27:00+00:00,convicted_plea,judge
+CH-000013,syn 2019 000008,C-0002,PT-000008,SYN-203,Burglary of a dwelling,property,felony_2,false,2019-06-30T15:20:00+00:00,2020-05-30T15:27:00+00:00,convicted_plea,judge
+CH-000014,SYN-2019-000009,C-0002,PT-000009,SYN-603,Aggravated driving under the influence,traffic,felony_3,false,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000015,SYN-2019-000009,C-0002,PT-000009,SYN-306,Armed robbery,person,felony_1,true,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000016,SYN-2019-000009,C-0002,PT-000009,SYN-704,Financial exploitation,financial,felony_2,false,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000014,syn 2019 000009,C-0002,PT-000009,SYN-603,Aggravated driving under the influence,traffic,felony_3,false,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000015,syn 2019 000009,C-0002,PT-000009,SYN-306,Armed robbery,person,felony_1,true,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000016,syn 2019 000009,C-0002,PT-000009,SYN-704,Financial exploitation,financial,felony_2,false,2019-07-06T13:53:00+00:00,2020-10-17T08:51:00+00:00,dismissed,judge
+CH-000017,SYN-2019-000010,C-0003,PT-000010,SYN-601,Driving under the influence,traffic,misdemeanor_a,false,2019-07-30T12:51:00+00:00,2019-11-22T14:57:00+00:00,dismissed,judge
+CH-000018,SYN-2019-000010,C-0003,PT-000010,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2019-07-30T12:51:00+00:00,2019-11-22T14:57:00+00:00,dismissed,judge
+CH-000019,SYN-2019-000011,C-0001,PT-000011,SYN-204,Burglary of a non-residential structure,property,felony_3,false,2019-08-11T15:43:00+00:00,2019-12-22T09:02:00+00:00,dismissed,judge
+CH-000020,SYN-2019-000011,C-0001,PT-000011,SYN-202,Theft over the felony threshold,property,felony_3,false,2019-08-11T15:43:00+00:00,2019-12-22T09:02:00+00:00,dismissed,judge
+CH-000021,SYN-2019-000012,C-0001,PT-000012,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2019-10-17T14:33:00+00:00,2019-11-16T08:11:00+00:00,dismissed,prosecutor
+CH-000022,SYN-2019-000013,C-0003,PT-000013,SYN-704,Financial exploitation,financial,felony_2,false,2019-10-27T10:32:00+00:00,2020-01-02T12:57:00+00:00,convicted_verdict,jury
+CH-000023,SYN-2019-000013,C-0003,PT-000013,SYN-106,Possession of cannabis over the civil limit,drug,misdemeanor_b,false,2019-10-27T10:32:00+00:00,2020-01-02T12:57:00+00:00,convicted_verdict,jury
+CH-000024,SYN-2020-000001,C-0001,PT-000011,SYN-701,Forgery,financial,felony_3,false,2020-02-03T09:19:00+00:00,2021-06-15T15:05:00+00:00,convicted_plea,judge
+CH-000025,SYN-2020-000002,C-0003,PT-000014,SYN-203,Burglary of a dwelling,property,felony_2,false,2020-03-16T09:19:00+00:00,2021-09-02T16:03:00+00:00,convicted_plea,judge
+CH-000026,SYN-2020-000003,C-0002,PT-000015,SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false,2020-04-02T14:14:00+00:00,2020-11-11T09:58:00+00:00,convicted_plea,judge
+CH-000027,SYN-2020-000003,C-0002,PT-000015,SYN-303,Assault,person,misdemeanor_b,true,2020-04-02T14:14:00+00:00,2020-11-11T09:58:00+00:00,dismissed,prosecutor
+CH-000028,SYN-2020-000003,C-0002,PT-000015,SYN-104,Possession of drug paraphernalia,drug,misdemeanor_b,false,2020-04-02T14:14:00+00:00,,,
+CH-000029,SYN-2020-000004,C-0001,PT-000016,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2020-05-07T14:03:00+00:00,2020-12-02T13:38:00+00:00,acquitted,jury
+CH-000030,SYN-2020-000005,C-0003,PT-000017,SYN-505,Violation of an order of protection,public_order,misdemeanor_a,false,2020-06-20T08:10:00+00:00,2020-09-25T15:54:00+00:00,convicted_plea,judge
+CH-000031,SYN-2020-000005,C-0003,PT-000017,SYN-205,Criminal damage to property,property,misdemeanor_a,false,2020-06-20T08:10:00+00:00,2020-09-25T15:54:00+00:00,dismissed,prosecutor
+CH-000032,SYN-2020-000005,C-0003,PT-000017,SYN-101,Possession of a controlled substance,drug,misdemeanor_a,false,2020-06-20T08:10:00+00:00,2020-09-25T15:54:00+00:00,dismissed,prosecutor
+CH-000033,SYN-2020-000006,C-0001,PT-000018,SYN-205,Criminal damage to property,property,misdemeanor_a,false,2020-06-22T16:22:00+00:00,2021-02-14T13:46:00+00:00,dismissed,judge
+CH-000034,SYN-2020-000006,C-0001,PT-000018,SYN-201,Theft under the felony threshold,property,misdemeanor_a,false,2020-06-22T16:22:00+00:00,2021-02-14T13:46:00+00:00,dismissed,judge
+CH-000035,SYN-2020-000006,C-0001,PT-000018,SYN-205,Criminal damage to property,property,misdemeanor_a,false,2020-06-22T16:22:00+00:00,2021-02-14T13:46:00+00:00,dismissed,judge
+CH-000036,SYN-2020-000007,C-0002,PT-000019,SYN-103,Delivery of a controlled substance,drug,felony_1,false,2020-08-12T12:22:00+00:00,2020-12-01T11:16:00+00:00,convicted_plea,judge
+CH-000037,SYN-2020-000007,C-0002,PT-000019,SYN-602,Driving on a suspended license,traffic,misdemeanor_b,false,2020-08-12T12:22:00+00:00,2020-12-01T11:16:00+00:00,dismissed,prosecutor
+CH-000038,SYN-2020-000008,C-0003,PT-000020,SYN-105,Manufacture of a controlled substance,drug,felony_1,false,2020-08-14T13:49:00+00:00,2021-02-05T11:11:00+00:00,convicted_plea,judge
+CH-000039,SYN-2020-000009,C-0003,PT-000021,SYN-206,Motor vehicle theft,property,felony_3,false,2020-08-23T15:05:00+00:00,,pending,
+CH-000040,SYN-2020-000009,C-0003,PT-000021,SYN-208,Arson of a structure,property,felony_1,false,2020-08-23T15:05:00+00:00,,pending,
+CH-000041,SYN-2020-000010,C-0002,PT-000019,SYN-202,Theft over the felony threshold,property,felony_3,false,2020-09-01T08:44:00+00:00,2021-08-09T16:25:00+00:00,dismissed,prosecutor
+CH-000042,SYN-2020-000011,C-0001,PT-000022,SYN-604,Reckless driving,traffic,misdemeanor_a,false,2020-09-02T16:06:00+00:00,2020-12-31T15:03:00+00:00,acquitted,jury
+CH-000043,SYN-2020-000011,C-0001,PT-000022,SYN-205,Criminal damage to property,property,misdemeanor_a,false,2020-09-02T16:06:00+00:00,2020-12-31T15:03:00+00:00,acquitted,jury
+CH-000044,SYN-2020-000012,C-0002,PT-000023,SYN-504,Obstruction of justice,public_order,felony_3,false,2020-10-07T08:38:00+00:00,2021-01-30T14:17:00+00:00,acquitted,jury
+CH-000045,SYN-2020-000012,C-0002,PT-000023,SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false,2020-10-07T08:38:00+00:00,2021-01-30T14:17:00+00:00,convicted_verdict,jury
+CH-000046,SYN-2020-000013,C-0001,PT-000042,SYN-202,Theft over the felony threshold,property,felony_3,false,2020-10-10T08:24:00+00:00,2020-12-17T15:38:00+00:00,dismissed,prosecutor
+CH-000047,SYN-2020-000014,C-0002,PT-000024,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2020-10-12T11:24:00+00:00,2021-04-17T14:34:00+00:00,convicted_plea,judge
+CH-000048,SYN-2020-000015,C-0003,PT-000025,SYN-102,Possession of a controlled substance with intent to deliver,drug,felony_2,false,2020-10-13T10:25:00+00:00,2021-05-03T11:01:00+00:00,convicted_plea,judge
+CH-000049,SYN-2020-000016,C-0003,PT-000026,SYN-302,Aggravated battery,person,felony_2,true,2020-10-24T14:57:00+00:00,2021-01-29T09:31:00+00:00,dismissed,prosecutor
+CH-000050,SYN-2020-000017,C-0002,PT-000025,SYN-604,Reckless driving,traffic,misdemeanor_a,false,2020-11-09T10:43:00+00:00,2020-12-17T13:33:00+00:00,dismissed,judge
+CH-000051,SYN-2020-000018,C-0003,PT-000014,SYN-104,Possession of drug paraphernalia,drug,misdemeanor_b,false,2020-11-24T13:40:00+00:00,2020-12-28T12:05:00+00:00,convicted_plea,judge
+CH-000052,SYN-2021-000001,C-0002,PT-000009,SYN-601,Driving under the influence,traffic,misdemeanor_a,false,2021-01-01T10:17:00+00:00,2021-04-10T11:03:00+00:00,dismissed,prosecutor
+CH-000053,SYN-2021-000001,C-0002,PT-000009,SYN-703,Deceptive practice,financial,misdemeanor_a,false,2021-01-01T10:17:00+00:00,2021-04-10T11:03:00+00:00,dismissed,prosecutor
+CH-000054,SYN-2021-000002,C-0003,PT-000026,SYN-702,Identity theft,financial,felony_3,false,2021-01-02T10:07:00+00:00,2021-04-20T08:32:00+00:00,convicted_plea,judge
+CH-000055,SYN-2021-000003,C-0001,PT-000027,SYN-206,Motor vehicle theft,property,felony_3,false,2021-01-18T11:13:00+00:00,,pending,
+CH-000056,SYN-2021-000003,C-0001,PT-000027,SYN-404,Discharge of a firearm in a populated area,weapon,felony_2,true,2021-01-18T11:13:00+00:00,,pending,
+CH-000057,SYN-2021-000004,C-0001,PT-000028,SYN-206,Motor vehicle theft,property,felony_3,false,2021-01-30T11:08:00+00:00,,pending,
+CH-000058,SYN-2021-000005,C-0003,PT-000029,SYN-303,Assault,person,misdemeanor_b,true,2021-02-08T13:37:00+00:00,2021-08-06T12:58:00+00:00,dismissed,prosecutor
+CH-000059,SYN-2021-000006,C-0002,PT-000023,SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false,2021-02-09T10:32:00+00:00,,,
+CH-000060,SYN-2021-000006,C-0002,PT-000023,SYN-504,Obstruction of justice,public_order,felony_3,false,2021-02-09T10:32:00+00:00,2021-12-30T08:06:00+00:00,dismissed,prosecutor
+CH-000061,SYN-2021-000006,C-0002,PT-000023,SYN-102,Possession of a controlled substance with intent to deliver,drug,felony_2,false,2021-02-09T10:32:00+00:00,2021-12-30T08:06:00+00:00,dismissed,prosecutor
+CH-000062,SYN-2021-000007,C-0001,PT-000030,SYN-202,Theft over the felony threshold,property,felony_3,false,2021-03-09T08:19:00+00:00,2021-10-27T14:40:00+00:00,convicted_plea,judge
+CH-000063,SYN-2021-000008,C-0001,PT-000013,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2021-03-31T16:51:00+00:00,2021-11-27T15:46:00+00:00,convicted_plea,judge
+CH-000064,SYN-2021-000009,C-0001,PT-000031,SYN-202,Theft over the felony threshold,property,felony_3,false,2021-04-05T13:41:00+00:00,,pending,
+CH-000065,SYN-2021-000010,C-0002,PT-000032,SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false,2021-04-25T16:34:00+00:00,,pending,
+CH-000066,SYN-2021-000010,C-0002,PT-000032,SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false,2021-04-25T16:34:00+00:00,,pending,
+CH-000067,SYN-2021-000010,C-0002,PT-000032,SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false,2021-04-25T16:34:00+00:00,,pending,
+CH-000068,SYN-2021-000011,C-0002,PT-000005,SYN-106,Possession of cannabis over the civil limit,drug,misdemeanor_b,false,2021-05-11T08:57:00+00:00,2021-07-20T15:20:00+00:00,acquitted,jury
+CH-000069,SYN-2021-000012,C-0001,PT-000031,SYN-703,Deceptive practice,financial,misdemeanor_a,false,2021-05-27T14:18:00+00:00,2021-08-12T11:07:00+00:00,dismissed,prosecutor
+CH-000070,SYN-2021-000012,C-0001,PT-000031,SYN-207,Retail theft,property,misdemeanor_b,false,2021-05-27T14:18:00+00:00,2021-08-12T11:07:00+00:00,dismissed,prosecutor
+CH-000071,SYN-2021-000013,C-0001,PT-000033,SYN-404,Discharge of a firearm in a populated area,weapon,felony_2,true,2021-06-01T14:28:00+00:00,,pending,
+CH-000072,SYN-2021-000013,C-0001,PT-000033,SYN-604,Reckless driving,traffic,misdemeanor_a,false,2021-06-01T14:28:00+00:00,,pending,
+CH-000073,SYN-2021-000014,C-0003,PT-000034,SYN-205,Criminal damage to property,property,misdemeanor_a,false,2021-06-08T15:16:00+00:00,,pending,
+CH-000074,SYN-2021-000014,C-0003,PT-000034,SYN-106,Possession of cannabis over the civil limit,drug,misdemeanor_b,false,2021-06-08T15:16:00+00:00,,pending,
+CH-000075,SYN-2021-000014,C-0003,PT-000034,SYN-207,Retail theft,property,misdemeanor_b,false,2021-06-08T15:16:00+00:00,,pending,
+CH-000076,SYN-2021-000015,C-0001,PT-000031,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2021-06-18T12:04:00+00:00,2021-11-12T13:07:00+00:00,convicted_plea,judge
+CH-000077,SYN-2021-000016,C-0003,PT-000014,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2021-06-29T13:47:00+00:00,2021-11-24T08:32:00+00:00,convicted_verdict,jury
+CH-000078,SYN-2021-000016,C-0003,PT-000014,SYN-101,Possession of a controlled substance,drug,misdemeanor_a,false,2021-06-29T13:47:00+00:00,2021-11-24T08:32:00+00:00,convicted_verdict,jury
+CH-000079,SYN-2021-000016,C-0003,PT-000014,SYN-604,Reckless driving,traffic,misdemeanor_a,false,2021-06-29T13:47:00+00:00,2021-11-24T08:32:00+00:00,convicted_verdict,jury
+CH-000080,SYN-2021-000017,C-0003,PT-000035,SYN-403,Carrying a concealed weapon without a permit,weapon,misdemeanor_a,false,2021-07-01T10:39:00+00:00,,pending,
+CH-000081,SYN-2021-000017,C-0003,PT-000035,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2021-07-01T10:39:00+00:00,,pending,
+CH-000082,SYN-2021-000017,C-0003,PT-000035,SYN-104,Possession of drug paraphernalia,drug,misdemeanor_b,false,2021-07-01T10:39:00+00:00,,pending,
+CH-000083,SYN-2021-000018,C-0001,PT-000022,SYN-404,Discharge of a firearm in a populated area,weapon,felony_2,true,2021-07-13T13:53:00+00:00,2021-09-14T13:23:00+00:00,dismissed,prosecutor
+CH-000084,SYN-2021-000018,C-0001,PT-000022,SYN-306,Armed robbery,person,felony_1,true,2021-07-13T13:53:00+00:00,2021-09-14T13:23:00+00:00,convicted_plea,judge
+CH-000085,SYN-2021-000019,C-0003,PT-000036,SYN-601,Driving under the influence,traffic,misdemeanor_a,false,2021-07-27T16:55:00+00:00,,pending,
+CH-000086,SYN-2021-000020,C-0003,PT-000035,SYN-401,Unlawful possession of a firearm,weapon,felony_3,false,2021-07-30T12:32:00+00:00,,pending,
+CH-000087,SYN-2021-000021,C-0003,PT-000041,SYN-106,Possession of cannabis over the civil limit,drug,misdemeanor_b,false,2021-08-11T09:09:00+00:00,,pending,
+CH-000088,SYN-2021-000021,C-0003,PT-000041,SYN-601,Driving under the influence,traffic,misdemeanor_a,false,2021-08-11T09:09:00+00:00,,pending,
+CH-000089,SYN-2021-000022,C-0002,PT-000037,SYN-402,Unlawful use of a weapon,weapon,felony_2,false,2021-08-13T15:49:00+00:00,,pending,
+CH-000090,SYN-2021-000023,C-0002,PT-000037,SYN-701,Forgery,financial,felony_3,false,2021-08-30T13:49:00+00:00,,pending,
+CH-000091,SYN-2021-000024,C-0002,PT-000031,SYN-402,Unlawful use of a weapon,weapon,felony_2,false,2021-09-16T11:23:00+00:00,2021-11-27T15:03:00+00:00,dismissed,judge
+CH-000092,SYN-2021-000024,C-0002,PT-000031,SYN-504,Obstruction of justice,public_order,felony_3,false,2021-09-16T11:23:00+00:00,2021-11-27T15:03:00+00:00,dismissed,judge
+CH-000093,SYN-2021-000025,C-0001,PT-000038,SYN-201,Theft under the felony threshold,property,misdemeanor_a,false,2021-09-26T12:38:00+00:00,,pending,
+CH-000094,SYN-2021-000026,C-0002,PT-000009,SYN-601,Driving under the influence,traffic,misdemeanor_a,false,2021-10-27T10:13:00+00:00,2021-11-27T11:30:00+00:00,acquitted,jury
+CH-000095,SYN-2021-000026,C-0002,PT-000009,SYN-505,Violation of an order of protection,public_order,misdemeanor_a,false,2021-10-27T10:13:00+00:00,2021-11-27T11:30:00+00:00,convicted_verdict,jury
+CH-000096,SYN-2021-000027,C-0001,PT-000039,SYN-101,Possession of a controlled substance,drug,misdemeanor_a,false,2021-11-09T16:21:00+00:00,2021-12-15T09:14:00+00:00,dismissed,prosecutor
+CH-000097,SYN-2021-000027,C-0001,PT-000039,SYN-503,Criminal trespass,public_order,misdemeanor_b,false,2021-11-09T16:21:00+00:00,2021-12-15T09:14:00+00:00,dismissed,prosecutor
+CH-000098,SYN-2021-000028,C-0003,PT-000036,SYN-203,Burglary of a dwelling,property,felony_2,false,2021-11-14T16:05:00+00:00,,pending,
+CH-000099,SYN-2021-000029,C-0002,PT-000040,SYN-604,Reckless driving,traffic,misdemeanor_a,false,2021-11-25T14:31:00+00:00,,pending,

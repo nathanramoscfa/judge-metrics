@@ -1,0 +1,41 @@
+statute_code,description,offense_category,severity,violent_flag
+SYN-101,Possession of a controlled substance,drug,misdemeanor_a,false
+SYN-102,Possession of a controlled substance with intent to deliver,drug,felony_2,false
+SYN-103,Delivery of a controlled substance,drug,felony_1,false
+SYN-104,Possession of drug paraphernalia,drug,misdemeanor_b,false
+SYN-105,Manufacture of a controlled substance,drug,felony_1,false
+SYN-106,Possession of cannabis over the civil limit,drug,misdemeanor_b,false
+SYN-201,Theft under the felony threshold,property,misdemeanor_a,false
+SYN-202,Theft over the felony threshold,property,felony_3,false
+SYN-203,Burglary of a dwelling,property,felony_2,false
+SYN-204,Burglary of a non-residential structure,property,felony_3,false
+SYN-205,Criminal damage to property,property,misdemeanor_a,false
+SYN-206,Motor vehicle theft,property,felony_3,false
+SYN-207,Retail theft,property,misdemeanor_b,false
+SYN-208,Arson of a structure,property,felony_1,false
+SYN-301,Battery,person,misdemeanor_a,true
+SYN-302,Aggravated battery,person,felony_2,true
+SYN-303,Assault,person,misdemeanor_b,true
+SYN-304,Aggravated assault,person,felony_3,true
+SYN-305,Robbery,person,felony_2,true
+SYN-306,Armed robbery,person,felony_1,true
+SYN-307,Domestic battery,person,misdemeanor_a,true
+SYN-308,Kidnapping,person,felony_1,true
+SYN-401,Unlawful possession of a firearm,weapon,felony_3,false
+SYN-402,Unlawful use of a weapon,weapon,felony_2,false
+SYN-403,Carrying a concealed weapon without a permit,weapon,misdemeanor_a,false
+SYN-404,Discharge of a firearm in a populated area,weapon,felony_2,true
+SYN-501,Disorderly conduct,public_order,misdemeanor_b,false
+SYN-502,Resisting a peace officer,public_order,misdemeanor_a,false
+SYN-503,Criminal trespass,public_order,misdemeanor_b,false
+SYN-504,Obstruction of justice,public_order,felony_3,false
+SYN-505,Violation of an order of protection,public_order,misdemeanor_a,false
+SYN-601,Driving under the influence,traffic,misdemeanor_a,false
+SYN-602,Driving on a suspended license,traffic,misdemeanor_b,false
+SYN-603,Aggravated driving under the influence,traffic,felony_3,false
+SYN-604,Reckless driving,traffic,misdemeanor_a,false
+SYN-605,Leaving the scene of an injury collision,traffic,felony_3,false
+SYN-701,Forgery,financial,felony_3,false
+SYN-702,Identity theft,financial,felony_3,false
+SYN-703,Deceptive practice,financial,misdemeanor_a,false
+SYN-704,Financial exploitation,financial,felony_2,false

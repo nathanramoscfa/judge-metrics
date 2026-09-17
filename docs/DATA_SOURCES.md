@@ -153,9 +153,23 @@ it as a term of the agreement (root roadmap §5.5).
   demonstrable before production jurisdiction data exists, and only
   synthetic data with known truth allows entity resolution and every
   metric to be tested against exact expectations.
-- **Access method:** generated locally from a seed; source-format files
-  under `data/synthetic/<seed>/` (untracked) and the golden fixture
-  under `tests/fixtures/golden/` (tracked).
+- **Access method:** generated locally from a seed by
+  `judgemetrics synthetic generate --seed <int> --scale golden|demo|tiny
+  --out <dir>` (default `data/synthetic/<seed>`, untracked); the golden
+  fixture (seed 7) is tracked under `tests/fixtures/golden/`;
+  `judgemetrics synthetic verify <dir>` recomputes every file hash
+  against the manifest. Format and world model: `docs/SYNTHETIC_DATA.md`.
+- **Files:** `<dir>/manifest.json` (seed, scale, `generator_version`,
+  `truth_version`, row counts, sha256 per file); `<dir>/source/`
+  (`courts.csv`, `judges.csv`, `cases.csv`, `participants.csv`,
+  `charges.csv`, `assignments.csv`, `events.csv`, `decisions.csv`,
+  `sentences.csv` — UTF-8, LF, header row, sorted by id, empty means
+  missing, UTC ISO 8601 timestamps; the only files the connector
+  discovers); `<dir>/truth/` (`persons.csv`, `subsequent_events.csv`,
+  `resolution_expectations.csv`, `planted.csv`, `metrics.json`,
+  `README.md` — the simulation's truth, never ingested). Vocabularies:
+  `judgemetrics.synthetic.vocabulary` (version 1), which Step 2 writes
+  to `data/reference/case_vocabulary.yaml`.
 - **Content (Phase 2 requirements from the brief):** at least 5 courts,
   20 judges, 5,000 cases, and 3,000 defendants at demo scale; multiple
   judge assignments and offense categories; pretrial release and

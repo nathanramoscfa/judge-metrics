@@ -1,0 +1,225 @@
+event_id,case_number,court_code,participant_id,judge_code,event_type,event_at,actor,description
+EV-000001,SYN-2019-000001,C-0002,PT-000001,J-0002,arraignment,2019-01-23T14:14:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000002,SYN-2019-000001,C-0002,PT-000001,J-0002,hearing,2019-02-20T13:28:00+00:00,judge,Status hearing held
+EV-000003,SYN-2019-000001,C-0002,PT-000001,J-0002,hearing,2019-03-25T15:28:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000004,SYN-2019-000002,C-0002,PT-000002,J-0002,arraignment,2019-03-19T08:18:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000005,SYN-2019-000002,C-0002,PT-000002,J-0002,hearing,2019-04-29T10:41:00+00:00,judge,Discovery status reviewed
+EV-000006,SYN-2019-000002,C-0002,PT-000002,J-0002,hearing,2019-06-11T15:36:00+00:00,judge,Discovery status reviewed
+EV-000007,SYN-2019-000002,C-0002,PT-000002,J-0002,plea_hearing,2019-11-08T11:33:00+00:00,judge,Plea of guilty accepted
+EV-000008,SYN-2019-000002,C-0002,PT-000002,J-0002,sentencing_hearing,2019-12-08T09:47:00+00:00,judge,Sentence imposed
+EV-000009,SYN-2019-000003,C-0002,PT-000003,J-0002,arraignment,2019-03-18T16:12:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000010,SYN-2019-000003,C-0002,PT-000003,J-0002,hearing,2020-02-01T15:03:00+00:00,judge,Motion hearing held
+EV-000011,SYN-2019-000003,C-0002,PT-000003,J-0002,hearing,2020-09-09T16:28:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000012,SYN-2019-000004,C-0003,PT-000004,J-0003,arraignment,2019-05-02T09:49:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000013,SYN-2019-000004,C-0003,PT-000004,J-0003,hearing,2019-05-15T10:26:00+00:00,judge,Motion hearing held
+EV-000014,SYN-2019-000004,C-0003,PT-000004,J-0003,hearing,2019-06-04T14:07:00+00:00,judge,Motion hearing held
+EV-000015,SYN-2019-000004,C-0003,PT-000004,J-0003,plea_hearing,2019-06-18T13:54:00+00:00,judge,Plea of guilty accepted
+EV-000016,SYN-2019-000004,C-0003,PT-000004,J-0003,sentencing_hearing,2019-06-24T13:51:00+00:00,judge,Sentence imposed
+EV-000017,SYN-2019-000005,C-0002,PT-000005,J-0002,arraignment,2019-05-30T13:31:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000018,SYN-2019-000005,C-0002,PT-000005,J-0002,hearing,2019-07-11T14:10:00+00:00,judge,Discovery status reviewed
+EV-000019,SYN-2019-000005,C-0002,PT-000005,J-0002,hearing,2019-07-18T08:22:00+00:00,judge,Motion to dismiss granted
+EV-000017,syn 2019 000005,C-0002,PT-000005,J-0002,arraignment,2019-05-30T13:31:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000018,syn 2019 000005,C-0002,PT-000005,J-0002,hearing,2019-07-11T14:10:00+00:00,judge,Discovery status reviewed
+EV-000019,syn 2019 000005,C-0002,PT-000005,J-0002,hearing,2019-07-18T08:22:00+00:00,judge,Motion to dismiss granted
+EV-000020,SYN-2019-000006,C-0001,PT-000006,J-0001,arraignment,2019-06-07T08:42:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000021,SYN-2019-000006,C-0001,PT-000006,J-0004,hearing,2020-04-03T15:48:00+00:00,judge,Discovery status reviewed
+EV-000022,SYN-2019-000006,C-0001,PT-000006,J-0004,trial,2020-06-28T12:10:00+00:00,judge,Jury trial commenced
+EV-000023,SYN-2019-000006,C-0001,PT-000006,J-0004,hearing,2020-06-29T13:59:00+00:00,judge,Verdict returned
+EV-000024,SYN-2019-000007,C-0003,PT-000007,J-0003,arraignment,2019-06-20T13:26:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000025,SYN-2019-000007,C-0003,PT-000007,J-0003,hearing,2019-08-29T10:40:00+00:00,judge,Motion hearing held
+EV-000026,SYN-2019-000007,C-0003,PT-000007,J-0003,hearing,2019-10-25T14:05:00+00:00,judge,Discovery status reviewed
+EV-000027,SYN-2019-000007,C-0003,PT-000007,J-0003,hearing,2019-11-12T15:15:00+00:00,judge,Discovery status reviewed
+EV-000028,SYN-2019-000007,C-0003,PT-000007,J-0003,trial,2019-12-14T09:43:00+00:00,judge,Jury trial commenced
+EV-000029,SYN-2019-000007,C-0003,PT-000007,J-0003,hearing,2019-12-18T16:07:00+00:00,judge,Verdict returned
+EV-000030,SYN-2019-000007,C-0003,PT-000007,J-0003,sentencing_hearing,2020-02-04T15:29:00+00:00,judge,Sentence imposed
+EV-000031,SYN-2019-000008,C-0002,PT-000008,J-0002,arraignment,2019-07-04T14:29:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000032,SYN-2019-000008,C-0002,PT-000008,J-0002,hearing,2019-07-23T09:47:00+00:00,judge,Status hearing held
+EV-000033,SYN-2019-000008,C-0002,PT-000008,J-0002,hearing,2020-05-10T11:42:00+00:00,judge,Motion hearing held
+EV-000034,SYN-2019-000008,C-0002,PT-000008,J-0002,plea_hearing,2020-05-30T15:27:00+00:00,judge,Plea of guilty accepted
+EV-000035,SYN-2019-000008,C-0002,PT-000008,J-0002,sentencing_hearing,2020-07-22T16:05:00+00:00,judge,Sentence imposed
+EV-000031,syn 2019 000008,C-0002,PT-000008,J-0002,arraignment,2019-07-04T14:29:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000032,syn 2019 000008,C-0002,PT-000008,J-0002,hearing,2019-07-23T09:47:00+00:00,judge,Status hearing held
+EV-000033,syn 2019 000008,C-0002,PT-000008,J-0002,hearing,2020-05-10T11:42:00+00:00,judge,Motion hearing held
+EV-000034,syn 2019 000008,C-0002,PT-000008,J-0002,plea_hearing,2020-05-30T15:27:00+00:00,judge,Plea of guilty accepted
+EV-000035,syn 2019 000008,C-0002,PT-000008,J-0002,sentencing_hearing,2020-07-22T16:05:00+00:00,judge,Sentence imposed
+EV-000036,SYN-2019-000009,C-0002,PT-000009,J-0002,arraignment,2019-07-07T11:34:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000037,SYN-2019-000009,C-0002,PT-000009,J-0002,hearing,2019-10-26T11:09:00+00:00,judge,Motion hearing held
+EV-000038,SYN-2019-000009,C-0002,PT-000009,J-0002,hearing,2020-10-17T08:51:00+00:00,judge,Motion to dismiss granted
+EV-000036,syn 2019 000009,C-0002,PT-000009,J-0002,arraignment,2019-07-07T11:34:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000037,syn 2019 000009,C-0002,PT-000009,J-0002,hearing,2019-10-26T11:09:00+00:00,judge,Motion hearing held
+EV-000038,syn 2019 000009,C-0002,PT-000009,J-0002,hearing,2020-10-17T08:51:00+00:00,judge,Motion to dismiss granted
+EV-000039,SYN-2019-000010,C-0003,PT-000010,J-0005,arraignment,2019-08-03T15:39:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000040,SYN-2019-000010,C-0003,PT-000010,J-0005,hearing,2019-11-22T14:57:00+00:00,judge,Motion to dismiss granted
+EV-000041,SYN-2019-000011,C-0001,PT-000011,J-0004,arraignment,2019-08-15T14:12:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000042,SYN-2019-000011,C-0001,PT-000011,J-0004,hearing,2019-12-10T13:53:00+00:00,judge,Motion hearing held
+EV-000043,SYN-2019-000011,C-0001,PT-000011,J-0004,hearing,2019-12-22T09:02:00+00:00,judge,Motion to dismiss granted
+EV-000044,SYN-2019-000012,C-0001,PT-000012,J-0004,arraignment,2019-10-23T08:14:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000045,SYN-2019-000012,C-0001,PT-000012,J-0004,hearing,2019-11-02T15:27:00+00:00,judge,Pretrial conference held
+EV-000046,SYN-2019-000012,C-0001,PT-000012,J-0004,hearing,2019-11-07T10:27:00+00:00,judge,Pretrial conference held
+EV-000047,SYN-2019-000012,C-0001,PT-000012,J-0004,hearing,2019-11-13T14:17:00+00:00,judge,Status hearing held
+EV-000048,SYN-2019-000012,C-0001,PT-000012,J-0004,hearing,2019-11-16T08:11:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000049,SYN-2019-000013,C-0003,PT-000013,J-0003,arraignment,2019-10-31T09:52:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000050,SYN-2019-000013,C-0003,PT-000013,J-0003,hearing,2019-12-04T09:38:00+00:00,judge,Status hearing held
+EV-000051,SYN-2019-000013,C-0003,PT-000013,J-0005,hearing,2019-12-22T11:48:00+00:00,judge,Status hearing held
+EV-000052,SYN-2019-000013,C-0003,PT-000013,J-0005,trial,2020-01-01T12:00:00+00:00,judge,Jury trial commenced
+EV-000053,SYN-2019-000013,C-0003,PT-000013,J-0005,hearing,2020-01-02T12:57:00+00:00,judge,Verdict returned
+EV-000054,SYN-2019-000013,C-0003,PT-000013,J-0005,sentencing_hearing,2020-01-09T16:04:00+00:00,judge,Sentence imposed
+EV-000055,SYN-2020-000001,C-0001,PT-000011,J-0001,arraignment,2020-02-08T09:37:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000056,SYN-2020-000001,C-0001,PT-000011,J-0001,hearing,2020-08-07T14:00:00+00:00,judge,Status hearing held
+EV-000057,SYN-2020-000001,C-0001,PT-000011,J-0001,plea_hearing,2021-06-15T15:05:00+00:00,judge,Plea of guilty accepted
+EV-000058,SYN-2020-000001,C-0001,PT-000011,J-0001,sentencing_hearing,2021-07-18T09:23:00+00:00,judge,Sentence imposed
+EV-000059,SYN-2020-000002,C-0003,PT-000014,J-0003,arraignment,2020-03-23T15:25:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000060,SYN-2020-000002,C-0003,PT-000014,J-0003,hearing,2020-12-06T11:07:00+00:00,judge,Status hearing held
+EV-000061,SYN-2020-000002,C-0003,PT-000014,J-0003,hearing,2021-02-21T10:20:00+00:00,judge,Discovery status reviewed
+EV-000062,SYN-2020-000002,C-0003,PT-000014,J-0003,hearing,2021-08-04T16:25:00+00:00,judge,Status hearing held
+EV-000063,SYN-2020-000002,C-0003,PT-000014,J-0003,plea_hearing,2021-09-02T16:03:00+00:00,judge,Plea of guilty accepted
+EV-000064,SYN-2020-000002,C-0003,PT-000014,J-0003,sentencing_hearing,2021-09-19T16:07:00+00:00,judge,Sentence imposed
+EV-000065,SYN-2020-000003,C-0002,PT-000015,J-0002,arraignment,2020-04-08T08:38:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000066,SYN-2020-000003,C-0002,PT-000015,J-0002,hearing,2020-05-18T12:01:00+00:00,judge,Motion hearing held
+EV-000067,SYN-2020-000003,C-0002,PT-000015,J-0002,hearing,2020-07-20T09:58:00+00:00,judge,Motion hearing held
+EV-000068,SYN-2020-000003,C-0002,PT-000015,J-0002,hearing,2020-09-18T10:13:00+00:00,judge,Status hearing held
+EV-000069,SYN-2020-000003,C-0002,PT-000015,J-0002,plea_hearing,2020-11-11T09:58:00+00:00,judge,Plea of guilty accepted
+EV-000070,SYN-2020-000003,C-0002,PT-000015,J-0002,sentencing_hearing,2020-12-07T10:44:00+00:00,judge,Sentence imposed
+EV-000071,SYN-2020-000004,C-0001,PT-000016,J-0001,arraignment,2020-05-13T09:52:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000072,SYN-2020-000004,C-0001,PT-000016,J-0006,trial,2020-11-29T10:04:00+00:00,judge,Jury trial commenced
+EV-000073,SYN-2020-000004,C-0001,PT-000016,J-0006,hearing,2020-12-01T16:16:00+00:00,judge,Discovery status reviewed
+EV-000074,SYN-2020-000004,C-0001,PT-000016,J-0006,hearing,2020-12-02T13:38:00+00:00,judge,Verdict returned
+EV-000075,SYN-2020-000005,C-0003,PT-000017,J-0003,arraignment,2020-06-22T09:32:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000076,SYN-2020-000005,C-0003,PT-000017,J-0003,hearing,2020-08-31T14:07:00+00:00,judge,Motion hearing held
+EV-000077,SYN-2020-000005,C-0003,PT-000017,J-0003,plea_hearing,2020-09-25T15:54:00+00:00,judge,Plea of guilty accepted
+EV-000078,SYN-2020-000005,C-0003,PT-000017,J-0003,sentencing_hearing,2020-09-29T10:02:00+00:00,judge,
+EV-000079,SYN-2020-000005,C-0003,PT-000017,J-0003,revocation,2020-11-22T10:16:00+00:00,judge,Probation revoked after a violation hearing
+EV-000080,SYN-2020-000006,C-0001,PT-000018,J-0001,arraignment,2020-06-25T14:06:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000081,SYN-2020-000006,C-0001,PT-000018,J-0001,hearing,2020-07-21T10:42:00+00:00,judge,Status hearing held
+EV-000082,SYN-2020-000006,C-0001,PT-000018,J-0001,hearing,2020-08-14T14:27:00+00:00,judge,Discovery status reviewed
+EV-000083,SYN-2020-000006,C-0001,PT-000018,J-0001,hearing,2021-02-14T13:46:00+00:00,judge,Motion to dismiss granted
+EV-000084,SYN-2020-000007,C-0002,PT-000019,J-0002,arraignment,2020-08-15T12:46:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000085,SYN-2020-000007,C-0002,PT-000019,J-0002,hearing,2020-08-30T11:05:00+00:00,judge,Discovery status reviewed
+EV-000086,SYN-2020-000007,C-0002,PT-000019,J-0002,hearing,2020-09-25T15:14:00+00:00,judge,Motion hearing held
+EV-000087,SYN-2020-000007,C-0002,PT-000019,J-0002,plea_hearing,2020-12-01T11:16:00+00:00,judge,Plea of guilty accepted
+EV-000088,SYN-2020-000007,C-0002,PT-000019,J-0002,sentencing_hearing,2020-12-11T13:42:00+00:00,judge,Sentence imposed
+EV-000089,SYN-2020-000008,C-0003,PT-000020,J-0005,arraignment,2020-08-17T08:50:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000090,SYN-2020-000008,C-0003,PT-000020,J-0005,hearing,2020-12-21T08:25:00+00:00,judge,Motion hearing held
+EV-000091,SYN-2020-000008,C-0003,PT-000020,J-0005,hearing,2021-01-27T09:32:00+00:00,judge,Status hearing held
+EV-000092,SYN-2020-000008,C-0003,PT-000020,J-0005,plea_hearing,2021-02-05T11:11:00+00:00,judge,Plea of guilty accepted
+EV-000093,SYN-2020-000008,C-0003,PT-000020,J-0005,sentencing_hearing,2021-03-21T14:27:00+00:00,judge,Sentence imposed
+EV-000094,SYN-2020-000009,C-0003,PT-000021,J-0005,arraignment,2020-08-29T15:52:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000095,SYN-2020-000009,C-0003,PT-000021,J-0005,hearing,2021-11-13T15:27:00+00:00,judge,Status hearing held
+EV-000096,SYN-2020-000010,C-0002,PT-000019,J-0002,arraignment,2020-09-06T08:17:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000097,SYN-2020-000010,C-0002,PT-000019,J-0002,hearing,2021-01-05T13:32:00+00:00,judge,Pretrial conference held
+EV-000098,SYN-2020-000010,C-0002,PT-000019,J-0002,hearing,2021-07-17T12:49:00+00:00,judge,Status hearing held
+EV-000099,SYN-2020-000010,C-0002,PT-000019,J-0002,hearing,2021-08-09T16:25:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000100,SYN-2020-000011,C-0001,PT-000022,J-0006,arraignment,2020-09-07T12:55:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000101,SYN-2020-000011,C-0001,PT-000022,J-0006,failure_to_appear,2020-10-03T14:15:00+00:00,defense,Defendant failed to appear; hearing continued
+EV-000102,SYN-2020-000011,C-0001,PT-000022,J-0006,bench_warrant,2020-10-04T13:03:00+00:00,judge,Bench warrant issued for failure to appear
+EV-000103,SYN-2020-000011,C-0001,PT-000022,J-0006,hearing,2020-10-31T15:18:00+00:00,judge,Status hearing held
+EV-000104,SYN-2020-000011,C-0001,PT-000022,J-0006,trial,2020-12-29T11:41:00+00:00,judge,Jury trial commenced
+EV-000105,SYN-2020-000011,C-0001,PT-000022,J-0006,hearing,2020-12-31T15:03:00+00:00,judge,Verdict returned
+EV-000106,SYN-2020-000012,C-0002,PT-000023,J-0002,arraignment,2020-10-10T14:22:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000107,SYN-2020-000012,C-0002,PT-000023,J-0002,hearing,2020-12-03T10:03:00+00:00,judge,Discovery status reviewed
+EV-000108,SYN-2020-000012,C-0002,PT-000023,J-0002,trial,2021-01-27T13:05:00+00:00,judge,Jury trial commenced
+EV-000109,SYN-2020-000012,C-0002,PT-000023,J-0002,hearing,2021-01-30T14:17:00+00:00,judge,Verdict returned
+EV-000110,SYN-2020-000012,C-0002,PT-000023,J-0002,sentencing_hearing,2021-02-03T08:17:00+00:00,judge,Sentence imposed
+EV-000111,SYN-2020-000013,C-0001,PT-000042,J-0006,arraignment,2020-10-14T15:46:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000112,SYN-2020-000013,C-0001,PT-000042,J-0006,hearing,2020-12-17T15:38:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000113,SYN-2020-000014,C-0002,PT-000024,J-0002,arraignment,2020-10-15T16:14:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000114,SYN-2020-000014,C-0002,PT-000024,J-0002,hearing,2021-03-23T13:44:00+00:00,judge,Pretrial conference held
+EV-000115,SYN-2020-000014,C-0002,PT-000024,J-0002,plea_hearing,2021-04-17T14:34:00+00:00,judge,Plea of guilty accepted
+EV-000116,SYN-2020-000014,C-0002,PT-000024,J-0002,sentencing_hearing,2021-05-09T08:51:00+00:00,judge,Sentence imposed
+EV-000117,SYN-2020-000015,C-0003,PT-000025,J-0005,arraignment,2020-10-20T11:23:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000118,SYN-2020-000015,C-0003,PT-000025,J-0005,plea_hearing,2021-05-03T11:01:00+00:00,judge,Plea of guilty accepted
+EV-000119,SYN-2020-000015,C-0003,PT-000025,J-0005,sentencing_hearing,2021-05-15T10:47:00+00:00,judge,Sentence imposed
+EV-000120,SYN-2020-000016,C-0003,PT-000026,J-0003,arraignment,2020-10-31T13:44:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000121,SYN-2020-000016,C-0003,PT-000026,J-0003,hearing,2021-01-29T09:31:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000122,SYN-2020-000017,C-0002,PT-000025,J-0002,arraignment,2020-11-15T08:36:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000123,SYN-2020-000017,C-0002,PT-000025,J-0002,hearing,2020-12-17T13:33:00+00:00,judge,Motion to dismiss granted
+EV-000124,SYN-2020-000018,C-0003,PT-000014,J-0005,arraignment,2020-11-29T08:40:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000125,SYN-2020-000018,C-0003,PT-000014,J-0005,hearing,2020-12-07T14:35:00+00:00,judge,Discovery status reviewed
+EV-000126,SYN-2020-000018,C-0003,PT-000014,J-0003,hearing,2020-12-21T10:05:00+00:00,judge,Motion hearing held
+EV-000127,SYN-2020-000018,C-0003,PT-000014,J-0003,plea_hearing,2020-12-28T12:05:00+00:00,judge,Plea of guilty accepted
+EV-000128,SYN-2020-000018,C-0003,PT-000014,J-0003,sentencing_hearing,2021-02-06T14:26:00+00:00,judge,Sentence imposed
+EV-000129,SYN-2021-000001,C-0002,PT-000009,J-0002,arraignment,2021-01-05T10:52:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000130,SYN-2021-000001,C-0002,PT-000009,J-0002,hearing,2021-04-10T11:03:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000131,SYN-2021-000002,C-0003,PT-000026,J-0003,arraignment,2021-01-05T09:34:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000132,SYN-2021-000002,C-0003,PT-000026,J-0005,failure_to_appear,2021-02-15T13:23:00+00:00,defense,Defendant failed to appear; hearing continued
+EV-000133,SYN-2021-000002,C-0003,PT-000026,J-0005,hearing,2021-02-17T16:59:00+00:00,judge,Pretrial conference held
+EV-000134,SYN-2021-000002,C-0003,PT-000026,J-0005,bench_warrant,2021-02-22T10:31:00+00:00,judge,Bench warrant issued for failure to appear
+EV-000135,SYN-2021-000002,C-0003,PT-000026,J-0005,plea_hearing,2021-04-20T08:32:00+00:00,judge,Plea of guilty accepted
+EV-000136,SYN-2021-000002,C-0003,PT-000026,J-0005,sentencing_hearing,2021-06-19T15:21:00+00:00,judge,Sentence imposed
+EV-000137,SYN-2021-000003,C-0001,PT-000027,J-0004,arraignment,2021-01-21T11:18:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000138,SYN-2021-000003,C-0001,PT-000027,J-0004,hearing,2021-02-01T12:54:00+00:00,judge,Discovery status reviewed
+EV-000139,SYN-2021-000004,C-0001,PT-000028,J-0001,arraignment,2021-02-02T15:59:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000140,SYN-2021-000004,C-0001,PT-000028,J-0001,hearing,2021-12-02T09:15:00+00:00,judge,Motion hearing held
+EV-000141,SYN-2021-000005,C-0003,PT-000029,J-0005,arraignment,2021-02-11T08:37:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000142,SYN-2021-000005,C-0003,PT-000029,J-0005,hearing,2021-04-01T11:17:00+00:00,judge,Pretrial conference held
+EV-000143,SYN-2021-000005,C-0003,PT-000029,J-0005,hearing,2021-04-04T16:50:00+00:00,judge,Status hearing held
+EV-000144,SYN-2021-000005,C-0003,PT-000029,J-0003,hearing,2021-08-06T12:58:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000145,SYN-2021-000006,C-0002,PT-000023,J-0002,arraignment,2021-02-12T13:24:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000146,SYN-2021-000006,C-0002,PT-000023,J-0002,hearing,2021-07-10T12:21:00+00:00,judge,Discovery status reviewed
+EV-000147,SYN-2021-000006,C-0002,PT-000023,J-0002,hearing,2021-11-21T15:50:00+00:00,judge,Status hearing held
+EV-000148,SYN-2021-000006,C-0002,PT-000023,J-0002,hearing,2021-12-30T08:06:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000149,SYN-2021-000007,C-0001,PT-000030,J-0004,arraignment,2021-03-12T16:42:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000150,SYN-2021-000007,C-0001,PT-000030,J-0004,hearing,2021-05-05T08:52:00+00:00,judge,Status hearing held
+EV-000151,SYN-2021-000007,C-0001,PT-000030,J-0001,hearing,2021-09-01T14:20:00+00:00,judge,Pretrial conference held
+EV-000152,SYN-2021-000007,C-0001,PT-000030,J-0001,plea_hearing,2021-10-27T14:40:00+00:00,judge,Plea of guilty accepted
+EV-000153,SYN-2021-000007,C-0001,PT-000030,J-0001,sentencing_hearing,2021-12-19T10:34:00+00:00,judge,Sentence imposed
+EV-000154,SYN-2021-000008,C-0001,PT-000013,J-0004,arraignment,2021-04-02T15:11:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000155,SYN-2021-000008,C-0001,PT-000013,J-0001,plea_hearing,2021-11-27T15:46:00+00:00,judge,Plea of guilty accepted
+EV-000156,SYN-2021-000009,C-0001,PT-000031,J-0001,arraignment,2021-04-09T10:41:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000157,SYN-2021-000009,C-0001,PT-000031,J-0001,hearing,2021-12-20T10:06:00+00:00,judge,Discovery status reviewed
+EV-000158,SYN-2021-000010,C-0002,PT-000032,J-0002,arraignment,2021-04-30T11:11:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000159,SYN-2021-000011,C-0002,PT-000005,J-0002,arraignment,2021-05-15T14:32:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000160,SYN-2021-000011,C-0002,PT-000005,J-0004,trial,2021-07-18T13:02:00+00:00,judge,Jury trial commenced
+EV-000161,SYN-2021-000011,C-0002,PT-000005,J-0004,hearing,2021-07-20T15:20:00+00:00,judge,Verdict returned
+EV-000162,SYN-2021-000012,C-0001,PT-000031,J-0001,arraignment,2021-06-03T09:20:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000163,SYN-2021-000012,C-0001,PT-000031,J-0001,hearing,2021-08-12T11:07:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000164,SYN-2021-000013,C-0001,PT-000033,J-0001,arraignment,2021-06-05T12:42:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000165,SYN-2021-000013,C-0001,PT-000033,J-0001,hearing,2021-07-27T13:07:00+00:00,judge,Discovery status reviewed
+EV-000166,SYN-2021-000014,C-0003,PT-000034,J-0003,arraignment,2021-06-11T09:53:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000167,SYN-2021-000014,C-0003,PT-000034,J-0003,hearing,2021-06-21T13:57:00+00:00,judge,
+EV-000168,SYN-2021-000014,C-0003,PT-000034,J-0003,hearing,2021-10-24T10:27:00+00:00,judge,Motion hearing held
+EV-000169,SYN-2021-000015,C-0001,PT-000031,J-0006,arraignment,2021-06-22T12:11:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000170,SYN-2021-000015,C-0001,PT-000031,J-0006,hearing,2021-08-23T16:13:00+00:00,judge,Status hearing held
+EV-000171,SYN-2021-000015,C-0001,PT-000031,J-0001,hearing,2021-09-30T13:33:00+00:00,judge,Pretrial conference held
+EV-000172,SYN-2021-000015,C-0001,PT-000031,J-0001,plea_hearing,2021-11-12T13:07:00+00:00,judge,Plea of guilty accepted
+EV-000173,SYN-2021-000015,C-0001,PT-000031,J-0001,sentencing_hearing,2021-12-14T10:46:00+00:00,judge,Sentence imposed
+EV-000174,SYN-2021-000016,C-0003,PT-000014,J-0005,arraignment,2021-07-02T14:37:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000175,SYN-2021-000016,C-0003,PT-000014,J-0005,hearing,2021-07-18T08:26:00+00:00,judge,Motion hearing held
+EV-000176,SYN-2021-000016,C-0003,PT-000014,J-0005,hearing,2021-07-19T12:55:00+00:00,judge,Status hearing held
+EV-000177,SYN-2021-000016,C-0003,PT-000014,J-0005,hearing,2021-07-26T09:01:00+00:00,judge,Status hearing held
+EV-000178,SYN-2021-000016,C-0003,PT-000014,J-0003,trial,2021-11-20T14:43:00+00:00,judge,Jury trial commenced
+EV-000179,SYN-2021-000016,C-0003,PT-000014,J-0003,hearing,2021-11-24T08:32:00+00:00,judge,Verdict returned
+EV-000180,SYN-2021-000016,C-0003,PT-000014,J-0003,sentencing_hearing,2021-12-05T08:11:00+00:00,judge,Sentence imposed
+EV-000181,SYN-2021-000017,C-0003,PT-000035,J-0003,arraignment,2021-07-06T11:17:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000182,SYN-2021-000017,C-0003,PT-000035,J-0003,hearing,2021-09-28T10:02:00+00:00,judge,Pretrial conference held
+EV-000183,SYN-2021-000017,C-0003,PT-000035,J-0003,hearing,2021-11-10T09:07:00+00:00,judge,Discovery status reviewed
+EV-000184,SYN-2021-000018,C-0001,PT-000022,J-0006,arraignment,2021-07-16T10:21:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000185,SYN-2021-000018,C-0001,PT-000022,J-0006,hearing,2021-07-27T12:58:00+00:00,judge,
+EV-000186,SYN-2021-000018,C-0001,PT-000022,J-0006,hearing,2021-08-01T13:59:00+00:00,judge,Status hearing held
+EV-000187,SYN-2021-000018,C-0001,PT-000022,J-0001,plea_hearing,2021-09-14T13:23:00+00:00,judge,Plea of guilty accepted
+EV-000188,SYN-2021-000018,C-0001,PT-000022,J-0001,sentencing_hearing,2021-10-08T09:21:00+00:00,judge,Sentence imposed
+EV-000189,SYN-2021-000019,C-0003,PT-000036,J-0003,arraignment,2021-07-31T14:04:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000190,SYN-2021-000019,C-0003,PT-000036,J-0003,hearing,2021-10-28T10:47:00+00:00,judge,Pretrial conference held
+EV-000191,SYN-2021-000020,C-0003,PT-000035,J-0003,arraignment,2021-08-05T11:41:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000192,SYN-2021-000021,C-0003,PT-000041,J-0005,arraignment,2021-08-17T11:06:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000193,SYN-2021-000021,C-0003,PT-000041,J-0005,hearing,2021-09-12T09:53:00+00:00,judge,Motion hearing held
+EV-000194,SYN-2021-000021,C-0003,PT-000041,J-0005,hearing,2021-12-12T16:08:00+00:00,judge,Status hearing held
+EV-000195,SYN-2021-000022,C-0002,PT-000037,J-0004,arraignment,2021-08-15T08:05:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000196,SYN-2021-000022,C-0002,PT-000037,J-0004,hearing,2021-10-24T11:26:00+00:00,judge,Pretrial conference held
+EV-000197,SYN-2021-000022,C-0002,PT-000037,J-0004,hearing,2021-11-26T14:03:00+00:00,judge,Status hearing held
+EV-000198,SYN-2021-000023,C-0002,PT-000037,J-0002,arraignment,2021-09-05T16:48:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000199,SYN-2021-000023,C-0002,PT-000037,J-0002,hearing,2021-12-19T12:09:00+00:00,judge,
+EV-000200,SYN-2021-000024,C-0002,PT-000031,J-0002,arraignment,2021-09-17T15:49:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000201,SYN-2021-000024,C-0002,PT-000031,J-0002,hearing,2021-10-06T12:09:00+00:00,judge,Pretrial conference held
+EV-000202,SYN-2021-000024,C-0002,PT-000031,J-0002,hearing,2021-10-23T13:09:00+00:00,judge,Status hearing held
+EV-000203,SYN-2021-000024,C-0002,PT-000031,J-0002,hearing,2021-11-27T15:03:00+00:00,judge,Motion to dismiss granted
+EV-000204,SYN-2021-000025,C-0001,PT-000038,J-0001,arraignment,2021-09-29T16:03:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000205,SYN-2021-000025,C-0001,PT-000038,J-0001,hearing,2021-11-27T12:37:00+00:00,judge,Motion hearing held
+EV-000206,SYN-2021-000026,C-0002,PT-000009,J-0004,arraignment,2021-10-28T13:19:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000207,SYN-2021-000026,C-0002,PT-000009,J-0002,trial,2021-11-25T14:37:00+00:00,judge,Jury trial commenced
+EV-000208,SYN-2021-000026,C-0002,PT-000009,J-0002,hearing,2021-11-27T11:30:00+00:00,judge,Verdict returned
+EV-000209,SYN-2021-000027,C-0001,PT-000039,J-0001,arraignment,2021-11-15T16:22:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000210,SYN-2021-000027,C-0001,PT-000039,J-0001,hearing,2021-11-28T15:36:00+00:00,judge,Status hearing held
+EV-000211,SYN-2021-000027,C-0001,PT-000039,J-0001,hearing,2021-12-15T09:14:00+00:00,prosecutor,Nolle prosequi entered on the motion of the prosecution
+EV-000212,SYN-2021-000028,C-0003,PT-000036,J-0003,arraignment,2021-11-15T08:11:00+00:00,judge,Arraignment held; plea of not guilty entered
+EV-000213,SYN-2021-000029,C-0002,PT-000040,J-0002,arraignment,2021-11-27T16:55:00+00:00,judge,Arraignment held; plea of not guilty entered

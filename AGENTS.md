@@ -137,7 +137,9 @@ uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
 uv run poe dev-web         # Next.js dev server in web/ (pnpm) against the local API
 uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + canonical tables (ingest role)
-uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs
+uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export
+uv run judgemetrics synthetic generate --seed 7 --scale golden --out DIR   # deterministic synthetic dataset: source/, truth/, manifest.json
+uv run judgemetrics synthetic verify DIR                                   # recompute every file hash; exit 1 on a mismatch
 ```
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
@@ -296,6 +298,31 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   rewrites the baseline and exits 0. A unit test runs `--fast`, so the
   aggregate `test` check and the `phase-verify` check fail together on
   a broken deliverable.
+- Synthetic generator (docs/SYNTHETIC_DATA.md): `judgemetrics.synthetic`
+  derives one `random.Random` per named stream (`world`, `persons`,
+  `cases`, `events`, `edge_cases`) from `sha256(f"{seed}:{name}")` and
+  draws only through the `random()`-based helpers in `rng.py`, so a new
+  draw in one stage cannot move another stage and the output is stable
+  across Python versions; identifiers are formatted counters assigned in
+  one pass in filed order after the world is built; names are composed
+  from the dictionary word lists in `wordlists.py` (unique across judges
+  and persons except the planted collisions) and never from lists of
+  real people; `truth/` (true identities, subsequent events with a
+  ceiling `days_after`, resolution expectations, planted items,
+  `metrics.json` with a definition per metric) is written beside
+  `source/` and is never read by any connector or loaded into the
+  database; `manifest.json` records the sha256 of every file and
+  `verify_dataset` recomputes them; `GENERATOR_VERSION` is bumped
+  whenever a fixed seed's output changes and the golden fixture
+  (`tests/fixtures/golden/`, seed 7) is regenerated, never hand-edited,
+  after which `.secrets.baseline` is refreshed by scanning only the
+  manifest (`uv run detect-secrets scan --baseline .secrets.baseline
+  tests/fixtures/golden/manifest.json`, then forward slashes in its
+  `filename` entries) because `detect-secrets` flags the manifest's
+  digests as high-entropy strings; the case vocabulary Step 2 writes to
+  `data/reference/case_vocabulary.yaml` is fixed first in
+  `synthetic/vocabulary.py` (`non_judicial` added to the discretion
+  classifications for prosecutor and jury decisions).
 
 ## End-of-session report (from the brief)
 

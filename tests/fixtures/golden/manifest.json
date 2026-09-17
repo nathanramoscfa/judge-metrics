@@ -1,0 +1,38 @@
+{
+  "counts": {
+    "source/assignments.csv": 81,
+    "source/cases.csv": 63,
+    "source/charges.csv": 105,
+    "source/courts.csv": 3,
+    "source/decisions.csv": 135,
+    "source/events.csv": 224,
+    "source/judges.csv": 7,
+    "source/participants.csv": 63,
+    "source/sentences.csv": 21,
+    "truth/persons.csv": 45,
+    "truth/planted.csv": 18,
+    "truth/resolution_expectations.csv": 4,
+    "truth/subsequent_events.csv": 99
+  },
+  "files": {
+    "source/assignments.csv": "a762aff4db35a9a60c7bd132b6d4a65ec7e3bbb7bdd693d2dda98e8296f9cb8d",
+    "source/cases.csv": "1461d30837965b9f380ca79173282118e81ba19d1f6cda915e141373d24bc251",
+    "source/charges.csv": "5dae2344043dc64ddf437cffd8ef99cd5a1ccaaa16cde2889cb981515172c059",
+    "source/courts.csv": "333518db8e24a81432da3a179c76afb61ebaaa0b3809063d865c2c736448736f",
+    "source/decisions.csv": "a3cc2d14aea0d92839b899d773c10a69cca5d99286460cdb0afdd6c8ba951949",
+    "source/events.csv": "22d151c4d1415506c7ca36e99bdddf44bc5669543b5d4e1873a3a1232c779c2e",
+    "source/judges.csv": "3374e5e528cbd3cc52cd419f9a23d79826eef15fd858e854519b980c1d445062",
+    "source/participants.csv": "44680fc41077c50b3b8a0e8321fcd37ded748bab9567b46c278ba60ee771bb23",
+    "source/sentences.csv": "9717d01d3d6e4630c8880653df32c6cc35c52fd26119335eb1fbde189c7ef484",
+    "truth/README.md": "f446d76983e7095ce54b43a11941f1e1a550aba8ac143ee2dd82384c8f177f16",
+    "truth/metrics.json": "122f155d4eb4a8f9fb406bc7b82a737b0e20cef6d06f34dff4b0d4a990f13914",
+    "truth/persons.csv": "ef27fc6e3db81316c2e756ffeba596ab3328d593e9d206ec6f5ecaf5539dc06a",
+    "truth/planted.csv": "a7000b60b963c9ab2a7f2fc6742536ec76de973e44e96453923c99b585dd0d57",
+    "truth/resolution_expectations.csv": "8c2697da23e8b768d9f512595eb28da127c830f97a5594086dd845e02d13c09f",
+    "truth/subsequent_events.csv": "220268d7fde84583f4d94d77afbd7bf931231d1868e509361023c6aa80d77a90"
+  },
+  "generator_version": "1",
+  "scale": "golden",
+  "seed": 7,
+  "truth_version": "1"
+}

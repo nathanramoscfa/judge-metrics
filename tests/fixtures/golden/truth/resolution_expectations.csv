@@ -1,0 +1,5 @@
+left_participant_id,right_participant_id,expected_decision,reason
+PT-000017,PT-000042,matched,same_name_same_dob_related_case
+PT-000018,PT-000019,rejected,same_name_dob_missing
+PT-000021,PT-000033,review,same_name_same_dob_no_shared_case
+PT-000030,PT-000041,matched,same_name_same_dob_related_case
