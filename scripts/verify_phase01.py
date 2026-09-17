@@ -263,8 +263,7 @@ def check_04() -> str | None:
 
 
 def check_05() -> str | None:
-    # Alarm exercise (Step 6 acceptance): deliberately broken; reverted next commit.
-    return _missing(".secrets.baseline.missing")
+    return _missing(".secrets.baseline")
 
 
 def _unpinned_uses(relative: str) -> str | None:

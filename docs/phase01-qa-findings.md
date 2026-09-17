@@ -84,10 +84,15 @@ Recorded per the Step 6 acceptance criterion ("both were seen to fail on
 a deliberately broken check during this step and then pass after the
 fix"):
 
-| Event | Commit | `phase-verify (01)` | `test` |
-|-------|--------|---------------------|--------|
-| Deliberate break (check 5 → `.secrets.baseline.missing`) | see PR #10 timeline | fail | fail |
-| Fix (check 5 restored) | see PR #10 timeline | pass | pass |
+| Event | Commit (PR #10) | `phase-verify (01)` | `test` |
+|-------|-----------------|---------------------|--------|
+| Deliberate break (check 5 → `.secrets.baseline.missing`) | `8b84038` | fail — `[FAIL] 05 … missing .secrets.baseline.missing` (run 35170915319) | fail — `python` job: `test_verify_script_fast_exits_zero` (run 35170915243) |
+| Fix (check 5 restored) | the next commit | pass | pass |
+
+The earlier run on the PR's first commit (`0fdbde0`, run 35170498198)
+also failed `phase-verify (01)`, on the `--security` step, for finding
+6.7 — the check caught a real defect on its own pull request before the
+exercise began.
 
 ## Pre-ship items
 
