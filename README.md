@@ -24,9 +24,12 @@ the scanned API container image), the ingest framework with its first
 real connector (`uv run poe ingest-fjc` loads the Federal Judicial
 Center's judges, courts, and service records into an immutable raw lake
 and the canonical tables, idempotently, with provenance down to the
-stored bytes), and the public API v1 (paginated, strictly validated,
-rate-limited search, provenance on every entity) are in place; the web
-foundation is next. See:
+stored bytes), the public API v1 (paginated, strictly validated,
+rate-limited search, provenance on every entity), and the web
+foundation (`web/`: Next.js pages for home, search, judge, court, and
+methodology over a client generated from the OpenAPI document, with a
+Playwright smoke test and a scanned web image) are in place; Phase 1
+QA and verification is next. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -64,6 +67,7 @@ uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
 uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs (Swagger UI over the API below)
+uv run poe dev-web      # http://localhost:3000 (the web app, against the API above)
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
@@ -94,6 +98,33 @@ rate-limited trigram search:
 The API image builds with `docker build -f infra/docker/api.Dockerfile .`
 and runs beside the services with `docker compose --profile app up`
 (port 8000; CI builds and vulnerability-scans it on every pull request).
+
+## Web
+
+The web application in [`web/`](web/) (Next.js App Router, TypeScript,
+Tailwind CSS, shadcn/ui, TanStack Table; light and dark mode) renders
+the home page with global search and coverage tiles, `/search`,
+`/judges/[judgeId]` (identity, service timeline, source coverage panel
+with each artifact's sha256), `/courts/[courtId]` (judges serving on a
+chosen date), and `/methodology`. Its API client is generated from
+`docs/openapi.json` and it reads one variable, `NEXT_PUBLIC_API_BASE_URL`.
+
+```sh
+cd web
+cp .env.example .env.local          # NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+corepack enable                     # pnpm at the version package.json pins
+pnpm install --frozen-lockfile
+pnpm dev                            # or, from the repo root: uv run poe dev-web
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm generate:api                   # after any API route or schema change
+pnpm exec playwright install chromium
+pnpm e2e                            # against a running API and web server
+```
+
+Node 22 (`.node-version`) and pnpm via corepack are the only tooling.
+The web image builds with `docker build -f infra/docker/web.Dockerfile
+web` and runs as the Compose `web` service (profile `app`, port 3000)
+next to the API.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the command interface, the
 security gate, branch naming, and the step lifecycle.
@@ -136,23 +167,23 @@ judge-metrics/
 │   ├── DATA_SOURCES.md     source register with verification status
 │   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles, API layering
 │   ├── API.md              the API contract: pagination, filters, errors, rate limits, provenance
-│   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export)
+│   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export); the web client is generated from it
 │   ├── DATA_MODEL.md       the twenty-three tables, natural keys, indexes, grants
 │   ├── phase01-roadmap.md  executable Phase 1 plan
 │   └── brief/              the product specification, verbatim
 ├── alembic/                migration environment and versions (0001, 0002)
 ├── data/                   reference tables (tracked); raw lake and synthetic data (untracked)
 ├── alembic.ini             Alembic config (the URL comes from settings, never the ini)
-├── infra/docker/           api.Dockerfile and postgres/ init scripts (extensions, roles)
+├── infra/docker/           api.Dockerfile, web.Dockerfile, and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
 ├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/
 ├── tests/unit/, tests/integration/, tests/fixtures/
+├── web/                    Next.js app: app/ (pages), components/, lib/api/ (generated client), tests/unit, tests/e2e
+├── .node-version           Node 22 for web/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks
 └── uv.lock
 ```
-
-Planned from later Phase 1 steps: `web/` (Next.js).
 
 ## Data
 

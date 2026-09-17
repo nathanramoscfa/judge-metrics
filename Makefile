@@ -2,8 +2,8 @@
 # Thin shim over the cross-platform task runner (poethepoet: `uv run poe <task>`)
 # so the brief's `make <target>` interface works wherever GNU make exists.
 # On Windows without make, run `uv run poe <task>` directly; the targets are
-# identical. Later steps add: dev-web, seed, compute-metrics, bootstrap.
-.PHONY: install test lint fmt fmt-check typecheck check gate kit up down migrate dev-api ingest-fjc
+# identical. Later steps add: seed, compute-metrics, bootstrap.
+.PHONY: install test lint fmt fmt-check typecheck check gate kit up down migrate dev-api dev-web ingest-fjc
 
 install:
 	uv sync
@@ -43,6 +43,9 @@ migrate:
 
 dev-api:
 	uv run poe dev-api
+
+dev-web:
+	uv run poe dev-web
 
 ingest-fjc:
 	uv run poe ingest-fjc

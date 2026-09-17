@@ -1,0 +1,13 @@
+# web/.dockerignore
+# The web image builds from web/ as its context; only sources reach it.
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts

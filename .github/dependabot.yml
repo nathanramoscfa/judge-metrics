@@ -1,6 +1,6 @@
 # .github/dependabot.yml
-# Scheduled dependency update PRs (uv, GitHub Actions, the API image's base
-# images). Step 5 adds `npm` for /web.
+# Scheduled dependency update PRs (uv, GitHub Actions, the images' base
+# images, and the web application's npm packages under /web).
 version: 2
 updates:
   - package-ecosystem: uv
@@ -29,3 +29,14 @@ updates:
       day: monday
     commit-message:
       prefix: "chore(docker)"
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      web-minor-and-patch:
+        update-types: [minor, patch]

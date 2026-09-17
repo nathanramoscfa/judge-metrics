@@ -3,8 +3,9 @@
 
 These tests read the repository's own files, so they guard the license,
 community files, placeholder-only `.env.example`, the pre-commit gate, the
-SHA-pinned least-privilege CI workflow, the Compose services, and the
-agreement between the poe tasks and the Makefile shim.
+SHA-pinned least-privilege CI workflow, the Compose services, the web
+tier's chassis (Step 5: lockfile, container image, CI jobs, Dependabot), and
+the agreement between the poe tasks and the Makefile shim.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ NON_SECRET_CONSTANTS = {
     "8000",
     "9000",
     "9001",
+    "3000",
+    "http://api:8000",
     "false",
     "60",
     "10",
@@ -59,6 +62,7 @@ SHARED_TARGETS = (
     "gate",
     "migrate",
     "dev-api",
+    "dev-web",
     "ingest-fjc",
 )
 SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
@@ -247,8 +251,8 @@ def test_ci_declares_least_privilege_permissions() -> None:
 def test_ci_has_required_jobs_and_aggregate_gate() -> None:
     workflow = _yaml(".github/workflows/ci.yml")
     jobs = workflow["jobs"]
-    assert {"python", "security", "container", "test"} <= jobs.keys()
-    assert jobs["test"]["needs"] == ["python", "security", "container"]
+    assert {"python", "security", "container", "web", "e2e", "test"} <= jobs.keys()
+    assert jobs["test"]["needs"] == ["python", "security", "container", "web", "e2e"]
     assert jobs["test"]["if"] == "always()"
     assert "postgres:17" == jobs["python"]["services"]["postgres"]["image"]
     python_env = jobs["python"]["env"]
@@ -262,21 +266,70 @@ def test_ci_has_required_jobs_and_aggregate_gate() -> None:
         f"{s.get('uses', '')} {s.get('run', '')}" for s in jobs["container"]["steps"]
     )
     assert "docker build -f infra/docker/api.Dockerfile" in container_steps
-    assert "trivy-action" in container_steps
-    scan = next(s for s in jobs["container"]["steps"] if "trivy-action" in s.get("uses", ""))
-    assert scan["with"]["severity"] == "HIGH,CRITICAL"
-    assert str(scan["with"]["exit-code"]) == "1"
+    assert "docker build -f infra/docker/web.Dockerfile" in container_steps
+    scans = [s for s in jobs["container"]["steps"] if "trivy-action" in s.get("uses", "")]
+    assert {scan["with"]["image-ref"] for scan in scans} == {
+        "judgemetrics-api:ci",
+        "judgemetrics-web:ci",
+    }
+    for scan in scans:
+        assert scan["with"]["severity"] == "HIGH,CRITICAL"
+        assert str(scan["with"]["exit-code"]) == "1"
     triggers = workflow.get("on") or workflow.get(True)
     assert triggers["push"]["branches"] == ["main"]
     assert "pull_request" in triggers
     assert workflow["concurrency"]["cancel-in-progress"] is True
 
 
-def test_dependabot_covers_uv_actions_and_docker() -> None:
+def test_ci_web_and_e2e_jobs() -> None:
+    jobs = _yaml(".github/workflows/ci.yml")["jobs"]
+    web_runs = [s.get("run", "") for s in jobs["web"]["steps"]]
+    assert jobs["web"]["defaults"]["run"]["working-directory"] == "web"
+    for command in (
+        "corepack enable",
+        "pnpm install --frozen-lockfile",
+        "pnpm lint",
+        "pnpm typecheck",
+        "pnpm test",
+        "pnpm build",
+        "pnpm audit --audit-level=high",
+    ):
+        assert command in web_runs, command
+    # The bundle scan needs a build, so the build precedes the tests.
+    assert web_runs.index("pnpm build") < web_runs.index("pnpm test")
+    node_setups = [
+        s for job in ("web", "e2e") for s in jobs[job]["steps"] if "setup-node" in s.get("uses", "")
+    ]
+    assert len(node_setups) == 2
+    for step in node_setups:
+        assert step["with"]["node-version-file"] == ".node-version"
+    assert _read(".node-version").strip() == "22"
+
+    e2e = jobs["e2e"]
+    assert e2e["services"]["postgres"]["image"] == "postgres:17"
+    assert e2e["env"]["JUDGEMETRICS_INGEST_DATABASE_URL"].startswith(
+        "postgresql+psycopg://judgemetrics_ingest:"
+    )
+    assert e2e["env"]["NEXT_PUBLIC_API_BASE_URL"] == "http://localhost:8000"
+    e2e_runs = "\n".join(s.get("run", "") for s in e2e["steps"])
+    for command in (
+        "02-roles.sql",
+        "uv sync --frozen",
+        "uv run poe migrate",
+        "uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc",
+        "uv run judgemetrics serve",
+        "pnpm exec playwright install --with-deps chromium",
+        "pnpm e2e",
+    ):
+        assert command in e2e_runs, command
+
+
+def test_dependabot_covers_uv_actions_docker_and_npm() -> None:
     config = _yaml(".github/dependabot.yml")
     ecosystems = {u["package-ecosystem"]: u for u in config["updates"]}
-    assert {"uv", "github-actions", "docker"} <= ecosystems.keys()
+    assert {"uv", "github-actions", "docker", "npm"} <= ecosystems.keys()
     assert ecosystems["docker"]["directory"] == "/infra/docker"
+    assert ecosystems["npm"]["directory"] == "/web"
     for update in ecosystems.values():
         assert update["schedule"]["interval"] == "weekly"
 
@@ -284,7 +337,15 @@ def test_dependabot_covers_uv_actions_and_docker() -> None:
 def test_compose_defines_postgres_and_minio() -> None:
     compose = _yaml("docker-compose.yml")
     services = compose["services"]
-    assert {"postgres", "minio", "minio-init", "api"} <= services.keys()
+    assert {"postgres", "minio", "minio-init", "api", "web"} <= services.keys()
+    web = services["web"]
+    assert web["profiles"] == ["app"]
+    assert web["build"]["context"] == "web"
+    assert web["build"]["dockerfile"] == "../infra/docker/web.Dockerfile"
+    assert "NEXT_PUBLIC_API_BASE_URL" in web["build"]["args"]
+    assert "api" in web["depends_on"]
+    assert any(str(port).endswith(":3000") for port in web["ports"])
+    assert "env_file" not in web, "the web image reads no .env"
     api = services["api"]
     assert api["profiles"] == ["app"]
     assert api["build"]["dockerfile"] == "infra/docker/api.Dockerfile"
@@ -334,6 +395,73 @@ def test_api_dockerfile_is_hardened() -> None:
     ]
 
 
+def test_web_dockerfile_is_hardened() -> None:
+    dockerfile = _read("infra/docker/web.Dockerfile")
+    assert dockerfile.startswith("# infra/docker/web.Dockerfile")
+    assert dockerfile.count("FROM node:22-alpine") == 3
+    assert "corepack enable" in dockerfile
+    assert "pnpm install --frozen-lockfile" in dockerfile
+    assert "ARG NEXT_PUBLIC_API_BASE_URL" in dockerfile
+    assert "/app/.next/standalone" in dockerfile
+    assert "USER judgemetrics" in dockerfile
+    assert "HEALTHCHECK" in dockerfile
+    assert 'CMD ["node", "server.js"]' in dockerfile
+    assert "COPY .env" not in dockerfile
+    ignore = [line.strip() for line in _read("web/.dockerignore").splitlines()]
+    assert ".env" in ignore and ".env.*" in ignore and "node_modules" in ignore
+    next_config = _read("web/next.config.ts")
+    assert 'output: "standalone"' in next_config
+
+
+def test_web_manifest_scripts_and_lockfile() -> None:
+    import json
+
+    manifest = json.loads(_read("web/package.json"))
+    for script in ("dev", "build", "start", "lint", "typecheck", "test", "e2e", "generate:api"):
+        assert script in manifest["scripts"], script
+    assert manifest["scripts"]["typecheck"].endswith("tsc --noEmit")
+    assert manifest["scripts"]["generate:api"] == (
+        "openapi-typescript ../docs/openapi.json --output lib/api/schema.d.ts"
+    )
+    assert manifest["packageManager"].startswith("pnpm@")
+    assert (REPO_ROOT / "web" / "pnpm-lock.yaml").is_file()
+    assert (REPO_ROOT / "web" / "lib" / "api" / "schema.d.ts").is_file()
+    for package in (
+        "next",
+        "next-themes",
+        "@tanstack/react-table",
+        "openapi-fetch",
+    ):
+        assert package in manifest["dependencies"], package
+    for package in (
+        "openapi-typescript",
+        "vitest",
+        "@testing-library/react",
+        "@playwright/test",
+        "eslint-plugin-security",
+    ):
+        assert package in manifest["devDependencies"], package
+    env_example = _read("web/.env.example")
+    assert "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000" in env_example
+    assert "JUDGEMETRICS_" not in env_example
+
+
+def test_web_reads_no_server_side_variables() -> None:
+    """Only NEXT_PUBLIC_* reaches the client bundle; the web tier reads nothing else."""
+    web = REPO_ROOT / "web"
+    offenders: list[str] = []
+    for path in list(web.rglob("*.ts")) + list(web.rglob("*.tsx")):
+        if "node_modules" in path.parts or ".next" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"process\.env\.([A-Z0-9_]+)", text):
+            name = match.group(1)
+            if not name.startswith("NEXT_PUBLIC_") and name not in {"CI", "PLAYWRIGHT_BASE_URL"}:
+                offenders.append(f"{path.relative_to(REPO_ROOT)}: {name}")
+        assert "dangerouslySetInnerHTML" not in text, path
+    assert offenders == []
+
+
 def test_command_interface_targets_present() -> None:
     tasks = _pyproject()["tool"]["poe"]["tasks"]
     makefile = _read("Makefile")
@@ -352,6 +480,7 @@ def test_command_interface_targets_present() -> None:
     assert tasks["gate-commit"] == "pre-commit run --all-files"
     assert tasks["migrate"] == "judgemetrics db upgrade"
     assert tasks["dev-api"] == "judgemetrics serve --reload"
+    assert tasks["dev-web"] == "pnpm --dir web dev"
     assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
     assert _pyproject()["project"]["scripts"]["judgemetrics"] == "judgemetrics.cli:main"
 
@@ -382,6 +511,18 @@ def test_bandit_configured_to_exclude_tests() -> None:
         (".dockerignore", "# "),
         ("alembic.ini", "# "),
         ("infra/docker/api.Dockerfile", "# "),
+        ("infra/docker/web.Dockerfile", "# "),
+        ("web/.dockerignore", "# "),
+        ("web/.env.example", "# "),
+        ("web/next.config.ts", "// "),
+        ("web/eslint.config.mjs", "// "),
+        ("web/vitest.config.ts", "// "),
+        ("web/playwright.config.ts", "// "),
+        ("web/lib/api/client.ts", "// "),
+        ("web/app/layout.tsx", "// "),
+        ("web/app/page.tsx", "// "),
+        ("web/app/globals.css", "/* "),
+        ("web/tests/e2e/smoke.spec.ts", "// "),
         ("infra/docker/postgres/01-extensions.sql", "-- "),
         ("infra/docker/postgres/02-roles.sql", "-- "),
         ("CONTRIBUTING.md", "<!-- "),

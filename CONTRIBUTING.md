@@ -40,7 +40,9 @@ mirrors every target for environments with GNU make (`make check`).
 | `dev-api`       | the API with auto-reload                               |
 | `ingest-fjc`    | `judgemetrics ingest run fjc`: the FJC connector, as the ingest role, into the raw lake and canonical tables |
 
-Later steps add `dev-web`, `seed`, `compute-metrics`, and `bootstrap`.
+Later steps add `seed`, `compute-metrics`, and `bootstrap`. The web
+app has its own scripts (`pnpm lint|typecheck|test|build|e2e`, see
+`web/package.json`); `uv run poe dev-web` starts its dev server.
 
 ## The security gate
 

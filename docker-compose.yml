@@ -1,9 +1,10 @@
 # docker-compose.yml
 # Local services for development: PostgreSQL 17 (pg_trgm, three application
 # roles) and MinIO (S3-compatible raw object lake). Values come from `.env`
-# (copy `.env.example`; `.env` is never tracked). The `api` service (profile
-# `app`) builds the API image and is opt-in: `docker compose --profile app up`.
-# `uv run poe up` / `uv run poe down` wrap `docker compose`.
+# (copy `.env.example`; `.env` is never tracked). The `api` and `web` services
+# (profile `app`) build the application images and are opt-in:
+# `docker compose --profile app up`. `uv run poe up` / `uv run poe down` wrap
+# `docker compose`.
 name: judgemetrics
 
 services:
@@ -106,6 +107,25 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    # The web image (infra/docker/web.Dockerfile), reachable on port 3000.
+    # NEXT_PUBLIC_API_BASE_URL is inlined at build time; inside the Compose
+    # network the API is `http://api:8000`, and WEB_API_BASE_URL in `.env`
+    # overrides it when the browser must reach the API another way.
+    profiles: ["app"]
+    build:
+      context: web
+      dockerfile: ../infra/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${WEB_API_BASE_URL:-http://api:8000}
+    image: judgemetrics-web:local
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
