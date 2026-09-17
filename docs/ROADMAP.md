@@ -139,7 +139,9 @@ planning kit is re-exported (`uv run poe kit`) and
   the PR's checks are green; V2.3, V3.3, and V4.2 need a configured
   database (`.env` or `JUDGEMETRICS_DATABASE_URL`) and V5.3 needs the
   API and web app running, each reported as `SKIP` with the reason
-  otherwise.
+  otherwise. `--post` and `--all` run the Playwright smoke before the
+  Python suites because the migration round-trip test empties the
+  configured database; re-run `uv run poe ingest-fjc` afterwards.
 
 ## Next milestones
 

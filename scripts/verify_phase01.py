@@ -921,10 +921,18 @@ def suites_outcome(outcomes: Sequence[Outcome]) -> tuple[Status, str]:
 
 
 def post_matrix(statics: Sequence[Outcome]) -> list[Outcome]:
-    """Run every suite the V-checks need once, then report V1.1-V6.4."""
+    """Run every suite the V-checks need once, then report V1.1-V6.4.
+
+    The Playwright smoke runs before the Python integration suites: the
+    migration round-trip test (V2.3) downgrades the configured database to
+    base and back, and the API tests purge their fixture ingest, so a live
+    ingest the smoke test needs would be gone by then (QA finding 2.5).
+    """
     checks = pr_checks()
+    e2e = e2e_suite()
+    node = node_suites()
     security = security_suites()
-    heading("Suites for V1-V5")
+    heading("Suites for V1-V4")
     hygiene = pytest_suite(
         "V1.2", "tests/unit/test_repo_hygiene.py", "tests/unit/test_repo_hygiene.py"
     )
@@ -962,8 +970,6 @@ def post_matrix(statics: Sequence[Outcome]) -> list[Outcome]:
         "tests/integration/test_query_counts.py",
     )
     openapi = pytest_suite("V4.3", "OpenAPI snapshot test", "tests/unit/test_openapi.py")
-    node = node_suites()
-    e2e = e2e_suite()
     security_status, security_reason = suites_outcome(security)
     all_static = statics_in_range(statics, 1, len(STATIC_CHECKS))
     on_ci_linux = sys.platform.startswith("linux") and os.environ.get("CI") == "true"
@@ -1107,12 +1113,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         statics = run_static_checks()
         outcomes.extend(statics)
-        if mode in ("py", "default (fast + py)", "all"):
-            outcomes.extend(py_suites())
-        if mode in ("node", "all"):
-            outcomes.extend(node_suites())
+        # The smoke test precedes the Python suites in --all for the reason
+        # given in post_matrix: the integration suite empties the database.
         if mode in ("e2e", "all"):
             outcomes.append(e2e_suite())
+        if mode in ("node", "all"):
+            outcomes.extend(node_suites())
+        if mode in ("py", "default (fast + py)", "all"):
+            outcomes.extend(py_suites())
         if mode == "all":
             outcomes.extend(security_suites())
         if mode == "post":
