@@ -60,8 +60,13 @@ def test_an_unset_ingest_url_falls_back_to_the_scratch_owner() -> None:
     assert make_url(scratch.database_url).database == "judgemetrics_test"
 
 
-def test_without_a_scratch_url_the_settings_are_returned_unchanged() -> None:
+def test_without_a_scratch_url_the_settings_are_returned_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # CI exports the variable for the suite; this test needs it absent.
+    monkeypatch.delenv(TEST_DATABASE_VARIABLE, raising=False)
     settings = Settings(env="test", database_url=APP, admin_database_url=ADMIN)
+    assert settings.test_database_url is None
     assert scratch_settings(settings) is settings
 
 
