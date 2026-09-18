@@ -15,10 +15,16 @@ Brief step → function here:
  8. normalize                     ``connector.normalize`` per parsed row
  9. deduplicate                   ``_deduplicate`` by ``natural_key`` within the run
 10. resolve entities              ``_resolve`` (exact external-id match for judges,
-                                  exact (canonical_name, court_type) for courts)
-11. run data-quality checks       ``judgemetrics.quality.checks.run_checks``
+                                  exact (canonical_name, court_type) for courts, exact
+                                  (court, normalized number) for cases, and persons by
+                                  the hash of their stable source identifier through the
+                                  ``resolve_persons`` hook)
+11. run data-quality checks       ``judgemetrics.quality.checks.run_checks`` (and the
+                                  pre-deduplication checks right after step 8)
 12. publish canonical rows        ``_publish``: ``INSERT … ON CONFLICT`` upserts that
-                                  write only rows whose substantive columns changed
+                                  write only rows whose substantive columns changed —
+                                  reference tables here, case-level tables in
+                                  ``judgemetrics.ingest.publish``, in dependency order
 13. recompute affected metrics    ``recompute_metrics`` (no-op until Phase 3)
 14. record lineage and run stats  issues linked to source records and entities;
                                   ``ingest_run`` counts, versions, status
@@ -27,7 +33,14 @@ Idempotency: an artifact whose ``(source, external_id, sha256)`` already
 has a ``source_record`` is not parsed again unless ``force`` is set or the
 connector's ``parser_version`` changed, and the upserts leave unchanged
 rows untouched, so a rerun over unchanged files creates and updates zero
-canonical rows. Transactions: the ``ingest_run`` row is committed first
+canonical rows. A connector that implements ``SupportsContext`` receives
+every artifact of the run (parsed or not) before parsing starts, so its
+cross-file lookups are complete when a single file changed.
+
+Person resolution: ``resolve_persons(session, drafts, run)`` is the Phase 2
+Step 2 hook — exact match on the ``source_participant_id`` hash against
+``person_identifier``; otherwise a new person. Step 3 replaces it with the
+staged entity-resolution pipeline (deterministic → rules → scoring → review). Transactions: the ``ingest_run`` row is committed first
 (so a failed run is recorded), the whole publish — source records,
 canonical rows, issues, run statistics — is one transaction, and a
 failure rolls it back and records ``failed`` with the reason. The caller
@@ -73,27 +86,55 @@ from judgemetrics.ingest.base import (
     PREVIOUS_LAST_MODIFIED,
     PREVIOUS_SHA256,
     CanonicalRecord,
+    CaseDraft,
+    CasePartyDraft,
+    ChargeDraft,
     Checkpoint,
     CourtDraft,
+    CourtEventDraft,
+    DecisionDraft,
     IngestError,
+    JudgeAssignmentDraft,
     JudgeDraft,
     JudgeServiceDraft,
     JurisdictionDraft,
+    JusticeEventDraft,
     NaturalKey,
+    PersonDraft,
     Provenance,
     RawArtifact,
+    SentenceDraft,
     SourceArtifact,
     SourceConnector,
     SupportsCheckpoint,
+    SupportsContext,
     TaggedRecord,
+    describe_key,
     sha256_hex,
     utc_now,
 )
 from judgemetrics.ingest.http import parse_http_date
+from judgemetrics.ingest.publish import (
+    PERSON_IDENTIFIER,
+    RunCounts,
+    TableCounts,
+    lookup_cases,
+    upsert_assignments,
+    upsert_cases,
+    upsert_charges,
+    upsert_decisions,
+    upsert_events,
+    upsert_justice_events,
+    upsert_parties,
+    upsert_person_identifiers,
+    upsert_persons,
+    upsert_sentences,
+)
 from judgemetrics.ingest.registry import get_connector
 from judgemetrics.ingest.store import RawObjectStore, object_key
 from judgemetrics.logging import get_logger
-from judgemetrics.quality.checks import IssueDraft, run_checks
+from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplication_checks
+from judgemetrics.security.identifiers import STABLE_KINDS
 
 log = get_logger(__name__)
 
@@ -103,7 +144,15 @@ NORMALIZE_FAILED = "normalize_failed"
 UNRESOLVED_JUDGE = "unresolved_judge"
 UNRESOLVED_COURT = "unresolved_court"
 UNRESOLVED_JURISDICTION = "unresolved_jurisdiction"
-JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid"})
+UNRESOLVED_CASE = "unresolved_case"
+UNRESOLVED_PERSON = "unresolved_person"
+# Judge identity systems with a partial unique expression index on
+# ``external_ids ->> '<system>'`` (``uq_judge_external_ids_<system>``).
+JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid", "synthetic_judge_code"})
+# The identifier kinds a person resolves on deterministically.
+PERSON_IDENTITY_KINDS = STABLE_KINDS
+
+__all__ = ["IngestFailed", "PublishedIds", "RunCounts", "TableCounts", "run_ingest"]
 
 _EXTENSION = re.compile(r"[^a-z0-9.]")
 _INSERTED = sa.literal_column("(xmax = 0)", type_=sa.Boolean).label("inserted")
@@ -116,14 +165,6 @@ JUDGE_SERVICE = Base.metadata.tables["judge_service"]
 
 class IngestFailed(IngestError):
     """The run cannot continue; recorded as ``failed`` with this message."""
-
-
-@dataclass(slots=True)
-class RunCounts:
-    seen: int = 0
-    created: int = 0
-    updated: int = 0
-    rejected: int = 0
 
 
 @dataclass(slots=True)
@@ -140,14 +181,53 @@ class _Resolved:
     courts: list[TaggedRecord] = field(default_factory=list)
     judges: list[TaggedRecord] = field(default_factory=list)
     services: list[TaggedRecord] = field(default_factory=list)
+    # Case-level drafts (Phase 2), in publish order.
+    persons: list[TaggedRecord] = field(default_factory=list)
+    cases: list[TaggedRecord] = field(default_factory=list)
+    parties: list[TaggedRecord] = field(default_factory=list)
+    assignments: list[TaggedRecord] = field(default_factory=list)
+    charges: list[TaggedRecord] = field(default_factory=list)
+    events: list[TaggedRecord] = field(default_factory=list)
+    decisions: list[TaggedRecord] = field(default_factory=list)
+    sentences: list[TaggedRecord] = field(default_factory=list)
+    justice_events: list[TaggedRecord] = field(default_factory=list)
     rejections: list[IssueDraft] = field(default_factory=list)
     # Entities referenced by the run's drafts that already exist in the database.
     db_jurisdictions: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
     db_courts: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
     db_judges: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
+    db_cases: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
+    db_persons: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
+    # Person drafts whose identifier already names a person (key → person id);
+    # the rest of ``persons`` are inserted.
+    existing_persons: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
 
     def all_tagged(self) -> list[TaggedRecord]:
-        return [*self.jurisdictions, *self.courts, *self.judges, *self.services]
+        return [
+            *self.jurisdictions,
+            *self.courts,
+            *self.judges,
+            *self.services,
+            *self.persons,
+            *self.cases,
+            *self.parties,
+            *self.assignments,
+            *self.charges,
+            *self.events,
+            *self.decisions,
+            *self.sentences,
+            *self.justice_events,
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class PersonResolution:
+    """What the person-resolution hook decided for the run's person drafts."""
+
+    # Draft key → the id of the person it resolved to.
+    existing: dict[NaturalKey, uuid.UUID]
+    # Drafts for which no person exists yet (inserted by the publish step).
+    new: list[TaggedRecord]
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,14 +250,21 @@ def run_ingest(
     settings: Settings,
     from_fixture: Path | None = None,
     force: bool = False,
+    connector: SourceConnector | None = None,
 ) -> IngestRun:
     """Run the pipeline for ``source_id`` and return its ``IngestRun`` row.
 
     ``from_fixture`` reads each discovered artifact from ``<dir>/<external_id>``
     instead of fetching it; ``force`` re-parses artifacts whose hash is
-    already recorded. The returned run is committed with its final status.
+    already recorded; ``connector`` replaces the registry's instance (the
+    ``seed`` command points the synthetic connector at the dataset it just
+    wrote). The returned run is committed with its final status.
     """
-    connector = get_connector(source_id)
+    if connector is None:
+        connector = get_connector(source_id)
+    elif connector.source_id != source_id:
+        msg = f"connector {connector.source_id!r} does not serve source {source_id!r}"
+        raise IngestFailed(msg)
     source = _upsert_source(session, connector)
     run = IngestRun(
         source_id=source.id,
@@ -229,6 +316,7 @@ def run_ingest(
         created=counts.created,
         updated=counts.updated,
         rejected=counts.rejected,
+        tables=counts.by_table(),
     )
     return run
 
@@ -336,6 +424,9 @@ def _execute(
         for artifact in artifacts
     ]
 
+    if isinstance(connector, SupportsContext):
+        connector.load_context([_materialized(state, store) for state in states])
+
     counts = RunCounts()
     tagged: list[TaggedRecord] = []
     issues: list[IssueDraft] = []
@@ -375,8 +466,9 @@ def _execute(
             tagged.extend(TaggedRecord(record=draft, provenance=provenance) for draft in drafts)
         bound.info("ingest.artifact.parsed", external_id=state.artifact.external_id, rows=rows)
 
+    issues.extend(run_pre_deduplication_checks(tagged))  # step 11, the part step 9 would hide
     deduplicated = _deduplicate(tagged, bound)  # step 9
-    resolved = _resolve(session, deduplicated)  # step 10
+    resolved = _resolve(session, deduplicated, run)  # step 10
     counts.rejected += len(resolved.rejections)
     issues.extend(resolved.rejections)
     issues.extend(run_checks(resolved.all_tagged()))  # step 11
@@ -517,12 +609,38 @@ def _with_validators(artifact: SourceArtifact, previous: SourceRecord | None) ->
     return artifact.with_metadata(**extra)
 
 
-def _read_fixture(artifact: SourceArtifact, directory: Path) -> RawArtifact:
-    name = artifact.external_id
-    if not name or Path(name).name != name or name in {".", ".."}:
-        msg = f"fixture artifact id is not a plain file name: {name!r}"
+def _materialized(state: _ArtifactState, store: RawObjectStore) -> RawArtifact:
+    """The artifact with its bytes present, read back from the lake after a 304."""
+    raw = state.raw
+    if not raw.not_modified:
+        return raw
+    stored = store.get(state.record.raw_object_path)
+    if sha256_hex(stored) != state.record.raw_sha256:
+        msg = f"{state.artifact.external_id}: stored raw object does not match its record"
         raise IngestFailed(msg)
-    path = directory / name
+    return dataclasses.replace(
+        raw, path_or_bytes=stored, size_bytes=len(stored), not_modified=False
+    )
+
+
+def _read_fixture(artifact: SourceArtifact, directory: Path) -> RawArtifact:
+    """``<directory>/<external_id>`` for a plain relative id that stays inside the directory."""
+    name = artifact.external_id
+    parts = name.split("/") if name else []
+    if (
+        not parts
+        or any(part in {"", ".", ".."} for part in parts)
+        or "\\" in name
+        or Path(name).is_absolute()
+        or any(Path(part).name != part for part in parts)
+    ):
+        msg = f"fixture artifact id is not a plain relative path: {name!r}"
+        raise IngestFailed(msg)
+    base = directory.resolve()
+    path = (base / Path(*parts)).resolve()
+    if base not in path.parents:
+        msg = f"fixture artifact id escapes the fixture directory: {name!r}"
+        raise IngestFailed(msg)
     if not path.is_file():
         msg = f"fixture file missing: {path}"
         raise IngestFailed(msg)
@@ -572,10 +690,14 @@ def _deduplicate(tagged: Iterable[TaggedRecord], bound: Any) -> list[TaggedRecor
     return list(kept.values())
 
 
-def _resolve(session: Session, tagged: Sequence[TaggedRecord]) -> _Resolved:
+def _resolve(session: Session, tagged: Sequence[TaggedRecord], run: IngestRun) -> _Resolved:
     resolved = _Resolved()
     services: list[TaggedRecord] = []
     courts: list[TaggedRecord] = []
+    persons: list[TaggedRecord] = []
+    cases: list[TaggedRecord] = []
+    children: list[TaggedRecord] = []
+    justice_events: list[TaggedRecord] = []
     for item in tagged:
         record = item.record
         if isinstance(record, JurisdictionDraft):
@@ -584,11 +706,18 @@ def _resolve(session: Session, tagged: Sequence[TaggedRecord]) -> _Resolved:
             courts.append(item)
         elif isinstance(record, JudgeDraft):
             resolved.judges.append(item)
-        else:
+        elif isinstance(record, JudgeServiceDraft):
             services.append(item)
+        elif isinstance(record, PersonDraft):
+            persons.append(item)
+        elif isinstance(record, CaseDraft):
+            cases.append(item)
+        elif isinstance(record, JusticeEventDraft):
+            justice_events.append(item)
+        else:
+            children.append(item)
 
     jurisdiction_keys = {item.record.natural_key for item in resolved.jurisdictions}
-    court_keys = {item.record.natural_key for item in courts}
     judge_keys = {item.record.natural_key for item in resolved.judges}
 
     wanted_jurisdictions = {
@@ -613,33 +742,180 @@ def _resolve(session: Session, tagged: Sequence[TaggedRecord]) -> _Resolved:
             )
     court_keys = {item.record.natural_key for item in resolved.courts}
 
-    wanted_courts = {
-        item.record.court_key
-        for item in services
-        if isinstance(item.record, JudgeServiceDraft) and item.record.court_key not in court_keys
-    }
-    wanted_judges = {
-        item.record.judge_key
-        for item in services
-        if isinstance(item.record, JudgeServiceDraft) and item.record.judge_key not in judge_keys
-    }
-    resolved.db_courts = _lookup_courts(session, wanted_courts)
-    resolved.db_judges = _lookup_judges(session, wanted_judges)
+    # Courts and judges referenced by anything in the run but not drafted in it.
+    wanted_courts: set[NaturalKey] = set()
+    wanted_judges: set[NaturalKey] = set()
     for item in services:
         service = _record_as(JudgeServiceDraft, item)
-        if service.judge_key not in judge_keys and service.judge_key not in resolved.db_judges:
+        wanted_courts.add(service.court_key)
+        wanted_judges.add(service.judge_key)
+    for item in cases:
+        wanted_courts.add(_record_as(CaseDraft, item).court_key)
+    for item in children:
+        judge_key = _judge_key_of(item.record)
+        if judge_key is not None:
+            wanted_judges.add(judge_key)
+    resolved.db_courts = _lookup_courts(session, wanted_courts - court_keys)
+    resolved.db_judges = _lookup_judges(session, wanted_judges - judge_keys)
+    known_courts = court_keys | set(resolved.db_courts)
+    known_judges = judge_keys | set(resolved.db_judges)
+
+    for item in services:
+        service = _record_as(JudgeServiceDraft, item)
+        if service.judge_key not in known_judges:
             resolved.rejections.append(
                 _rejection(
                     item, UNRESOLVED_JUDGE, f"unknown judge {':'.join(service.judge_key[1:])}"
                 )
             )
-        elif service.court_key not in court_keys and service.court_key not in resolved.db_courts:
+        elif service.court_key not in known_courts:
             resolved.rejections.append(
                 _rejection(item, UNRESOLVED_COURT, f"unknown court {service.court_key[1:]}")
             )
         else:
             resolved.services.append(item)
+
+    # Cases: their court must be known; children may reference cases outside the run.
+    for item in cases:
+        case = _record_as(CaseDraft, item)
+        if case.court_key in known_courts:
+            resolved.cases.append(item)
+        else:
+            resolved.rejections.append(
+                _rejection(item, UNRESOLVED_COURT, f"unknown court {case.court_key[1:]}")
+            )
+    case_keys = {item.record.natural_key for item in resolved.cases}
+    wanted_cases: set[NaturalKey] = set()
+    wanted_persons: set[NaturalKey] = set()
+    for item in children:
+        case_key = _case_key_of(item.record)
+        if case_key is not None:
+            wanted_cases.add(case_key)
+        person_key = _person_key_of(item.record)
+        if person_key is not None:
+            wanted_persons.add(person_key)
+    for item in justice_events:
+        event = _record_as(JusticeEventDraft, item)
+        wanted_persons.add(event.person_key)
+        if event.related_case_key is not None:
+            wanted_cases.add(event.related_case_key)
+    # A case outside the run can only sit in a court that already exists.
+    court_ids_for_lookup = dict(resolved.db_courts)
+    court_ids_for_lookup.update(
+        _lookup_courts(
+            session,
+            {("court", key[1], key[2]) for key in wanted_cases - case_keys if len(key) == 4}
+            - set(court_ids_for_lookup),
+        )
+    )
+    resolved.db_cases = lookup_cases(session, wanted_cases - case_keys, court_ids_for_lookup)
+    known_cases = case_keys | set(resolved.db_cases)
+
+    # Persons: the resolution hook decides which drafts name an existing person.
+    resolution = resolve_persons(session, persons, run)
+    resolved.existing_persons = dict(resolution.existing)
+    resolved.persons = list(persons)
+    person_keys = {item.record.natural_key for item in persons}
+    resolved.db_persons = _lookup_persons(session, wanted_persons - person_keys)
+    known_persons = person_keys | set(resolved.db_persons)
+
+    for item in children:
+        record = item.record
+        case_key = _case_key_of(record)
+        person_key = _person_key_of(record)
+        judge_key = _judge_key_of(record)
+        if case_key is None or case_key not in known_cases:
+            resolved.rejections.append(
+                _rejection(item, UNRESOLVED_CASE, f"unknown case {_case_label(case_key)}")
+            )
+        elif person_key is not None and person_key not in known_persons:
+            resolved.rejections.append(
+                _rejection(item, UNRESOLVED_PERSON, f"unknown person by {person_key[1]}")
+            )
+        elif judge_key is not None and judge_key not in known_judges:
+            resolved.rejections.append(
+                _rejection(item, UNRESOLVED_JUDGE, f"unknown judge {':'.join(judge_key[1:])}")
+            )
+        elif isinstance(record, CasePartyDraft):
+            resolved.parties.append(item)
+        elif isinstance(record, JudgeAssignmentDraft):
+            resolved.assignments.append(item)
+        elif isinstance(record, ChargeDraft):
+            resolved.charges.append(item)
+        elif isinstance(record, CourtEventDraft):
+            resolved.events.append(item)
+        elif isinstance(record, DecisionDraft):
+            resolved.decisions.append(item)
+        elif isinstance(record, SentenceDraft):
+            resolved.sentences.append(item)
+        else:  # pragma: no cover - every case-level draft type is handled above
+            msg = f"unhandled draft type {type(record).__name__}"
+            raise IngestFailed(msg)
+
+    for item in justice_events:
+        event = _record_as(JusticeEventDraft, item)
+        if event.person_key not in known_persons:
+            resolved.rejections.append(
+                _rejection(item, UNRESOLVED_PERSON, f"unknown person by {event.person_key[1]}")
+            )
+        elif event.related_case_key is not None and event.related_case_key not in known_cases:
+            resolved.rejections.append(
+                _rejection(
+                    item, UNRESOLVED_CASE, f"unknown case {_case_label(event.related_case_key)}"
+                )
+            )
+        else:
+            resolved.justice_events.append(item)
     return resolved
+
+
+def resolve_persons(
+    session: Session, drafts: Sequence[TaggedRecord], run: IngestRun
+) -> PersonResolution:
+    """Step 10 for persons: exact match on the stable source identifier hash.
+
+    A draft whose ``identity`` hash already sits in ``person_identifier``
+    (for one of the stable kinds) resolves to that person; every other
+    draft becomes a new person at publish time. Step 3 replaces this hook
+    with the staged framework (deterministic → rules → scoring → review)
+    and records its candidates against ``run``.
+    """
+    del run  # the staged pipeline records candidates per run; this stage has none
+    existing = _lookup_persons(session, [item.record.natural_key for item in drafts])
+    new = [item for item in drafts if item.record.natural_key not in existing]
+    return PersonResolution(existing=existing, new=new)
+
+
+def _case_key_of(record: CanonicalRecord) -> NaturalKey | None:
+    if isinstance(
+        record,
+        CasePartyDraft
+        | JudgeAssignmentDraft
+        | ChargeDraft
+        | CourtEventDraft
+        | DecisionDraft
+        | SentenceDraft,
+    ):
+        return record.case_key
+    return None
+
+
+def _person_key_of(record: CanonicalRecord) -> NaturalKey | None:
+    if isinstance(
+        record, CasePartyDraft | ChargeDraft | CourtEventDraft | DecisionDraft | SentenceDraft
+    ):
+        return record.person_key
+    return None
+
+
+def _judge_key_of(record: CanonicalRecord) -> NaturalKey | None:
+    if isinstance(record, JudgeAssignmentDraft | CourtEventDraft | DecisionDraft | SentenceDraft):
+        return record.judge_key
+    return None
+
+
+def _case_label(case_key: NaturalKey | None) -> str:
+    return ":".join(case_key[1:]) if case_key else "?"
 
 
 def _record_as[R: CanonicalRecord](kind: type[R], item: TaggedRecord) -> R:
@@ -657,7 +933,7 @@ def _rejection(item: TaggedRecord, code: str, detail: str) -> IssueDraft:
         entity_key=key,
         severity=IssueSeverity.ERROR,
         issue_code=code,
-        description=f"{key[0]} {':'.join(key[1:])}: {detail}",
+        description=f"{describe_key(key)}: {detail}",
         source_record_id=item.provenance.source_record_id if item.provenance else None,
     )
 
@@ -721,6 +997,25 @@ def _lookup_judges(session: Session, keys: Iterable[NaturalKey]) -> dict[Natural
     return found
 
 
+def _lookup_persons(session: Session, keys: Iterable[NaturalKey]) -> dict[NaturalKey, uuid.UUID]:
+    """Persons by ``("person", <stable kind>, <hash>)`` through their identifier rows."""
+    wanted = {key for key in set(keys) if len(key) == 3 and key[1] in PERSON_IDENTITY_KINDS}
+    found: dict[NaturalKey, uuid.UUID] = {}
+    for kind in {key[1] for key in wanted}:
+        hashes = {key[2] for key in wanted if key[1] == kind}
+        rows = session.execute(
+            select(PERSON_IDENTIFIER.c.person_id, PERSON_IDENTIFIER.c.value_hash).where(
+                PERSON_IDENTIFIER.c.identifier_type == kind,
+                PERSON_IDENTIFIER.c.value_hash.in_(hashes),
+            )
+        ).all()
+        for person_id, value_hash in rows:
+            key = ("person", kind, str(value_hash))
+            if key in wanted:
+                found[key] = person_id
+    return found
+
+
 # --- step 12: publish ---------------------------------------------------------------
 
 
@@ -732,14 +1027,50 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
     judge_ids = dict(resolved.db_judges)
     judge_ids.update(_upsert_judges(session, resolved.judges, counts))
     service_ids = _upsert_services(session, resolved.services, judge_ids, court_ids, counts)
+
+    # Case level, in dependency order (judgemetrics.ingest.publish).
+    new_persons = [
+        item
+        for item in resolved.persons
+        if item.record.natural_key not in resolved.existing_persons
+    ]
+    person_ids = dict(resolved.db_persons)
+    person_ids.update(upsert_persons(session, new_persons, resolved.existing_persons, counts))
+    upsert_person_identifiers(session, resolved.persons, person_ids, counts)
+    case_ids = dict(resolved.db_cases)
+    case_ids.update(upsert_cases(session, resolved.cases, court_ids, counts))
+    party_ids = upsert_parties(session, resolved.parties, case_ids, person_ids, counts)
+    assignment_ids = upsert_assignments(session, resolved.assignments, case_ids, judge_ids, counts)
+    charge_ids = upsert_charges(session, resolved.charges, case_ids, person_ids, counts)
+    event_ids = upsert_events(session, resolved.events, case_ids, person_ids, judge_ids, counts)
+    decision_ids = upsert_decisions(
+        session, resolved.decisions, case_ids, person_ids, judge_ids, counts
+    )
+    sentence_ids = upsert_sentences(
+        session, resolved.sentences, case_ids, person_ids, judge_ids, counts
+    )
+    justice_event_ids = upsert_justice_events(
+        session, resolved.justice_events, case_ids, person_ids, counts
+    )
     bound.info(
         "ingest.published",
         jurisdictions=len(resolved.jurisdictions),
         courts=len(resolved.courts),
         judges=len(resolved.judges),
         services=len(resolved.services),
+        persons=len(resolved.persons),
+        persons_existing=len(resolved.existing_persons),
+        cases=len(resolved.cases),
+        parties=len(resolved.parties),
+        assignments=len(resolved.assignments),
+        charges=len(resolved.charges),
+        events=len(resolved.events),
+        decisions=len(resolved.decisions),
+        sentences=len(resolved.sentences),
+        justice_events=len(resolved.justice_events),
         created=counts.created,
         updated=counts.updated,
+        tables=counts.by_table(),
     )
     return PublishedIds(
         {
@@ -747,6 +1078,15 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
             "court": court_ids,
             "judge": judge_ids,
             "judge_service": service_ids,
+            "person": person_ids,
+            "case": case_ids,
+            "case_party": party_ids,
+            "judge_assignment": assignment_ids,
+            "charge": charge_ids,
+            "court_event": event_ids,
+            "decision": decision_ids,
+            "sentence": sentence_ids,
+            "justice_event": justice_event_ids,
         }
     )
 
@@ -758,11 +1098,10 @@ def _provenance_id(item: TaggedRecord) -> uuid.UUID:
     return item.provenance.source_record_id
 
 
-def _count(result: sa.Result[Any], counts: RunCounts) -> None:
+def _count(result: sa.Result[Any], counts: RunCounts, table: str) -> None:
     rows = result.all()
     created = sum(1 for row in rows if row.inserted)
-    counts.created += created
-    counts.updated += len(rows) - created
+    counts.add(table, created=created, updated=len(rows) - created)
 
 
 def _jurisdiction_type(value: str) -> JurisdictionType:
@@ -806,7 +1145,7 @@ def _upsert_jurisdictions(
             JURISDICTION.c.fips_code.is_distinct_from(excluded.fips_code),
         ),
     ).returning(JURISDICTION.c.id, _INSERTED)
-    _count(session.execute(upsert), counts)
+    _count(session.execute(upsert), counts, JURISDICTION.name)
     return _lookup_jurisdictions(session, [item.record.natural_key for item in items])
 
 
@@ -856,7 +1195,7 @@ def _upsert_courts(
             COURT.c.active_to.is_distinct_from(excluded.active_to),
         ),
     ).returning(COURT.c.id, _INSERTED)
-    _count(session.execute(upsert), counts)
+    _count(session.execute(upsert), counts, COURT.name)
     return _lookup_courts(session, [item.record.natural_key for item in items])
 
 
@@ -865,7 +1204,7 @@ def _upsert_judges(
 ) -> dict[NaturalKey, uuid.UUID]:
     if not items:
         return {}
-    rows: list[dict[str, Any]] = []
+    rows_by_system: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         draft = _record_as(JudgeDraft, item)
         system, value = draft.identity_key
@@ -875,7 +1214,7 @@ def _upsert_judges(
         if draft.external_ids.get(system) != value:
             msg = f"judge {value}: identity key is not among its external ids"
             raise IngestFailed(msg)
-        rows.append(
+        rows_by_system.setdefault(system, []).append(
             {
                 "id": uuid.uuid4(),
                 "canonical_name": draft.canonical_name,
@@ -886,31 +1225,35 @@ def _upsert_judges(
                 "source_record_id": _provenance_id(item),
             }
         )
-    stmt = insert(JUDGE).values(rows)
-    excluded = stmt.excluded
-    merged_ids = JUDGE.c.external_ids.op("||")(excluded.external_ids)
-    merged_metadata = JUDGE.c.metadata.op("||")(excluded.metadata)
-    upsert = stmt.on_conflict_do_update(
-        index_elements=[sa.literal_column("(external_ids ->> 'fjc_nid')")],
-        index_where=sa.text("external_ids ? 'fjc_nid'"),
-        set_={
-            "canonical_name": excluded.canonical_name,
-            "normalized_name": excluded.normalized_name,
-            "external_ids": merged_ids,
-            "status": excluded.status,
-            "metadata": merged_metadata,
-            "source_record_id": excluded.source_record_id,
-            "updated_at": sa.func.now(),
-        },
-        where=sa.or_(
-            JUDGE.c.canonical_name.is_distinct_from(excluded.canonical_name),
-            JUDGE.c.normalized_name.is_distinct_from(excluded.normalized_name),
-            merged_ids.is_distinct_from(JUDGE.c.external_ids),
-            JUDGE.c.status.is_distinct_from(excluded.status),
-            merged_metadata.is_distinct_from(JUDGE.c.metadata),
-        ),
-    ).returning(JUDGE.c.id, _INSERTED)
-    _count(session.execute(upsert), counts)
+    # One statement per identity system: the conflict target is that
+    # system's partial expression index (a fixed name from the allow-list
+    # above, never source data).
+    for system, rows in sorted(rows_by_system.items()):
+        stmt = insert(JUDGE).values(rows)
+        excluded = stmt.excluded
+        merged_ids = JUDGE.c.external_ids.op("||")(excluded.external_ids)
+        merged_metadata = JUDGE.c.metadata.op("||")(excluded.metadata)
+        upsert = stmt.on_conflict_do_update(
+            index_elements=[sa.literal_column(f"(external_ids ->> '{system}')")],
+            index_where=sa.text(f"external_ids ? '{system}'"),
+            set_={
+                "canonical_name": excluded.canonical_name,
+                "normalized_name": excluded.normalized_name,
+                "external_ids": merged_ids,
+                "status": excluded.status,
+                "metadata": merged_metadata,
+                "source_record_id": excluded.source_record_id,
+                "updated_at": sa.func.now(),
+            },
+            where=sa.or_(
+                JUDGE.c.canonical_name.is_distinct_from(excluded.canonical_name),
+                JUDGE.c.normalized_name.is_distinct_from(excluded.normalized_name),
+                merged_ids.is_distinct_from(JUDGE.c.external_ids),
+                JUDGE.c.status.is_distinct_from(excluded.status),
+                merged_metadata.is_distinct_from(JUDGE.c.metadata),
+            ),
+        ).returning(JUDGE.c.id, _INSERTED)
+        _count(session.execute(upsert), counts, JUDGE.name)
     return _lookup_judges(session, [item.record.natural_key for item in items])
 
 
@@ -971,7 +1314,7 @@ def _upsert_services(
             merged_metadata.is_distinct_from(JUDGE_SERVICE.c.metadata),
         ),
     ).returning(JUDGE_SERVICE.c.id, _INSERTED)
-    _count(session.execute(upsert), counts)
+    _count(session.execute(upsert), counts, JUDGE_SERVICE.name)
 
     judge_keys_by_id = {value: key for key, value in judge_ids.items()}
     court_keys_by_id = {value: key for key, value in court_ids.items()}
@@ -1007,8 +1350,21 @@ def _persist_issues(
     if not issues:
         return
     record_ids = {issue.source_record_id for issue in issues if issue.source_record_id is not None}
+    # Run-level issues (no source record, e.g. unknown-category counts) are
+    # keyed on their code and description alone, so a rerun does not add them twice.
+    run_level_codes = {issue.issue_code for issue in issues if issue.source_record_id is None}
     existing: set[tuple[Any, ...]] = set()
+    conditions: list[sa.ColumnElement[bool]] = []
     if record_ids:
+        conditions.append(DataQualityIssue.source_record_id.in_(record_ids))
+    if run_level_codes:
+        conditions.append(
+            sa.and_(
+                DataQualityIssue.source_record_id.is_(None),
+                DataQualityIssue.issue_code.in_(run_level_codes),
+            )
+        )
+    if conditions:
         rows = session.execute(
             select(
                 DataQualityIssue.source_record_id,
@@ -1016,7 +1372,7 @@ def _persist_issues(
                 DataQualityIssue.entity_id,
                 DataQualityIssue.issue_code,
                 DataQualityIssue.description,
-            ).where(DataQualityIssue.source_record_id.in_(record_ids))
+            ).where(sa.or_(*conditions))
         ).all()
         existing = {tuple(row) for row in rows}
     created = 0

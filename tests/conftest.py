@@ -12,6 +12,7 @@ a clear reason.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 
 import pytest
@@ -25,6 +26,23 @@ SKIP_REASON = (
     "JUDGEMETRICS_DATABASE_URL is unset; start the Compose services (`uv run poe up`) "
     "with a `.env`, or export the variable"
 )
+# The fixed identifier pepper every test hashes with, so expected digests
+# are reproducible; never a real deployment value.
+TEST_IDENTIFIER_PEPPER = "test-pepper-not-a-secret"  # pragma: allowlist secret
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _test_identifier_pepper() -> Iterator[None]:
+    """Every settings object in the suite sees the fixed test pepper."""
+    previous = os.environ.get("JUDGEMETRICS_IDENTIFIER_PEPPER")
+    os.environ["JUDGEMETRICS_IDENTIFIER_PEPPER"] = TEST_IDENTIFIER_PEPPER
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("JUDGEMETRICS_IDENTIFIER_PEPPER", None)
+        else:
+            os.environ["JUDGEMETRICS_IDENTIFIER_PEPPER"] = previous
 
 
 @pytest.fixture(autouse=True)

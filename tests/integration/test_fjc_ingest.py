@@ -53,6 +53,8 @@ from judgemetrics.ingest.base import (
 from judgemetrics.ingest.fjc.connector import FjcConnector
 from judgemetrics.ingest.runner import run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
+from tests.conftest import TEST_IDENTIFIER_PEPPER
+from tests.integration.test_synthetic_ingest import purge_source as purge_synthetic_source
 
 pytestmark = pytest.mark.integration
 
@@ -89,7 +91,13 @@ def purge_source(session: Session, name: str) -> None:
 
 @pytest.fixture
 def clean_session(db_session: Session) -> Session:
-    """The transactional session with every FJC-derived row removed (rolled back afterwards)."""
+    """The transactional session with every FJC- and synthetic-derived row removed.
+
+    The synthetic rows go too (rolled back afterwards) because these tests
+    count judges, courts, and jurisdictions absolutely and a developer's
+    database may hold a `uv run poe seed`.
+    """
+    purge_synthetic_source(db_session, "synthetic")
     purge_source(db_session, "fjc")
     return db_session
 
@@ -552,6 +560,7 @@ def test_cli_run_and_runs(settings: Settings, migrated_database: Engine, tmp_pat
         else settings.effective_admin_database_url,
         "JUDGEMETRICS_RAW_STORE_URL": f"file://{(tmp_path / 'lake').as_posix()}",
         "JUDGEMETRICS_LOG_FORMAT": "json",
+        "JUDGEMETRICS_IDENTIFIER_PEPPER": TEST_IDENTIFIER_PEPPER,
     }
     runner = CliRunner()
     result = runner.invoke(app, ["ingest", "run", "fjc", "--from-fixture", str(FIXTURES)], env=env)

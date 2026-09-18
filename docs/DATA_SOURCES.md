@@ -168,8 +168,23 @@ it as a term of the agreement (root roadmap §5.5).
   discovers); `<dir>/truth/` (`persons.csv`, `subsequent_events.csv`,
   `resolution_expectations.csv`, `planted.csv`, `metrics.json`,
   `README.md` — the simulation's truth, never ingested). Vocabularies:
-  `judgemetrics.synthetic.vocabulary` (version 1), which Step 2 writes
-  to `data/reference/case_vocabulary.yaml`.
+  `judgemetrics.synthetic.vocabulary` (version 1), written to
+  `data/reference/case_vocabulary.yaml` and loaded by
+  `judgemetrics.normalization.vocabulary` (equal by unit test).
+- **Connector (Phase 2 Step 2):** `judgemetrics.ingest.synthetic`,
+  source id `synthetic`, parser version `1`. `discover` lists
+  `manifest.json` and then `source/<file>` for the nine files under
+  `JUDGEMETRICS_SYNTHETIC_DIR` (default `data/synthetic/20260916`, the
+  dataset root); `truth/` is never discovered. `load_context` fails the
+  run when a file's sha256 no longer matches the manifest;
+  `validate_raw` checks the manifest's `generator_version` against the
+  installed generator and each file's header set (missing → error naming
+  the header, extra → warning). Person attributes (`full_name`,
+  `date_of_birth`, `participant_id`) are hashed with
+  `JUDGEMETRICS_IDENTIFIER_PEPPER` and reach the database only as
+  `person_identifier` rows. Run it with `uv run poe seed` (generate and
+  ingest the demo scale) or `judgemetrics ingest run synthetic
+  --from-fixture tests/fixtures/golden` (the golden fixture).
 - **Content (Phase 2 requirements from the brief):** at least 5 courts,
   20 judges, 5,000 cases, and 3,000 defendants at demo scale; multiple
   judge assignments and offense categories; pretrial release and

@@ -51,6 +51,13 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "identifier_value",
         "encrypted_value",
         "requester_contact",
+        # person-identifier hashing material (Phase 2 Step 2): the pepper,
+        # the hashes themselves, and the two source attributes they cover
+        "pepper",
+        "identifier_pepper",
+        "value_hash",
+        "date_of_birth",
+        "full_name",
     }
 )
 

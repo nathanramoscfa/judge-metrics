@@ -35,7 +35,11 @@ the V1–V6 matrix; `docs/phase01-qa-findings.md`) under the required
 entity resolution, and case timelines) is in progress: Step 1 shipped
 the deterministic synthetic generator (`uv run judgemetrics synthetic
 generate`, [`docs/SYNTHETIC_DATA.md`](docs/SYNTHETIC_DATA.md)) and its
-golden fixture. See:
+golden fixture; Step 2 the `synthetic` connector, case-level publishing
+with natural keys (migration `0003`), the versioned case vocabulary,
+peppered person-identifier hashing, the case-level data-quality checks,
+and `uv run poe seed`, which loads the demo dataset (5 courts, 24
+judges, 5,200 cases, 3,225 persons) idempotently. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -72,14 +76,20 @@ cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
-uv run judgemetrics synthetic generate   # deterministic synthetic dataset → data/synthetic/20260916/{source,truth,manifest.json}
+uv run poe seed         # generate data/synthetic/20260916 (demo scale) and ingest it through the synthetic connector
+uv run judgemetrics synthetic generate   # the generator alone → data/synthetic/20260916/{source,truth,manifest.json}
 uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs (Swagger UI over the API below)
 uv run poe dev-web      # http://localhost:3000 (the web app, against the API above)
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed
 ```
+
+`ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
+(any long random string; it peppers the sha256 hashes under which person
+identifiers are stored, and changing it orphans every hash — back it up
+with the database).
 
 ## API v1
 

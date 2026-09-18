@@ -35,6 +35,17 @@ reference table, not generated data: edit it deliberately, then bump
 `GENERATOR_VERSION` and regenerate the golden fixture, because the
 charges every seed draws change with it.
 
+## `data/reference/case_vocabulary.yaml`
+
+The versioned case-level vocabulary (`version: 1`) every connector maps
+its source values onto before a draft leaves `normalize`:
+`judgemetrics.normalization.vocabulary` loads it once with
+`yaml.safe_load` and `require(kind, value)` rejects a row whose value is
+not listed. It equals the constants in `judgemetrics.synthetic.vocabulary`
+(unit test). Adding, renaming, or removing a value bumps `version`,
+updates those constants, and is recorded in `docs/DATA_MODEL.md`
+"Vocabularies".
+
 ## `data/synthetic/<seed>/`
 
 `uv run judgemetrics synthetic generate --seed <seed> --scale golden|demo|tiny`

@@ -32,10 +32,10 @@ def test_cli_lists_command_groups() -> None:
         assert group in result.output
 
 
-def test_ingest_list_sources_names_the_fjc_connector() -> None:
+def test_ingest_list_sources_names_the_registered_connectors() -> None:
     result = runner.invoke(app, ["ingest", "list-sources"])
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines() == ["fjc\t2026.09.1"]
+    assert result.output.splitlines() == ["fjc\t2026.09.1", "synthetic\t1"]
 
 
 def test_db_group_has_migration_commands() -> None:

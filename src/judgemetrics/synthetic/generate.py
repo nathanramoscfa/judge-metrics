@@ -124,6 +124,27 @@ def generate_dataset(seed: int, scale: str, out: Path, *, force: bool = False) -
     return manifest
 
 
+def manifest_matches(out: Path, seed: int, scale: str) -> bool:
+    """Whether ``out`` already holds a manifest for ``seed``, ``scale``, and this generator.
+
+    The ``seed`` command skips generation on a match; a different scale or
+    an older generator version means the directory must be regenerated
+    (``--force``), and an unreadable manifest counts as no match.
+    """
+    manifest_path = out.resolve() / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return False
+    try:
+        manifest = Manifest.load(manifest_path)
+    except (ValueError, KeyError, TypeError, OSError):
+        return False
+    return (
+        manifest.seed == seed
+        and manifest.scale == scale
+        and manifest.generator_version == GENERATOR_VERSION
+    )
+
+
 def verify_dataset(out: Path) -> list[str]:
     """Every hash mismatch, missing file, or unlisted generated file; empty when clean."""
     out = out.resolve()

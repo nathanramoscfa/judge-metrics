@@ -58,6 +58,9 @@ jobs:
       JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:ci-only-app@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_LOG_FORMAT: json
+      # Pepper for person-identifier hashes (a fixed CI-only value; the
+      # test suite sets its own constant regardless).
+      JUDGEMETRICS_IDENTIFIER_PEPPER: ci-only-pepper-not-a-secret # pragma: allowlist secret
       JUDGEMETRICS_APP_DB_PASSWORD: ci-only-app # pragma: allowlist secret
       JUDGEMETRICS_INGEST_DB_PASSWORD: ci-only-ingest # pragma: allowlist secret
       JUDGEMETRICS_ADMIN_DB_PASSWORD: ci-only-admin # pragma: allowlist secret
@@ -217,6 +220,7 @@ jobs:
       JUDGEMETRICS_INGEST_DATABASE_URL: postgresql+psycopg://judgemetrics_ingest:ci-only-ingest@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_RAW_STORE_URL: file://./data/lake
       JUDGEMETRICS_LOG_FORMAT: json
+      JUDGEMETRICS_IDENTIFIER_PEPPER: ci-only-pepper-not-a-secret # pragma: allowlist secret
       JUDGEMETRICS_APP_DB_PASSWORD: ci-only-app # pragma: allowlist secret
       JUDGEMETRICS_INGEST_DB_PASSWORD: ci-only-ingest # pragma: allowlist secret
       JUDGEMETRICS_ADMIN_DB_PASSWORD: ci-only-admin # pragma: allowlist secret

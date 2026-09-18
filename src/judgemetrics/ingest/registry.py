@@ -15,7 +15,10 @@ from dataclasses import dataclass
 
 from judgemetrics.ingest.base import SourceConnector
 
-BUILTIN_CONNECTOR_MODULES: tuple[str, ...] = ("judgemetrics.ingest.fjc.connector",)
+BUILTIN_CONNECTOR_MODULES: tuple[str, ...] = (
+    "judgemetrics.ingest.fjc.connector",
+    "judgemetrics.ingest.synthetic.connector",
+)
 
 _REGISTRY: dict[str, type[SourceConnector]] = {}
 _loaded = False

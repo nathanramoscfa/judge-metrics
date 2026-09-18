@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The baseline migration: round trip, model constraints, and role grants.
+"""The migrations (0001–0003): round trip, model constraints, and role grants.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -114,15 +114,77 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "ix_court_canonical_name_trgm" in indexes["court"]
     assert "ix_court_external_ids" in indexes["court"]
     assert "ix_metric_observation_subject_period" in indexes["metric_observation"]
+    # Revision 0003: case-level natural keys, person provenance, identifier indexes.
+    for table in (
+        "case_party",
+        "judge_assignment",
+        "charge",
+        "court_event",
+        "decision",
+        "sentence",
+    ):
+        assert f"uq_{table}_case_source_row" in indexes[table], table
+    assert "uq_justice_event_natural" in indexes["justice_event"]
+    assert "ix_person_source_record_id" in indexes["person"]
+    assert "uq_person_identifier_stable" in indexes["person_identifier"]
+    assert "uq_person_identifier_person_type_hash" in indexes["person_identifier"]
+    assert "ix_court_case_related_case_number_normalized" in indexes["court_case"]
+    assert "uq_judge_external_ids_synthetic_judge_code" in indexes["judge"]
     uniques = snapshot.uniques
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
-    assert current_revision(migrated_database) == head_revision() == "0002"
+    assert current_revision(migrated_database) == head_revision() == "0003"
+
+
+def test_revision_0003_columns_and_partial_index_predicate(migrated_database: Engine) -> None:
+    with migrated_database.connect() as connection:
+        columns = {
+            (table, column): (data_type, nullable == "YES")
+            for table, column, data_type, nullable in connection.execute(
+                text(
+                    "SELECT table_name, column_name, data_type, is_nullable "
+                    "FROM information_schema.columns WHERE table_schema = 'public'"
+                )
+            )
+        }
+        for table in (
+            "case_party",
+            "judge_assignment",
+            "charge",
+            "court_event",
+            "decision",
+            "sentence",
+        ):
+            assert columns[(table, "source_row_id")] == ("text", False), table
+        assert columns[("person", "source_record_id")] == ("uuid", True)
+        assert columns[("court_case", "related_case_number_normalized")] == ("text", True)
+        assert columns[("charge", "disposition_actor")] == ("USER-DEFINED", True)
+        assert ("person", "full_name") not in columns
+        assert ("person", "date_of_birth") not in columns
+        assert not any(
+            table == "person" and column in {"name", "full_name", "date_of_birth", "dob"}
+            for table, column in columns
+        )
+        stable = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_person_identifier_stable'")
+        ).scalar()
+        assert stable is not None
+        assert "UNIQUE" in stable and "source_participant_id" in stable and "WHERE" in stable
+        natural = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_justice_event_natural'")
+        ).scalar()
+        assert natural is not None and "NULLS NOT DISTINCT" in natural
 
 
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
+    # Through 0003 first: its downgrade must leave exactly the 0002 shape.
+    downgrade(url, "0002")
+    assert current_revision(migrated_database) == "0002"
+    intermediate = _snapshot(migrated_database)
+    assert "uq_charge_case_source_row" not in intermediate.indexes["charge"]
+    assert "uq_person_identifier_stable" not in intermediate.indexes["person_identifier"]
     downgrade(url, "base")
     stripped = _snapshot(migrated_database)
     assert stripped.tables == ["alembic_version"]
@@ -203,3 +265,45 @@ def test_app_role_can_read_public_tables(migrated_database: Engine, app_engine: 
             connection.execute(
                 text("INSERT INTO person (public_person_key, resolution_status) VALUES ('x', 'y')")
             )
+
+
+def test_ingest_role_has_dml_on_every_case_level_table(migrated_database: Engine) -> None:
+    """The grants revision 0003 re-asserts, read from the catalog (any connection role)."""
+    with migrated_database.connect() as connection:
+        if not connection.execute(
+            text("SELECT 1 FROM pg_roles WHERE rolname = 'judgemetrics_ingest'")
+        ).scalar():
+            pytest.skip("the judgemetrics_ingest role does not exist on this database")
+        rows = connection.execute(
+            text(
+                "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
+                "WHERE grantee = 'judgemetrics_ingest' AND table_schema = 'public'"
+            )
+        ).all()
+        granted: dict[str, set[str]] = {}
+        for table, privilege in rows:
+            granted.setdefault(table, set()).add(privilege)
+        for table in (
+            "person",
+            "person_identifier",
+            "court_case",
+            "case_party",
+            "judge_assignment",
+            "charge",
+            "court_event",
+            "decision",
+            "pretrial_release",
+            "sentence",
+            "justice_event",
+        ):
+            assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= granted.get(table, set()), table
+        app_rows = connection.execute(
+            text(
+                "SELECT table_name FROM information_schema.role_table_grants "
+                "WHERE grantee = 'judgemetrics_app' AND table_schema = 'public'"
+            )
+        ).all()
+        app_tables = {row[0] for row in app_rows}
+        if app_tables:
+            assert "person_identifier" not in app_tables
+            assert "correction_request" not in app_tables

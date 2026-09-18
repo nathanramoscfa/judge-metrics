@@ -28,6 +28,7 @@ dependencies = [
     "psycopg[binary]>=3.3.5",
     "pydantic>=2.13.5",
     "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
     "sqlalchemy>=2",
     "structlog>=26.1.0",
     "typer>=0.27.2",
@@ -52,7 +53,6 @@ dev = [
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "pyyaml>=6.0.3",
     "ruff>=0.16.7",
     "types-pyyaml>=6.0.12.20260906",
 ]
@@ -113,7 +113,7 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later steps add: seed, compute-metrics, bootstrap.
+# Later steps add: compute-metrics, bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
@@ -143,3 +143,7 @@ dev-web = "pnpm --dir web dev"
 # Ingest: the FJC connector as the ingest role (JUDGEMETRICS_INGEST_DATABASE_URL)
 # into the raw lake named by JUDGEMETRICS_RAW_STORE_URL.
 ingest-fjc = "judgemetrics ingest run fjc"
+# Seed: generate the demo-scale synthetic dataset (data/synthetic/20260916,
+# skipped when its manifest is current) and ingest it through the synthetic
+# connector as the ingest role; refused in production.
+seed = "judgemetrics seed"

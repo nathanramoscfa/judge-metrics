@@ -1,0 +1,96 @@
+# data/reference/case_vocabulary.yaml
+# The versioned case-level vocabulary every connector maps onto
+# (docs/DATA_MODEL.md "Vocabularies"). Loaded once by
+# judgemetrics.normalization.vocabulary; equal to the constants in
+# judgemetrics.synthetic.vocabulary (unit test). Bump `version` whenever a
+# value is added, renamed, or removed, and record the change in
+# docs/DATA_MODEL.md; Phase 5's real-source connectors map their source
+# values onto these and never extend them silently.
+version: 1
+kinds:
+  case_type:
+    - felony
+    - misdemeanor
+  case_status:
+    - open
+    - closed
+  party_type:
+    - defendant
+  assignment_type:
+    - initial
+    - reassignment
+  event_type:
+    - arraignment
+    - hearing
+    - failure_to_appear
+    - bench_warrant
+    - trial
+    - plea_hearing
+    - sentencing_hearing
+    - revocation
+  decision_type:
+    - pretrial_release
+    - dismissal
+    - disposition
+    - sentencing
+  judicial_discretion_classification:
+    - discretionary
+    - mandatory
+    - non_judicial
+    - unknown
+  release_type:
+    - recognizance
+    - monetary_bond
+    - detained
+    - statutory
+  charge_disposition:
+    - dismissed
+    - acquitted
+    - convicted_plea
+    - convicted_verdict
+    - pending
+  severity:
+    - felony_1
+    - felony_2
+    - felony_3
+    - misdemeanor_a
+    - misdemeanor_b
+  offense_category:
+    - drug
+    - property
+    - person
+    - weapon
+    - public_order
+    - traffic
+    - financial
+  justice_event_type:
+    - new_case
+    - new_charge
+    - reconviction
+    - failure_to_appear
+    - release_violation
+    - revocation
+    - rearrest
+  actor_type:
+    - judge
+    - prosecutor
+    - defense
+    - jury
+    - clerk
+    - law_enforcement
+    - legislature_or_mandatory_rule
+    - appellate_court
+    - unknown
+  position:
+    - circuit_judge
+    - associate_judge
+  sentence_component:
+    - incarceration
+    - probation
+    - fine
+  release_condition:
+    - check_in
+    - no_contact
+    - travel_restriction
+    - drug_testing
+    - electronic_monitoring

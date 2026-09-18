@@ -2110,9 +2110,17 @@ per phase-boundary hygiene.
       participant rows become
       `PersonDraft` (hashes via
       `hash_identifier`; the
-      participant id is
-      `<court_code>:<participant_
-      id>`) plus `CasePartyDraft`;
+      participant id is hashed as
+      the source hands it out —
+      the generator assigns one
+      `PT-` id per person across
+      courts, so a court-code
+      prefix would split every
+      multi-court person into
+      pairs `truth/` does not
+      list; spec-rot patch,
+      2026-09-18) plus
+      `CasePartyDraft`;
       charge/disposition rows
       become `ChargeDraft` and, for
       a disposition with an actor,
@@ -2140,23 +2148,34 @@ per phase-boundary hygiene.
       "synthetic"`, `parser_version
       = "1"`; `discover` lists
       `manifest.json` first then
-      the nine files from
-      `settings.synthetic_dir`;
-      `fetch` reads bytes from disk
-      with `RawArtifact.from_path`;
+      the nine files as
+      `source/<name>` from
+      `settings.synthetic_dir`,
+      the dataset root that holds
+      `manifest.json` and
+      `source/` — the manifest is
+      not inside `source/`, so the
+      root is what the connector
+      and `--from-fixture` point
+      at; spec-rot patch,
+      2026-09-18; `fetch` reads
+      bytes from disk with
+      `RawArtifact.from_path`;
       `validate_raw` on the
       manifest checks
-      `generator_version` and
-      that every listed sha256
-      matches the sibling file,
-      failing the run on drift;
+      `generator_version`, and
+      `load_context` (the runner
+      hands every artifact to a
+      `SupportsContext` connector
+      before parsing) fails the
+      run when a file's sha256
+      drifts from the manifest;
       `truth/` is never
       discovered). Add the module
       to `BUILTIN_CONNECTOR_
       MODULES`. `Settings.
       synthetic_dir: Path` default
-      `data/synthetic/20260916/
-      source`.
+      `data/synthetic/20260916`.
     </requirement>
 
     <requirement>
@@ -2207,9 +2226,11 @@ per phase-boundary hygiene.
       seed"` and the Makefile
       target. `judgemetrics ingest
       run synthetic --from-fixture
-      tests/fixtures/golden/source`
-      works unchanged through the
-      runner's fixture path.
+      tests/fixtures/golden` works
+      through the runner's fixture
+      path (which accepts contained
+      relative ids such as
+      `source/cases.csv`).
     </requirement>
 
     <requirement>
@@ -2307,7 +2328,7 @@ per phase-boundary hygiene.
   recorded in `docs/ROADMAP.md`).
 - The golden fixture ingested twice through
   `judgemetrics ingest run synthetic --from-fixture
-  tests/fixtures/golden/source` creates the manifest's counts (minus
+  tests/fixtures/golden` creates the manifest's counts (minus
   planted duplicates) on the first run and zero rows on the second;
   every case-level row references a `source_record` whose `raw_sha256`
   equals the sha256 of the stored raw object (integration test).

@@ -60,14 +60,16 @@ def test_canonical_person_name(parts: tuple[str | None, ...], expected: str) -> 
 @pytest.mark.parametrize(
     ("raw", "court_type", "expected"),
     [
-        ("1:21-cr-00123-ABC", "federal_district", "121CR00123ABC"),
-        ("2019 CF 001234", "state_circuit", "2019CF001234"),
-        ("19-CR-1234", "state_circuit", "19CR1234"),
-        ("  2020-cf-000456  ", None, "2020CF000456"),
-        ("CR/2018/00077", "county", "CR201800077"),
-        ("18_cf_9", None, "18CF9"),
-        ("2021.CF.00001-A", None, "2021CF00001A"),
-        ("No. 12345", None, "NO12345"),
+        # Phase 2 rule (normalization/case_numbers.py): separators become one
+        # hyphen so formatting variants of a docket collapse to one key.
+        ("1:21-cr-00123-ABC", "federal_district", "1-21-CR-00123-ABC"),
+        ("2019 CF 001234", "state_circuit", "2019-CF-001234"),
+        ("19-CR-1234", "state_circuit", "19-CR-1234"),
+        ("  2020-cf-000456  ", None, "2020-CF-000456"),
+        ("CR/2018/00077", "county", "CR-2018-00077"),
+        ("18_cf_9", None, "18-CF-9"),
+        ("2021.CF.00001-A", None, "2021-CF-00001-A"),
+        ("No. 12345", None, "NO-12345"),
     ],
 )
 def test_normalize_case_number(raw: str, court_type: str | None, expected: str) -> None:

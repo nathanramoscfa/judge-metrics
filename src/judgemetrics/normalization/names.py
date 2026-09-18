@@ -1,11 +1,12 @@
 # src/judgemetrics/normalization/names.py
-"""Name and case-number normalization used by entity resolution.
+"""Person-name normalization used by entity resolution.
 
 Source-specific parsing lives in the connectors; these functions are the
 canonical-domain rules that every connector's output passes through, so two
-sources spelling the same judge or docket differently land on the same
-normalized key. Normalization is one *signal* for resolution — never merge
-persons on name alone.
+sources spelling the same judge differently land on the same normalized
+key. Normalization is one *signal* for resolution — never merge persons on
+name alone. Case numbers are normalized by ``case_numbers`` (re-exported
+here for the Phase 1 call sites).
 """
 
 from __future__ import annotations
@@ -13,10 +14,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from judgemetrics.normalization.case_numbers import normalize_case_number
+
 _PUNCTUATION = re.compile(r"[^\w\s]", re.UNICODE)
 _WHITESPACE = re.compile(r"\s+")
-_CASE_SEPARATORS = re.compile(r"[\s\-_/.:,;#]+")
-_NON_ALNUM = re.compile(r"[^A-Z0-9]")
 
 
 def normalize_person_name(raw: str) -> str:
@@ -53,15 +54,4 @@ def canonical_person_name(
     return name
 
 
-def normalize_case_number(raw: str, court_type: str | None = None) -> str:
-    """Uppercase, strip whitespace and separators, keep year and sequence.
-
-    ``"1:21-cr-00123-ABC"`` → ``"121CR00123ABC"``; ``"2019 CF 001234"`` →
-    ``"2019CF001234"``. ``court_type`` is accepted so court-specific rules can
-    be added without changing call sites; every court type currently shares
-    the separator-stripping rule, and the raw value is always kept on the row.
-    """
-    del court_type  # reserved for court-specific rules
-    upper = raw.strip().upper()
-    without_separators = _CASE_SEPARATORS.sub("", upper)
-    return _NON_ALNUM.sub("", without_separators)
+__all__ = ["canonical_person_name", "normalize_case_number", "normalize_person_name"]
