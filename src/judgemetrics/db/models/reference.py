@@ -117,11 +117,19 @@ class Judge(UUIDPrimaryKey, Timestamps, Base):
             unique=True,
             postgresql_where=text("external_ids ? 'fjc_nid'"),
         ),
+        # One judge per synthetic judge code (docs/DATA_SOURCES.md `synthetic`).
+        Index(
+            "uq_judge_external_ids_synthetic_judge_code",
+            text("(external_ids ->> 'synthetic_judge_code')"),
+            unique=True,
+            postgresql_where=text("external_ids ? 'synthetic_judge_code'"),
+        ),
     )
 
     canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_name: Mapped[str] = mapped_column(Text, nullable=False)
-    # {"fjc_nid": "1234"}: the FJC node id is unique per judge (expression index).
+    # {"fjc_nid": "1234"} / {"synthetic_judge_code": "J-0001"}: each identity
+    # system has its own partial unique expression index (JUDGE_IDENTITY_SYSTEMS).
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONBDict, nullable=False, default=dict, server_default="{}"
     )

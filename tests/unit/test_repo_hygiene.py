@@ -41,6 +41,7 @@ NON_SECRET_CONSTANTS = {
     "60",
     "10",
     "0.3",
+    "data/synthetic/20260916",
 }
 # Shapes that would indicate a real credential was pasted in.
 SECRET_SHAPES = [
@@ -64,6 +65,7 @@ SHARED_TARGETS = (
     "dev-api",
     "dev-web",
     "ingest-fjc",
+    "seed",
 )
 SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
 
@@ -179,6 +181,7 @@ def test_env_example_has_only_placeholders() -> None:
         "MINIO_ROOT_PASSWORD",
         "JUDGEMETRICS_S3_SECRET_ACCESS_KEY",
         "JUDGEMETRICS_CORRECTION_CONTACT_KEY",
+        "JUDGEMETRICS_IDENTIFIER_PEPPER",
     ):
         assert values[key] == "change-me", key
     for key in ("JUDGEMETRICS_DATABASE_URL", "JUDGEMETRICS_ADMIN_DATABASE_URL"):
@@ -482,6 +485,7 @@ def test_command_interface_targets_present() -> None:
     assert tasks["dev-api"] == "judgemetrics serve --reload"
     assert tasks["dev-web"] == "pnpm --dir web dev"
     assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
+    assert tasks["seed"] == "judgemetrics seed"
     assert _pyproject()["project"]["scripts"]["judgemetrics"] == "judgemetrics.cli:main"
 
 

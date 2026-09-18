@@ -140,7 +140,12 @@ uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + 
 uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export
 uv run judgemetrics synthetic generate --seed 7 --scale golden --out DIR   # deterministic synthetic dataset: source/, truth/, manifest.json
 uv run judgemetrics synthetic verify DIR                                   # recompute every file hash; exit 1 on a mismatch
+uv run poe seed            # generate data/synthetic/20260916 (demo scale, skipped when current) and ingest it through the synthetic connector
+uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden   # the golden fixture through the runner
 ```
+
+`ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
+random value in the untracked `.env`; the tests set a fixed one).
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
 `pnpm e2e`, `pnpm generate:api`. Later steps add `seed`,
@@ -323,6 +328,57 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `data/reference/case_vocabulary.yaml` is fixed first in
   `synthetic/vocabulary.py` (`non_judicial` added to the discretion
   classifications for prosecutor and jury decisions).
+- Case-level publishing (Phase 2 Step 2, docs/ARCHITECTURE.md "Person
+  hashing and resolution", docs/DATA_MODEL.md): every row that belongs
+  to a case carries `source_row_id`, the source's own row identifier,
+  and upserts on `(case_id, source_row_id)` (`uq_<table>_case_source_row`,
+  revision 0003); a justice event has no source row and is keyed on
+  `(person_id, event_type, event_at, related_case_id)` `NULLS NOT
+  DISTINCT`. The case-level upserts live in `ingest/publish.py`
+  (batched 500 rows per statement; `IS DISTINCT FROM` guards as in Phase
+  1) and run after the reference tables in dependency order. Person
+  identifiers reach the database only as peppered sha256 hashes
+  (`security/identifiers.py`, `sha256(pepper || "\x00" || kind ||
+  "\x00" || normalized value)`) in the restricted `person_identifier`
+  table, kinds `source_participant_id` (stable: partial unique index
+  `uq_person_identifier_stable`, the deterministic resolution key),
+  `full_name`, `date_of_birth`, `name_dob`; `person` has no name or date
+  column and `public_person_key` is generated once at insert and never
+  updated. `resolve_persons(session, drafts, run)` in `ingest/runner.py`
+  is the hook Step 3 replaces. The participant id is hashed in the
+  namespace the source assigns (the generator's `PT-` ids are one per
+  person across courts), never prefixed with a court code — prefixing
+  would split every multi-court person into pairs the truth files do
+  not list. The scrubber denylist covers `pepper`, `value_hash`,
+  `date_of_birth`, `full_name`; `describe_key` renders person-keyed
+  drafts without the hash in issue descriptions.
+- The case vocabulary is versioned in `data/reference/case_vocabulary.yaml`
+  (`version: 1`), loaded once by `normalization/vocabulary.py` with
+  `yaml.safe_load` (pyyaml is a runtime dependency) and equal to
+  `synthetic/vocabulary.py` by unit test; `require(kind, value)` rejects
+  a row whose value is unlisted, `unknown` is allowed only for
+  `actor_type` and `judicial_discretion_classification`. Adding,
+  renaming, or removing a value bumps `version`, updates the generator's
+  constants, and is recorded in docs/DATA_MODEL.md "Vocabularies".
+  Case numbers normalize through `normalization/case_numbers.py` (every
+  run of whitespace or punctuation becomes one `-`; `names.py`
+  re-exports it), which replaced the Phase 1 strip-everything rule so
+  the planted duplicate formats collapse while the key stays readable.
+- The synthetic connector (`ingest/synthetic/`) reads a dataset root
+  (`JUDGEMETRICS_SYNTHETIC_DIR`, default `data/synthetic/20260916`:
+  `manifest.json` plus `source/`; `truth/` is never discovered), so
+  artifact ids are `manifest.json` and `source/<file>` and the runner's
+  fixture reader accepts contained relative ids. `SupportsContext`
+  (`load_context(artifacts)`) gives a multi-file connector every raw
+  artifact of the run — changed or not — before parsing, which is where
+  manifest drift fails the run and the court-code and participant-case
+  indexes are built. `run_ingest(..., connector=)` lets `seed` point
+  the connector at the dataset it just wrote; `seed` skips generation
+  when the manifest already records the seed, scale, and
+  `GENERATOR_VERSION`, generates nothing in production, and is refused
+  there like any synthetic ingest. `charge.disposition_actor` (0003) is a
+  documented departure from the brief's field list: the
+  judicial-dismissal rule is evaluated per charge.
 - The two secret scanners reconcile through `.gitleaks.toml`: the
   detect-secrets baseline records each allowlisted false positive as a
   `hashed_secret` sha1 fingerprint, which gitleaks' `generic-api-key`

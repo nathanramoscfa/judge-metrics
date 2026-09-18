@@ -3,9 +3,14 @@
 
 Groups: ``db`` (migrations, run as the admin role), ``serve`` (uvicorn),
 ``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``runs``
-as the read-only role), ``openapi`` (``export`` the API document), and
+as the read-only role), ``openapi`` (``export`` the API document),
 ``synthetic`` (``generate`` a deterministic synthetic dataset, ``verify``
-one against its manifest).
+one against its manifest), and ``seed`` (generate the demo dataset and
+ingest it through the ``synthetic`` connector as the ingest role).
+
+Every command that hashes person identifiers (``ingest run``, ``seed``)
+checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
+error when it is unset.
 """
 
 from __future__ import annotations
@@ -73,6 +78,23 @@ def _admin_url() -> str:
     from judgemetrics.config import get_settings
 
     return get_settings().effective_admin_database_url
+
+
+def _require_pepper(settings: object) -> None:
+    """Exit with a named error unless the identifier pepper is configured."""
+    from judgemetrics.config import Settings
+    from judgemetrics.security.identifiers import (
+        IdentifierPepperMissingError,
+        require_identifier_pepper,
+    )
+
+    if not isinstance(settings, Settings):  # pragma: no cover - defensive
+        return
+    try:
+        require_identifier_pepper(settings)
+    except IdentifierPepperMissingError as exc:
+        typer.echo(f"error: {exc} (see .env.example)", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
 
 
 @db_app.command("upgrade")
@@ -187,6 +209,7 @@ def ingest_run(
 
     settings = get_settings()
     configure_logging(settings)
+    _require_pepper(settings)
     try:
         store = open_raw_store(settings)
     except RawStoreError as exc:
@@ -210,20 +233,29 @@ def ingest_run(
                     err=True,
                 )
                 raise typer.Exit(EXIT_USAGE) from exc
-            summary = _format_run(
-                run.id,
-                source_id,
-                run.status.value,
-                (run.records_seen, run.records_created, run.records_updated, run.records_rejected),
-            )
-            if run.failure_reason:
-                summary += f" reason={run.failure_reason}"
+            summary = _run_summary(run, source_id)
             succeeded = run.status is IngestRunStatus.SUCCEEDED
     finally:
         engine.dispose()
     typer.echo(summary)
     if not succeeded:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+def _run_summary(run: object, source_id: str) -> str:
+    from judgemetrics.db.models import IngestRun
+
+    if not isinstance(run, IngestRun):  # pragma: no cover - defensive
+        return f"run ? source={source_id}"
+    summary = _format_run(
+        run.id,
+        source_id,
+        run.status.value,
+        (run.records_seen, run.records_created, run.records_updated, run.records_rejected),
+    )
+    if run.failure_reason:
+        summary += f" reason={run.failure_reason}"
+    return summary
 
 
 @ingest_app.command("runs")
@@ -386,6 +418,98 @@ def synthetic_verify(
             typer.echo(f"mismatch: {problem}", err=True)
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
     typer.echo(f"verified {directory}")
+
+
+@app.command("seed")
+def seed(
+    seed: Annotated[
+        int, typer.Option("--seed", help="The seed of the dataset to generate and ingest.")
+    ] = DEFAULT_SYNTHETIC_SEED,
+    scale: Annotated[
+        SyntheticScale, typer.Option("--scale", help="World size: golden, demo, or tiny.")
+    ] = SyntheticScale.demo,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Regenerate the dataset even when its manifest matches, and re-parse it.",
+        ),
+    ] = False,
+) -> None:
+    """Generate the synthetic dataset for SEED into data/synthetic/<seed> and ingest it.
+
+    Generation is skipped when the manifest there already records the same
+    seed, scale, and generator version (``--force`` regenerates). The ingest
+    runs the ``synthetic`` connector against that directory as the ingest
+    role and is refused, like any synthetic ingest, when
+    ``JUDGEMETRICS_ENV=production``.
+    """
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.models import IngestRunStatus
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.ingest.runner import run_ingest
+    from judgemetrics.ingest.store import RawStoreError, open_raw_store
+    from judgemetrics.ingest.synthetic.connector import SyntheticConnector
+    from judgemetrics.logging import configure_logging, get_logger
+    from judgemetrics.synthetic.generate import (
+        DatasetExistsError,
+        generate_dataset,
+        manifest_matches,
+    )
+
+    settings = get_settings()
+    configure_logging(settings)
+    _require_pepper(settings)
+    log = get_logger("judgemetrics.seed")
+    target = (SYNTHETIC_DATA_DIR / str(seed)).resolve()
+    if settings.env == "production":
+        # Nothing is generated: the runner records the refusal and that is all.
+        log.warning("seed.skipped_generation", reason="production environment", out=str(target))
+    elif not force and manifest_matches(target, seed, scale.value):
+        log.info("seed.generation_skipped", seed=seed, scale=scale.value, out=str(target))
+        typer.echo(f"dataset up to date at {target}")
+    else:
+        log.info("seed.generate.start", seed=seed, scale=scale.value, out=str(target))
+        try:
+            manifest = generate_dataset(seed, scale.value, target, force=force)
+        except DatasetExistsError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc
+        log.info(
+            "seed.generate.done",
+            seed=seed,
+            scale=scale.value,
+            generator_version=manifest.generator_version,
+            counts=manifest.counts,
+        )
+        typer.echo(f"generated {target}")
+
+    try:
+        store = open_raw_store(settings)
+    except RawStoreError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    connector = SyntheticConnector(target, settings=settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            run = run_ingest(
+                connector.source_id,
+                session=session,
+                store=store,
+                settings=settings,
+                force=force,
+                connector=connector,
+            )
+            summary = _run_summary(run, connector.source_id)
+            succeeded = run.status is IngestRunStatus.SUCCEEDED
+    finally:
+        engine.dispose()
+    typer.echo(summary)
+    if not succeeded:
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 
 def main() -> None:

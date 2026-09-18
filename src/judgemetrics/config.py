@@ -106,6 +106,15 @@ class Settings(BaseSettings):
     # that encrypts `correction_request.requester_contact` at rest. Only the
     # admin tooling that answers corrections needs it; the API never decrypts.
     correction_contact_key: SecretStr | None = None
+    # Per-deployment pepper for the sha256 hashes in `person_identifier`
+    # (`judgemetrics.security.identifiers`). Required by every process that
+    # hashes person identifiers — the ingest CLI refuses to start without it
+    # (`IdentifierPepperMissingError`); the API never hashes and never needs it.
+    identifier_pepper: SecretStr | None = None
+    # The generated synthetic dataset the `synthetic` connector reads: the
+    # directory holding `manifest.json` and `source/` (docs/SYNTHETIC_DATA.md);
+    # `truth/` beside them is never discovered.
+    synthetic_dir: Path = Path("data") / "synthetic" / "20260916"
     # Public API (judgemetrics.api). `trust_proxy` lets the rate limiter key
     # on the address a trusted reverse proxy appended to `X-Forwarded-For`;
     # without it the header is ignored (a client could otherwise spoof its

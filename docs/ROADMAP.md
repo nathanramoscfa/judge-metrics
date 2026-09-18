@@ -19,10 +19,11 @@ squash-merged commit. The planning kit was re-exported (`uv run poe
 kit`, no catalog change) and the execution plan
 [`docs/phase02-roadmap.md`](phase02-roadmap.md) was authored from
 [`ROADMAP.md`](../ROADMAP.md) §4 Phase 2 on 2026-09-16. Step 1 (the
-deterministic synthetic generator) completed on 2026-09-17; Step 2 (the
-synthetic connector, case-level publishing, and `seed`, branch
-`feature/phase02-step2-synthetic-connector`) begins in a fresh
-conversation.
+deterministic synthetic generator) completed on 2026-09-17 and Step 2
+(the synthetic connector, case-level publishing, and `seed`) on
+2026-09-18; Step 3 (entity-resolution framework v0, review queue, and
+audit log, branch `feature/phase02-step3-entity-resolution`) begins in
+a fresh conversation.
 
 ## Completed
 
@@ -36,6 +37,7 @@ conversation.
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-09-18 | **Phase 2 Step 2.** The synthetic dataset through the standard runner with full provenance, and case-level publishing for every later source. `data/reference/case_vocabulary.yaml` (`version: 1`, equal to `synthetic/vocabulary.py` by test) loaded once by `normalization/vocabulary.py` (`require`, `require_or_unknown`, `UNKNOWN`); `normalization/case_numbers.py` (separators → one `-`; `syn 2019 000013` and `SYN-2019-000013` collapse); `security/identifiers.py` (`hash_identifier`: `sha256(pepper‖kind‖normalized value)` for `source_participant_id`, `full_name`, `date_of_birth`, `name_dob`; `JUDGEMETRICS_IDENTIFIER_PEPPER` required by `ingest run` and `seed`); the nine case-level drafts in `ingest/base.py` with natural keys on `(case, source_row_id)` and `describe_key` (no hash in descriptions), the `SupportsContext` hook; migration `0003_case_level_natural_keys` (`source_row_id` + `uq_<table>_case_source_row` on six tables, `uq_justice_event_natural`, `person.source_record_id`, `uq_person_identifier_stable` partial + `uq_person_identifier_person_type_hash`, `court_case.related_case_number_normalized`, `charge.disposition_actor`, `uq_judge_external_ids_synthetic_judge_code`, grants re-asserted; reversible, `alembic check` clean); `ingest/runner.py` resolution of cases and persons (`resolve_persons` hook; `unresolved_case`/`unresolved_person`/`unresolved_judge` rejections counted), judge upserts per identity system, `run_ingest(connector=)`, fixture ids as contained relative paths, per-table counts in the run log; `ingest/publish.py` (batched upserts for persons + identifier rows, cases, parties, assignments, charges, events, decisions + pretrial release, sentences, justice events; `public_person_key` generated once); `quality/checks.py` case-level checks (`case_number_duplicate` before dedup, `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`); `ingest/synthetic/` (`schema`, `sources`, `parse`, `normalize` with derived `new_case`/`reconviction`/FTA/revocation justice events, `connector` with manifest-drift failure; `source_type = synthetic`, parser `1`); CLI `judgemetrics seed [--seed] [--scale] [--force]`, poe/Make `seed`; `.env.example` pepper and dataset dir, scrubber denylist extended; 78 new unit tests (case numbers, identifiers, vocabulary, drafts, connector over the golden fixture, the case-level checks) and 12 integration tests (golden fixture ingested twice: 969 rows then 0/0; provenance to the fixture bytes; hashes only; prosecutor dismissals keep `actor_type = prosecutor`; the planted issues exactly — 3 `case_number_duplicate`, 3 `missing_judge_on_decision`, 2 `missing_disposition`, no errors; no participant attribute or hash in any log line; the real connector and `seed` refused in production; app-role grants on every new column). Live `uv run poe seed` (demo, MinIO lake, ingest role, 32 s): 1 jurisdiction, 5 courts, 24 judges, 32 service records, 3,225 persons, 5,200 cases, 5,200 parties, 6,306 assignments, 8,328 charges, 21,346 court events, 13,940 decisions, 5,189 pretrial releases, 3,145 sentences, 3,716 justice events (88,277 rows created, 0 rejected; issues 40 duplicates, 94 missing judge, 73 missing disposition, 2 unknown-category counts); the second `seed` skipped generation and created and updated 0 rows in 3 s. Two spec-rot patches to the Step 2 task block: the participant id is hashed in the source's namespace (a court-code prefix would split every multi-court person into pairs `truth/` does not list), and the connector reads the dataset root because `manifest.json` sits beside `source/`, not inside it. |
 | 2026-09-17 | **Phase 2 Step 1.** Deterministic synthetic generator `src/judgemetrics/synthetic/` (`docs/SYNTHETIC_DATA.md`): `config.py` (`ScaleSpec` with self-validation, `GOLDEN` 3/6/40/60 over 2019–2021, `DEMO` 5/24/3,200/5,200 over 2016–2023, `TINY` for property tests, `GENERATOR_VERSION`); `rng.py` (one `random.Random` per named stream from `sha256(seed:name)`, `random()`-only helpers); `wordlists.py` (222 given and 339 family dictionary tokens, reviewed against real names); `world.py` (Synthetic State `ZZ`, circuit courts, anchor judges plus judges with one or two service records and latent release, dismissal, and severity biases; persons with unique names, dates of birth by age band, propensities, home courts); `cases.py` (charges from the curated `data/reference/synthetic_offenses.csv`, business-hour timelines, statutory and judicial pretrial decisions with bond amounts and conditions, reassignments including forced ones at service ends, four disposition tracks with judge, prosecutor, and jury actors, sentences by severity, hearings, failures to appear with bench warrants, revocations, corpus-end truncation to open cases and pending charges); `edge_cases.py` (split persons with `related_case_number`, ambiguous same-DOB and missing-DOB pairs, duplicate source records as formatting variants, missing DOB, judge, disposition, and description); `truth.py` (`persons.csv`, `subsequent_events.csv` with a ceiling `days_after`, `resolution_expectations.csv`, `planted.csv`, `metrics.json` per judge and court with a definition per metric, generated `README.md`); `writer.py` and `generate.py` (`generate_dataset`, `verify_dataset`, manifest with sha256 per file, refusal of an existing dataset without `--force`); CLI `synthetic generate|verify`; the golden fixture under `tests/fixtures/golden/` (seed 7: 60 cases plus 3 duplicates, 40 persons, 18 planted items, 4 resolution expectations) with README; `synthetic/vocabulary.py` fixing the case vocabulary Step 2 lifts; 53 unit test cases (byte-identical regeneration, hash verification, the brief's minimums on the spec and a demo run, every listed behaviour, planted quantities recomputed from the files, temporal order, subsequent events after their index, numerators bounded by denominators, an independent recount of the simplest metrics, word-list names, CLI refusal and exit codes). Demo scale generates in about 2 s (5,200 cases, 3,200 persons, 811 planted items); a 300-seed sweep at tiny scale and 100 seeds at golden scale produced no failure. Security finding fixed on the way: gitleaks flagged the `hashed_secret` fingerprints in `.secrets.baseline`, so `.gitleaks.toml` now extends the default rules and allowlists the baseline file. |
 | 2026-09-16 | **Phase 1 Step 6 — Phase 1 complete.** `scripts/verify_phase01.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 43 static checks over Steps 1–5, the security backstop, and the Step 6 self-checks using only `pathlib`, `re`, `json`, and `git ls-files`; subprocess suites over `uv run`, `pnpm`, and `gh`; the V1–V6 matrix with `gh pr checks` in `--post`; `[PASS] NN` / `[FAIL] NN — reason` lines, a summary table, exit 0/1; `--fast` in 0.1 s); `tests/unit/test_phase01_verification.py`; `.github/workflows/phase-verify.yml` (matrix `["01"]`, SHA-pinned, `contents: read`, `--fast` then `--security` with pnpm for the audit) and its check `phase-verify (01)` added to the required contexts beside `test` (command recorded in `CONTRIBUTING.md`); `docs/phase01-qa-findings.md` (Steps 1–6 rollups with class and guard, the alarm exercise, pre-ship items); three spec-rot patches to the Step 6 task block (`detect-secrets scan --baseline` rewrites the baseline and exits 0, so the hook form is used; bandit over `src alembic`; web build before test); the root roadmap's Phase 1 acceptance criteria aligned with V1–V6. Verified: `--fast` 43/43 and `--security` 4/4 locally and in CI; a planted AWS example key fails check 39 and the secret scan; `--post` green on the maintainer's machine against the Compose services (see the QA findings). |
 | 2026-09-16 | **Phase 1 Step 5.** Web foundation in `web/`: Next.js 16 (App Router, TypeScript strict, Tailwind CSS 4, ESLint 9 with `eslint-plugin-security` at `--max-warnings 0`), pnpm 10 via corepack, `.node-version` 22; shadcn/ui button, input, table, card, badge, tooltip (with the `cn` and `shadcn` runtime packages the CLI adds replaced by a local helper and inlined CSS); `next-themes` on `data-theme` with a toggle; `openapi-typescript` → committed `web/lib/api/schema.d.ts` (`pnpm generate:api`) and an `openapi-fetch` client (`web/lib/api/client.ts`) whose helpers return `ApiResult` (API error envelope, `Retry-After`, status 0 on transport failure) and resolve `fetch` per call; pages `/` (headline, global search with the `/` shortcut, coverage tiles from `/jurisdictions` and the judge and court totals, methodology link), `/search` (entity-type badges, 429 wait time), `/judges/[judgeId]` (identity, status badge, FJC biography link, sortable TanStack service table with `aria-sort`, "Source coverage" panel with source name, retrieved-at, truncated sha256 with copy-to-clipboard, parser version, ingest run, source export link, "Report a data issue" to the data-source issue template), `/courts/[courtId]` (court, type, jurisdiction, date form driving `/judges?court_id=&active_on=` with pagination), `/methodology` (ten principles, the association-is-not-causation statement, Phase 3 note), `/coverage` (Phase 2 note), `/about`, not-found and error boundaries; empty and error states on every fetch; skip link, landmarks, `scope="col"`, visible focus rings; security headers, no cookies, no third-party scripts, no fonts fetched; Vitest (client helpers with stubbed fetch, provenance panel truncation and copy, schema freshness, production-bundle scan for `JUDGEMETRICS_`) and Playwright `tests/e2e/smoke.spec.ts` (six scenarios); `infra/docker/web.Dockerfile` (node:22-alpine, corepack pnpm, standalone output, uid 10001, npm removed from the runtime, Trivy clean) with the Compose `web` service (profile `app`, port 3000); CI `web` (lint, typecheck, build, test, audit), `e2e` (Postgres with the three roles, migrate, FJC fixture ingest, API and web in the background, Chromium), and `container` extended to both images, all required by `test`; Dependabot `npm` for `/web`; `dev-web` task and Makefile target; hygiene tests for the web chassis; README, ARCHITECTURE "Web tier", AGENTS decisions. Verified locally against the live ingest: all pages in light and dark mode, `pnpm lint|typecheck|test|build|e2e` green, `pnpm audit` clean, the image serving `/methodology` as uid 10001. |
@@ -59,6 +61,29 @@ conversation.
 
 ## Known issues and limitations
 
+- Case-level data-quality checks that need a case's filing date or
+  status (`disposition_before_filing`, `event_order_impossible`,
+  `subsequent_before_index`, `missing_disposition`) see only the cases
+  drafted in the same run; a child row of a case that already exists in
+  the database (a later export that ships only `charges.csv`) is not
+  checked against it. Reading the parent case from the database is a
+  small extension for the step that first needs it.
+- Persons resolve deterministically on the source participant id only
+  (Step 2); the planted split persons are two `person` rows and the
+  ambiguous pairs are untouched until Step 3's rule stage and review
+  queue. `case_party.person_id` is never null for the synthetic source,
+  so `person_resolution_confidence_missing` has no live instance yet.
+- `unknown_category_measured` issues are run-level (no source record or
+  entity); they are deduplicated by code and description, so a rerun
+  with the same counts adds nothing and a changed count adds a new
+  issue beside the old one rather than updating it.
+- The log scrubber redacts any key containing `person_id`, which
+  includes the table name `person_identifier`; the run log therefore
+  reports that table's counts under `identifier_hashes`.
+- `judgemetrics seed` refuses to regenerate into a directory whose
+  manifest records a different scale or generator version unless
+  `--force` is given (it never deletes anything); `--force` also
+  re-parses unchanged artifacts, which changes nothing.
 - The synthetic generator's `truth/metrics.json` computes the windowed
   outcome rates on the pretrial-release index only; disposition- and
   sentence-indexed rates and time-at-risk deferral after incarceration
@@ -71,8 +96,9 @@ conversation.
   64-character hex strings), so regenerating the golden fixture ends
   with a baseline refresh scoped to the manifest
   (`docs/SYNTHETIC_DATA.md`, "Regenerating the golden fixture").
-- Only the FJC source is ingested; case, charge, disposition, and
-  defendant data begin with the synthetic dataset in Phase 2. The FJC
+- Real case, charge, disposition, and defendant data begin in Phase 5;
+  until then the only case-level source is the synthetic dataset,
+  labelled as such on every surface and refused in production. The FJC
   export is regenerated nightly, so a later live run records new
   source records for the changed files and updates only the rows whose
   values changed.
@@ -86,9 +112,10 @@ conversation.
 - The integration suite's migration round-trip test
   (`tests/integration/test_migrations.py`) downgrades the configured
   database to base and back, so `uv run poe check` empties a local live
-  ingest; run `uv run poe ingest-fjc` again afterwards (a few seconds,
-  conditional requests reuse the lake). A dedicated scratch database
-  for that test is a process improvement for a later step.
+  ingest; run `uv run poe ingest-fjc` and `uv run poe seed` again
+  afterwards (a few seconds; conditional requests reuse the lake and
+  the seed skips generation). A dedicated scratch database for that
+  test is a process improvement for a later step.
 - A `.env` written before Step 3 may name an S3 application user that
   MinIO does not know; `uv run poe up` (its `minio-init` job) now
   creates that user, so run it once more on such machines.
@@ -129,9 +156,11 @@ conversation.
   and the purge would remove the judge; rerun `uv run poe ingest-fjc`
   afterwards, as after the migration round-trip test.
 - `judicial_discretion_classification`, case status, charge disposition,
-  release type, position type, and event type are free text until the
-  versioned attribution rules and registries of Phases 2 and 5 define
-  their vocabularies; the brief fixes only the enums the baseline creates.
+  release type, position type, and event type are free-text columns
+  constrained by the versioned vocabulary file
+  (`data/reference/case_vocabulary.yaml`) at ingest time, not by a
+  database enum; the brief fixes only the enums the baseline creates.
+  The versioned attribution rules of Phase 5 map real sources onto it.
 - `correction_request.requester_contact` is Fernet-encrypted under
   `JUDGEMETRICS_CORRECTION_CONTACT_KEY` (`judgemetrics.security.crypto`);
   the corrections workflow that writes it arrives in Phase 3.

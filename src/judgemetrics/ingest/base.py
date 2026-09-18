@@ -12,7 +12,20 @@ cursoring sources. Everything a connector produces is a frozen dataclass:
 - ``SourceRecordDraft`` — one parsed source row (the database
   ``source_record`` is per *artifact*; rows are attributed to it);
 - the ``CanonicalRecord`` drafts, each with a ``natural_key`` the runner
-  deduplicates and upserts on. Case-level drafts arrive in Phase 2.
+  deduplicates and upserts on: the reference drafts (jurisdiction, court,
+  judge, judge service) and the case-level drafts (person, case, party,
+  assignment, charge, court event, decision with its pretrial release,
+  sentence, justice event).
+
+Natural keys: a person is ``("person", <identifier kind>, <hash>)`` — the
+peppered hash of its stable source identifier, never a name; a case is
+``("case", <court name>, <court type>, <normalized case number>)``; every
+row that belongs to a case is ``("<table>", *case_key[1:], source_row_id)``
+where ``source_row_id`` is the source's own row identifier, so a re-export
+of the same row upserts in place; a justice event is keyed on the person
+hash, the event type, the instant, and the related case, because a
+derived event has no source row of its own. ``describe_key`` renders a
+key for issue descriptions and logs without the person hash.
 
 Source-specific parsing stays in the connectors; the drafts speak the
 canonical domain only.
@@ -23,11 +36,14 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from judgemetrics.db.models.enums import ActorType
 
 NaturalKey = tuple[str, ...]
 Checkpoint = dict[str, Any]
@@ -261,7 +277,230 @@ class JudgeServiceDraft:
         )
 
 
-CanonicalRecord = JurisdictionDraft | CourtDraft | JudgeDraft | JudgeServiceDraft
+# --- case-level drafts (Phase 2) ------------------------------------------------
+
+
+def _iso(value: datetime | date | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone(UTC).isoformat()
+    return value.isoformat()
+
+
+def _case_key_parts(case_key: NaturalKey) -> tuple[str, ...]:
+    return tuple(case_key[1:])
+
+
+@dataclass(frozen=True, slots=True)
+class PersonDraft:
+    """A person as one source knows it: hashes only, never a name or a date.
+
+    ``identity`` is ``(identifier kind, hash)`` for the source's stable
+    identifier (``source_participant_id``) and is the deterministic
+    resolution key; ``identifier_hashes`` holds every kind the source
+    offers (``source_participant_id``, ``full_name``, ``date_of_birth``, and
+    ``name_dob`` when both exist), each a 64-character hex digest from
+    ``judgemetrics.security.identifiers.hash_identifier``.
+    """
+
+    identity: tuple[str, str]
+    identifier_hashes: Mapping[str, str]
+    birth_year_known: bool = False
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("person", *self.identity)
+
+
+@dataclass(frozen=True, slots=True)
+class CaseDraft:
+    court_key: NaturalKey
+    case_number: str
+    case_number_normalized: str
+    case_type: str
+    filed_date: date | None
+    closed_date: date | None
+    status: str
+    source_row_id: str
+    related_case_number_normalized: str | None = None
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("case", *self.court_key[1:], self.case_number_normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class CasePartyDraft:
+    case_key: NaturalKey
+    person_key: NaturalKey | None
+    party_type: str
+    source_party_label: str | None
+    source_row_id: str
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("case_party", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class JudgeAssignmentDraft:
+    case_key: NaturalKey
+    judge_key: NaturalKey
+    assignment_type: str
+    start_at: datetime
+    end_at: datetime | None
+    source_row_id: str
+    confidence: Decimal | None = None
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("judge_assignment", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class ChargeDraft:
+    case_key: NaturalKey
+    person_key: NaturalKey
+    statute_code: str | None
+    description: str
+    offense_category: str
+    severity: str
+    violent_flag: bool | None
+    filed_at: datetime
+    disposed_at: datetime | None
+    disposition: str | None
+    # Who disposed of the charge: the basis of the judicial-dismissal rule
+    # (a dismissal by the prosecutor is not a judicial dismissal).
+    disposition_actor: ActorType | None
+    source_row_id: str
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("charge", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class CourtEventDraft:
+    case_key: NaturalKey
+    person_key: NaturalKey | None
+    judge_key: NaturalKey | None
+    event_type: str
+    event_at: datetime
+    description: str | None
+    actor_type: ActorType | None
+    source_row_id: str
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("court_event", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class PretrialReleaseDraft:
+    """The release terms of a pretrial decision (one child row per decision)."""
+
+    release_type: str
+    bond_amount: Decimal | None
+    conditions: Mapping[str, Any]
+    release_at: datetime | None
+    detained_flag: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionDraft:
+    case_key: NaturalKey
+    person_key: NaturalKey
+    judge_key: NaturalKey | None
+    decision_type: str
+    decision_at: datetime
+    decision_value: Mapping[str, Any]
+    actor_type: ActorType
+    judicial_discretion_classification: str
+    pretrial: PretrialReleaseDraft | None
+    source_row_id: str
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("decision", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class SentenceDraft:
+    case_key: NaturalKey
+    person_key: NaturalKey
+    judge_key: NaturalKey | None
+    sentence_at: datetime
+    incarceration_days: int | None
+    probation_days: int | None
+    fine_amount: Decimal | None
+    components: Mapping[str, Any]
+    source_row_id: str
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("sentence", *_case_key_parts(self.case_key), self.source_row_id)
+
+
+@dataclass(frozen=True, slots=True)
+class JusticeEventDraft:
+    """A documented later justice-system event of a person (derived, no row of its own)."""
+
+    person_key: NaturalKey
+    event_type: str
+    event_at: datetime
+    related_case_key: NaturalKey | None
+    description: str | None = None
+    confidence: Decimal | None = None
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        related = _case_key_parts(self.related_case_key) if self.related_case_key else ()
+        return (
+            "justice_event",
+            *self.person_key[1:],
+            self.event_type,
+            _iso(self.event_at),
+            *related,
+        )
+
+
+ReferenceRecord = JurisdictionDraft | CourtDraft | JudgeDraft | JudgeServiceDraft
+CaseLevelRecord = (
+    PersonDraft
+    | CaseDraft
+    | CasePartyDraft
+    | JudgeAssignmentDraft
+    | ChargeDraft
+    | CourtEventDraft
+    | DecisionDraft
+    | SentenceDraft
+    | JusticeEventDraft
+)
+CanonicalRecord = ReferenceRecord | CaseLevelRecord
+
+
+def describe_key(key: NaturalKey) -> str:
+    """A natural key for an issue description or a log line, without any person hash.
+
+    ``("person", "source_participant_id", <hash>)`` → ``"person by source_participant_id"``;
+    ``("justice_event", <kind>, <hash>, "new_case", <at>, <court>, <type>, <number>)`` →
+    ``"justice_event new_case at <at> for case <court>:<type>:<number>"``;
+    every other key → ``"<type> <parts joined by :>"``.
+    """
+    if not key:
+        return "?"
+    kind = key[0]
+    if kind == "person":
+        return f"person by {key[1]}" if len(key) > 1 else "person"
+    if kind == "justice_event":
+        parts = key[3:]
+        event_type = parts[0] if parts else "?"
+        at = parts[1] if len(parts) > 1 else "?"
+        case = ":".join(parts[2:])
+        suffix = f" for case {case}" if case else ""
+        return f"justice_event {event_type} at {at}{suffix}"
+    return f"{kind} {':'.join(key[1:])}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,3 +549,19 @@ class SupportsCheckpoint(Protocol):
     def restore_checkpoint(self, checkpoint: Checkpoint | None) -> None: ...
 
     def checkpoint(self) -> Checkpoint | None: ...
+
+
+@runtime_checkable
+class SupportsContext(Protocol):
+    """Optional hook for multi-file sources whose rows reference other files.
+
+    The runner calls ``load_context`` once per run with the raw artifact of
+    *every* discovered artifact — changed or not — before any artifact is
+    validated or parsed, so a connector can build the lookup tables its
+    ``normalize`` needs (a court-code index, a participant's other cases)
+    from the complete export even when only one file changed. A
+    connector raises ``IngestError`` here to fail the run (for example on
+    a manifest whose hashes no longer match the files).
+    """
+
+    def load_context(self, artifacts: Sequence[RawArtifact]) -> None: ...

@@ -3,8 +3,9 @@
 
 The system-level picture is in the root [`ROADMAP.md`](../ROADMAP.md)
 §3. This document describes what is built: the ingest pipeline (Phase 1
-Step 3), the raw lake, the idempotency rules, the database roles, the
-public API (Step 4), and the web tier (Step 5).
+Step 3, extended to case-level data in Phase 2 Step 2), the raw lake,
+the idempotency rules, person hashing and resolution, the database
+roles, the public API (Step 4), and the web tier (Step 5).
 
 ## Ingest pipeline
 
@@ -14,15 +15,18 @@ public API (Step 4), and the web tier (Step 5).
           │                        │ registry: @register / get_connector  │
           ▼                        └───────────────┬──────────────────────┘
    ┌──────────────┐  discover/fetch  ┌─────────────▼──────────────┐
-   │ Source (FJC) │ ───────────────▶ │ SourceConnector            │
-   │ HTTPS files  │  validate/parse  │ (ingest/fjc/connector.py)  │
-   └──────────────┘  normalize       └─────────────┬──────────────┘
+   │ Source (FJC, │ ───────────────▶ │ SourceConnector            │
+   │ synthetic)   │  validate/parse  │ (ingest/fjc, ingest/       │
+   └──────────────┘  normalize       │  synthetic)                │
+                                     └─────────────┬──────────────┘
                                                    │ drafts
                        ┌───────────────────────────▼──────────────────────────┐
                        │ runner.run_ingest — the fourteen steps, one run      │
                        │  1 discover · 2 fetch · 3 sha256 · 4 store · 5 record│
-                       │  7 validate · 6 parse · 8 normalize · 9 dedupe       │
-                       │ 10 resolve · 11 quality checks · 12 publish (upsert) │
+                       │  (load_context) · 7 validate · 6 parse · 8 normalize │
+                       │  9 dedupe · 10 resolve (+ resolve_persons hook)      │
+                       │ 11 quality checks · 12 publish (upserts: runner for  │
+                       │    reference tables, ingest/publish.py for cases)    │
                        │ 13 recompute metrics (no-op) · 14 lineage + stats    │
                        └──────┬─────────────────────────────┬─────────────────┘
                               │ immutable bytes             │ one transaction
@@ -30,9 +34,10 @@ public API (Step 4), and the web tier (Step 5).
                    ┌──────────────────────┐     ┌────────────────────────────┐
                    │ Raw lake             │     │ PostgreSQL (ingest role)   │
                    │ file:// or s3://     │     │ source, ingest_run,        │
-                   │ <src>/<yyyy>/<mm>/   │     │ source_record → jurisdiction│
-                   │   <sha256>.csv       │     │ court, judge, judge_service,│
-                   └──────────────────────┘     │ data_quality_issue         │
+                   │ <src>/<yyyy>/<mm>/   │     │ source_record → reference  │
+                   │   <sha256>.csv       │     │ tables, person (+ hashed   │
+                   └──────────────────────┘     │ identifiers), the case     │
+                                                │ tables, data_quality_issue │
                                                 └────────────────────────────┘
 ```
 
@@ -50,14 +55,29 @@ interface exactly and adds the identifying attributes:
 | `async fetch(artifact)` | Retrieve one artifact as a `RawArtifact` (bytes or path, sha256, retrieval time, response-header subset, `not_modified`). |
 | `validate_raw(raw)`     | `ValidationResult` — errors fail the run, warnings are logged. |
 | `parse(raw)`            | Row-level `SourceRecordDraft`s (external record id, effective time, payload, record type). |
-| `normalize(record)`     | Canonical drafts: `JurisdictionDraft`, `CourtDraft`, `JudgeDraft`, `JudgeServiceDraft` (case-level drafts arrive in Phase 2). |
+| `normalize(record)`     | Canonical drafts: the reference drafts `JurisdictionDraft`, `CourtDraft`, `JudgeDraft`, `JudgeServiceDraft` and the case-level drafts `PersonDraft`, `CaseDraft`, `CasePartyDraft`, `JudgeAssignmentDraft`, `ChargeDraft`, `CourtEventDraft`, `DecisionDraft` (with an optional `PretrialReleaseDraft`), `SentenceDraft`, `JusticeEventDraft`. |
 | `SupportsCheckpoint`    | Optional: `restore_checkpoint` / `checkpoint` for cursoring sources; stored on `ingest_run.checkpoint`. |
+| `SupportsContext`       | Optional: `load_context(artifacts)` receives the raw artifact of *every* discovered artifact (changed or not) before parsing, so a multi-file source builds its cross-file lookups from the complete export; raising `IngestError` fails the run (the synthetic connector fails on manifest drift here). |
 
 Every draft has a `natural_key`; the runner deduplicates drafts by it
 within a run and upserts on the matching unique index. Source-specific
 parsing (column names, date formats, vocabularies) lives under the
-connector package; canonical rules (name normalization, the state-code
-lookup) live in `judgemetrics.normalization`.
+connector package; canonical rules (name and case-number normalization,
+the state-code lookup, the versioned case vocabulary in
+`normalization/vocabulary.py`, which loads
+`data/reference/case_vocabulary.yaml` once and rejects a row whose value
+is not listed) live in `judgemetrics.normalization`.
+
+Natural keys of the case-level drafts: a person is
+`("person", <identifier kind>, <hash>)`, the peppered hash of the
+source's stable identifier; a case is `("case", <court name>, <court
+type>, <normalized case number>)`; every row that belongs to a case is
+`("<table>", *case_key[1:], source_row_id)`, where `source_row_id` is the
+source's own row identifier (a charge id, an event id), so a re-export of
+the same row upserts in place; a derived justice event is keyed on the
+person hash, the event type, the instant (UTC), and the related case.
+`describe_key` renders any key for an issue description or log line
+without the person hash.
 
 ### The fourteen steps and where they run
 
@@ -70,11 +90,11 @@ lookup) live in `judgemetrics.normalization`.
 | 5 | Create `source_record`         | `_retrieve`: one record per `(source, external_id, sha256)` |
 | 6 | Parse                          | `connector.parse()`                                        |
 | 7 | Schema validate                | `connector.validate_raw()` — executed before step 6, because the raw artifact must be validated before it is parsed; errors end the run as `failed` before anything is derived |
-| 8 | Normalize                      | `connector.normalize()` per parsed row; a `NormalizationError` rejects the row and records a `normalize_failed` issue |
-| 9 | Deduplicate                    | `_deduplicate` by `natural_key` (first draft wins; conflicting duplicates are counted in the log) |
-| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'fjc_nid'`, courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`; drafts referencing an unknown parent are rejected with an issue |
-| 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts |
-| 12 | Publish canonical rows        | `_publish`: `INSERT … ON CONFLICT DO UPDATE` per entity type, in dependency order (jurisdiction → court → judge → judge_service) |
+| 8 | Normalize                      | `connector.normalize()` per parsed row; a `NormalizationError` rejects the row and records a `normalize_failed` issue. A `SupportsContext` connector received every artifact through `load_context` before step 7. |
+| 9 | Deduplicate                    | `_deduplicate` by `natural_key` (first draft wins; conflicting duplicates are counted in the log). `case_number_duplicate` runs just before, over the drafts as parsed, because the collapse would hide it. |
+| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through the `resolve_persons(session, drafts, run)` hook — in this phase an exact match of the `source_participant_id` hash against `person_identifier`, otherwise a new person (Step 3 replaces the hook with the staged framework). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. |
+| 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts (the reference checks of Phase 1 and the case-level checks: `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`) |
+| 12 | Publish canonical rows        | `_publish`: `INSERT … ON CONFLICT DO UPDATE` per entity type, in dependency order — jurisdiction → court → judge → judge_service in the runner, then persons (+ identifier rows) → cases → parties → assignments → charges → court events → decisions (+ pretrial release) → sentences → justice events in `ingest/publish.py`, batched 500 rows per statement |
 | 13 | Recompute affected metrics    | `recompute_metrics` — a no-op hook until the Phase 3 metrics engine |
 | 14 | Record lineage and statistics | issues persisted with their source record and entity id; `ingest_run` counts, `code_version` (git SHA), `parser_version`, status, checkpoint |
 
@@ -115,24 +135,79 @@ lookup) live in `judgemetrics.normalization`.
    `records_created = records_updated = 0`. JSONB `external_ids` and
    `metadata` are merged (`||`), never replaced, so identifiers added by
    another source survive.
-4. `source_record_id` on `jurisdiction`, `court`, and `judge` is
-   last-substantive-writer provenance: it moves to the newer artifact
-   only when that artifact changed the row. `judge_service` rows carry
-   the record of the artifact that produced them.
+4. `source_record_id` on `jurisdiction`, `court`, `judge`, and `person`
+   is last-substantive-writer provenance: it moves to the newer artifact
+   only when that artifact changed the row. `judge_service` rows and every
+   case-level row carry the record of the artifact that produced their
+   current values.
 5. Data-quality issues are keyed by `(source_record_id, entity_type,
-   entity_id, issue_code, description)`; a rerun never duplicates an
-   open issue.
+   entity_id, issue_code, description)`; run-level issues without a
+   source record (the unknown-category counts) by code and description;
+   a rerun never duplicates an open issue.
 6. The `ingest_run` row is committed first, so a failed run is always
    recorded; the whole publish (source records, canonical rows, issues,
    run statistics) is one transaction that a failure rolls back, leaving
    `status = failed` and `failure_reason` on the run and the immutable
    raw object in the lake.
 
+7. A new `person` receives `public_person_key = secrets.token_urlsafe(12)`
+   once, at insert; the key is never in an update set. Identifier rows are
+   inserted with `ON CONFLICT DO NOTHING` on `(person_id, identifier_type,
+   value_hash)`.
+
+### Person hashing and resolution
+
+A participant's name, date of birth, and source identifier never reach a
+canonical column, a log line, or an issue description. The connector
+hashes each with `judgemetrics.security.identifiers.hash_identifier`:
+`sha256(pepper || "\x00" || kind || "\x00" || normalized value)` under
+`JUDGEMETRICS_IDENTIFIER_PEPPER` (a per-deployment secret; the ingest CLI
+and `seed` refuse to start without it), with the normalization per kind
+(`source_participant_id` stripped and upper-cased, `full_name` through
+`normalize_person_name`, `date_of_birth` as ISO, `name_dob` as
+`<normalized name>|<iso date>` when both exist). `PersonDraft` carries
+those hashes only; the publish step writes them to the restricted
+`person_identifier` table (`encrypted_value` stays NULL in this phase).
+
+`resolve_persons(session, drafts, run)` in `ingest/runner.py` is the
+Phase 2 Step 2 hook: a draft whose stable-identifier hash already sits in
+`person_identifier` (partial unique index `uq_person_identifier_stable`)
+resolves to that person; every other draft becomes a new `person` with
+`resolution_status = deterministic` and confidence 1. Step 3 replaces the
+hook with the staged framework (deterministic → rules → scoring → review)
+and records its candidates against the run. The participant id is used
+in the namespace the source assigns it (the generator's ids are one per
+person across its courts; a real clerk system's ids are scoped the same
+way), never combined with a court code.
+
+### The synthetic connector
+
+`ingest/synthetic/` reads a generated dataset (`docs/SYNTHETIC_DATA.md`)
+from `Settings.synthetic_dir` (the directory holding `manifest.json` and
+`source/`; default `data/synthetic/20260916`): `discover` lists
+`manifest.json` first and then the nine source files as
+`source/<name>` (`truth/` is never discovered), `fetch` reads bytes from
+disk after checking the id is a plain relative path inside the directory,
+`load_context` fails the run when a file's sha256 differs from the
+manifest and builds the court-code index and each participant's case
+timeline from `charges.csv`, `validate_raw` checks the manifest's
+`generator_version` and each file's header set (missing → error naming
+the header, extra → warning), and `normalize` maps rows onto the drafts
+(`normalize.py`, one section per file), deriving justice events —
+`new_case` when a participant has an earlier case, `reconviction` when a
+conviction follows an earlier disposition of another case,
+`failure_to_appear` and `revocation` from the court events. `judgemetrics
+ingest run synthetic --from-fixture tests/fixtures/golden` reads the
+golden fixture through the runner's fixture path, which accepts
+contained relative ids for this reason.
+
 ### Refusals
 
 `run_ingest` records `status = refused` without touching anything when
 `JUDGEMETRICS_ENV=production` and either the connector's
 `source_info.source_type` is `synthetic` or `--from-fixture` is given.
+`judgemetrics seed` generates nothing in production and records the same
+refusal.
 
 ## Database roles
 
@@ -249,9 +324,13 @@ because the web client is generated from it ("Web tier" below).
 | `judgemetrics ingest list-sources`               | none   | Registered connectors with parser versions.             |
 | `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector. |
 | `judgemetrics ingest runs [--source ID] [--limit N]` | app | A table of runs with counts, status, and parser version. |
+| `judgemetrics seed [--seed 20260916] [--scale demo] [--force]` | ingest | Generate `data/synthetic/<seed>` (skipped when its manifest already records the seed, scale, and generator version) and ingest it through the synthetic connector. `uv run poe seed`. |
 
-Logs (structlog, scrubbed) carry counts, identifiers, hashes, and keys
-— never raw rows.
+Logs (structlog, scrubbed) carry counts (per table on `ingest.published`
+and `ingest.succeeded`), source identifiers, file hashes, and object keys
+— never a raw row, a participant name, a date of birth, an identifier
+hash, or the pepper (the scrubber's denylist covers `pepper`,
+`value_hash`, `date_of_birth`, and `full_name`).
 
 ## Web tier
 

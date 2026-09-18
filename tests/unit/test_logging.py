@@ -38,6 +38,11 @@ DENYLIST = {
     "identifier_value",
     "encrypted_value",
     "requester_contact",
+    "pepper",
+    "identifier_pepper",
+    "value_hash",
+    "date_of_birth",
+    "full_name",
 }
 
 
