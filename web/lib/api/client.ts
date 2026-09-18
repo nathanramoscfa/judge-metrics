@@ -19,8 +19,23 @@ export type CourtSummary = Schemas["CourtSummary"];
 export type JurisdictionDetail = Schemas["JurisdictionDetail"];
 export type JurisdictionSummary = Schemas["JurisdictionSummary"];
 export type Provenance = Schemas["Provenance"];
+export type CoverageWindow = Schemas["CoverageWindow"];
 export type SearchResponse = Schemas["SearchResponse"];
 export type SearchResult = Schemas["SearchResult"];
+export type CaseSummary = Schemas["CaseSummary"];
+export type CaseDetail = Schemas["CaseDetail"];
+export type CaseParty = Schemas["CasePartyOut"];
+export type Assignment = Schemas["AssignmentOut"];
+export type Charge = Schemas["ChargeOut"];
+export type Decision = Schemas["DecisionOut"];
+export type PretrialRelease = Schemas["PretrialReleaseOut"];
+export type Sentence = Schemas["SentenceOut"];
+export type Timeline = Schemas["Timeline"];
+export type TimelineEntry = Schemas["TimelineEntry"];
+export type TimelineKind = TimelineEntry["kind"];
+export type ActorType = Schemas["ActorType"];
+export type Coverage = Schemas["Coverage"];
+export type CoverageSource = Schemas["CoverageSource"];
 export type ErrorBody = Schemas["ErrorBody"];
 export type Page<T> = {
   items: T[];
@@ -68,6 +83,15 @@ export type ListCourtsParams = {
 };
 
 export type ListJurisdictionsParams = {
+  limit?: number;
+  offset?: number;
+};
+
+export type ListJudgeCasesParams = {
+  filed_from?: string;
+  filed_to?: string;
+  status?: string;
+  case_type?: string;
   limit?: number;
   offset?: number;
 };
@@ -213,4 +237,33 @@ export function listJurisdictions(
 
 export function search(q: string, limit = 25): Promise<ApiResult<SearchResponse>> {
   return call(() => client.GET("/api/v1/search", { params: { query: { q, limit } } }));
+}
+
+export function getCase(caseId: string): Promise<ApiResult<CaseDetail>> {
+  return call(() =>
+    client.GET("/api/v1/cases/{case_id}", { params: { path: { case_id: caseId } } }),
+  );
+}
+
+export function getCaseTimeline(caseId: string): Promise<ApiResult<Timeline>> {
+  return call(() =>
+    client.GET("/api/v1/cases/{case_id}/timeline", {
+      params: { path: { case_id: caseId } },
+    }),
+  );
+}
+
+export function getJudgeCases(
+  judgeId: string,
+  params: ListJudgeCasesParams = {},
+): Promise<ApiResult<Page<CaseSummary>>> {
+  return call(() =>
+    client.GET("/api/v1/judges/{judge_id}/cases", {
+      params: { path: { judge_id: judgeId }, query: compact(params) },
+    }),
+  );
+}
+
+export function getCoverage(): Promise<ApiResult<Coverage>> {
+  return call(() => client.GET("/api/v1/coverage"));
 }

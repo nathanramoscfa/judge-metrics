@@ -1,11 +1,13 @@
 // web/app/judges/[judgeId]/page.tsx
 // A judge: identity and status, the service timeline as a sortable table,
-// and the source coverage panel. Metrics, cases, and cohorts arrive in
-// Phase 3; the page says so rather than showing empty charts.
+// the cases panel (count, coverage window, link to the case list), and the
+// source coverage panel. Metrics and cohorts arrive in Phase 3; the page
+// says so rather than showing empty charts.
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
-import { StatusBadge } from "@/components/badges";
+import { StatusBadge, SyntheticBadge } from "@/components/badges";
+import { CasesPanel } from "@/components/cases-panel";
 import { ProvenancePanel } from "@/components/provenance-panel";
 import { ServiceTable } from "@/components/service-table";
 import { ErrorState } from "@/components/states";
@@ -63,6 +65,7 @@ export default async function JudgePage({ params }: { params: Params }) {
             {judge.canonical_name}
           </h1>
           <StatusBadge status={judge.status} />
+          {judge.synthetic ? <SyntheticBadge /> : null}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
           {current.length > 0 ? (
@@ -114,10 +117,15 @@ export default async function JudgePage({ params }: { params: Params }) {
             denominator, date range, coverage, sample size, and methodology version.
           </div>
         </section>
-        <ProvenancePanel
-          entries={judge.provenance}
-          issueTitle={`${judge.canonical_name} (judge ${judge.id})`}
-        />
+        <div className="flex flex-col gap-6">
+          <section aria-labelledby="cases-heading">
+            <CasesPanel judge={judge} />
+          </section>
+          <ProvenancePanel
+            entries={judge.provenance}
+            issueTitle={`${judge.canonical_name} (judge ${judge.id})`}
+          />
+        </div>
       </div>
     </article>
   );

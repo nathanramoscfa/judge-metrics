@@ -16,6 +16,7 @@ def provenance_for(session: Session, record_ids: Iterable[uuid.UUID]) -> list[Pr
     """One ``Provenance`` per distinct source record, newest retrieval first.
 
     The repository selects only the public columns, so the lake's internal
-    storage key (``raw_object_path``) never reaches this layer.
+    storage key (``raw_object_path``) never reaches this layer; ``synthetic``
+    comes from the source row's ``source_type``.
     """
     return [Provenance(**row._asdict()) for row in source_records(session, record_ids)]

@@ -8,6 +8,7 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { SyntheticBadge } from "@/components/badges";
 import { EmptyState } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,20 +56,21 @@ export function CopyHashButton({ hash }: { hash: string }) {
 export function ProvenancePanel({
   entries,
   issueTitle,
+  title = "Source coverage",
+  description = "The raw artifacts these values were derived from. Each sha256 names the exact bytes kept in the immutable raw lake.",
 }: {
   entries: Provenance[];
   issueTitle: string;
+  title?: string;
+  description?: string;
 }) {
   return (
     <Card data-testid="provenance-panel" size="sm">
       <CardHeader>
         <CardTitle>
-          <h2>Source coverage</h2>
+          <h2>{title}</h2>
         </CardTitle>
-        <CardDescription>
-          The raw artifacts these values were derived from. Each sha256 names
-          the exact bytes kept in the immutable raw lake.
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {entries.length === 0 ? (
@@ -83,7 +85,10 @@ export function ProvenancePanel({
                   data-testid="provenance-entry"
                   className="rounded-lg border p-3"
                 >
-                  <p className="font-medium">{source.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-medium">
+                    {source.name}
+                    {entry.synthetic ? <SyntheticBadge /> : null}
+                  </p>
                   <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
                     <dt className="text-muted-foreground">artifact</dt>
                     <dd className="font-mono">{entry.external_record_id ?? "—"}</dd>

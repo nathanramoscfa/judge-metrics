@@ -411,6 +411,39 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   synthetic persons must null `merged_into_person_id` (self FK,
   RESTRICT) and delete candidates first; audit rows cannot be deleted,
   so tests write them inside the rolled-back session only.
+- Case API and pages (Phase 2 Step 4, docs/API.md, docs/ARCHITECTURE.md):
+  the `synthetic` flag on every summary, detail, search result, and
+  provenance block is derived per row from `source.source_type ==
+  SYNTHETIC_SOURCE_TYPE` (the constant lives in `db/models/provenance.py`;
+  the runner re-imports it) through a join to `source_record` and
+  `source` in the same statement (`repositories.provenance.with_source`
+  + `synthetic_flag()`), never from a column of the row, so a list stays
+  one statement; `paginate_rows` returns whole rows for that. Merged
+  persons are filtered at the repository: every person join applies
+  `entity_resolution.merge.unmerged()` and selects `public_person_key`
+  only. `repositories.cases.load_case` is one explicit statement per
+  case-level table plus the provenance rows (eight, a constant); the
+  timeline is assembled in `services.cases.build_timeline` from that
+  same load, sorted by `at`, `TIMELINE_KIND_ORDER`, row id, with
+  date-only facts at the start (`filed`) and end (`closed`) of their
+  day. `/judges/{id}/cases` answers 404 from the empty-page count
+  statement (`select(Judge.id, total)`), keeping the route at two
+  statements. `/coverage` is one correlated-count statement over
+  `source` plus one `DISTINCT ON` for the latest runs;
+  `synthetic_present` means rows exist, not that a source is registered.
+  The web root layout is `force-dynamic` because the demo-data banner
+  reads `/coverage` per request, so no page is prerendered (builds still
+  need no API). The `e2e` CI job ingests `tests/fixtures/golden` after
+  the FJC fixture; the Playwright case flow discovers a synthetic judge
+  and case through the API because the golden fixture and the demo seed
+  name different judges. API integration test modules use the
+  module-scoped `golden_fixture`, which purges the `synthetic` source
+  before and after (the golden and demo datasets share natural keys, so
+  the demo seed is gone after a local test run: `uv run poe seed`
+  restores it); its merges leave append-only `audit_log` rows, so tests
+  that count merge audits scope them to the persons kept.
+  `scripts/verify_phase01.py` check 29 asserts the Phase 1 paths are a
+  subset of `docs/openapi.json`, not the whole set.
 - The two secret scanners reconcile through `.gitleaks.toml`: the
   detect-secrets baseline records each allowlisted false positive as a
   `hashed_secret` sha1 fingerprint, which gitleaks' `generic-api-key`

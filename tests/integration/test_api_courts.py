@@ -35,7 +35,11 @@ def test_list_pages_with_the_uniform_envelope(api: TestClient) -> None:
         "court_type",
         "state_code",
         "jurisdiction_id",
+        "synthetic",
     }
+    assert all(
+        item["synthetic"] is False for item in page["items"] if item["court_type"] != "circuit"
+    )
     names = [item["canonical_name"] for item in page["items"]]
     assert names == sorted(names)
 
@@ -100,15 +104,18 @@ def test_detail_carries_provenance(api: TestClient, fjc_fixture: FjcFixture) -> 
         "external_ids",
         "active_from",
         "active_to",
+        "synthetic",
         "provenance",
     }
     assert body["canonical_name"] == MARYLAND
+    assert body["synthetic"] is False
     assert body["court_type"] == "district"
     assert body["state_code"] == "MD"
     assert body["jurisdiction_id"] == str(fjc_fixture.jurisdiction_id)
     assert body["external_ids"] == {"fjc_court_name": MARYLAND}
     (block,) = body["provenance"]
     assert block["source"] == "fjc"
+    assert block["synthetic"] is False
     assert block["external_record_id"] == "federal-judicial-service.csv"
     assert SHA256.match(block["raw_sha256"])
     assert "raw_object_path" not in response.text

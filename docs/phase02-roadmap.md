@@ -3519,11 +3519,16 @@ hygiene.
     <requirement>
       Repositories and services:
       `repositories/cases.py`
-      (detail in ≤ 4 statements via
-      `selectinload`; the timeline
-      assembled in the service from
-      the same loaded rows — no
-      second round of queries;
+      (detail in a constant number
+      of statements — one explicit
+      statement per case-level
+      table plus one for provenance,
+      eight in all, never a
+      cartesian eager load; the
+      timeline assembled in the
+      service from the same loaded
+      rows — no second round of
+      queries;
       judge cases with `count(*)
       OVER ()` and the four
       filters; every person join
@@ -3661,9 +3666,11 @@ hygiene.
       case-number match; a partial
       number does not match),
       `test_query_counts.py`
-      (case detail ≤ 4, timeline
-      ≤ 4, judge cases ≤ 2,
-      coverage ≤ 3), `tests/unit/
+      (case detail ≤ 8, timeline
+      ≤ 8, judge cases ≤ 2,
+      coverage ≤ 3, judge detail
+      ≤ 4 with the case window),
+      `tests/unit/
       test_openapi.py` (the
       snapshot, the allow-lists,
       and the contract assertion
@@ -3686,8 +3693,9 @@ hygiene.
       sources panel. `ci.yml`
       `e2e` job (and the docs'
       local recipe) ingests
-      `tests/fixtures/golden/
-      source` after the FJC
+      `tests/fixtures/golden` (the
+      dataset root: manifest.json
+      beside source/) after the FJC
       fixture and sets
       `JUDGEMETRICS_IDENTIFIER_
       PEPPER` for the job.

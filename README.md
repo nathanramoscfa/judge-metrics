@@ -42,7 +42,10 @@ and `uv run poe seed`, which loads the demo dataset (5 courts, 24
 judges, 5,200 cases, 3,225 persons) idempotently; Step 3 the staged
 person-resolution framework with its review queue, merges, and
 append-only audit log (`judgemetrics er run|review list|review decide`,
-[`docs/ENTITY_RESOLUTION.md`](docs/ENTITY_RESOLUTION.md)). See:
+[`docs/ENTITY_RESOLUTION.md`](docs/ENTITY_RESOLUTION.md)); Step 4 the
+case, timeline, judge-cases, and coverage endpoints with a `synthetic`
+flag on every response, the case page, the judge cases panel and list,
+the coverage page, and the site-wide demo-data banner. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -110,11 +113,18 @@ rate-limited trigram search:
 | `GET /api/v1/judges`                       | list; filters `q`, `court_id`, `active_on`, `status` |
 | `GET /api/v1/judges/{id}`                  | detail with service records and provenance |
 | `GET /api/v1/judges/{id}/service`          | service records, oldest first             |
+| `GET /api/v1/judges/{id}/cases`            | the judge's cases; filters `filed_from`, `filed_to`, `status`, `case_type` |
 | `GET /api/v1/courts`                       | list; filters `jurisdiction_id`, `court_type` |
 | `GET /api/v1/courts/{id}`                  | detail with provenance                    |
 | `GET /api/v1/jurisdictions`                | list                                      |
 | `GET /api/v1/jurisdictions/{id}`           | detail with provenance                    |
-| `GET /api/v1/search?q=`                    | judges and courts by name similarity (rate limited) |
+| `GET /api/v1/cases/{id}`                   | parties (public keys), assignments, charges, attributed decisions, sentences, provenance |
+| `GET /api/v1/cases/{id}/timeline`          | every dated fact of the case, chronological, each citing its artifact |
+| `GET /api/v1/search?q=`                    | judges and courts by name similarity, cases by exact number (rate limited) |
+| `GET /api/v1/coverage`                     | per-source counts, filing window, last run, `synthetic_present` |
+
+Every summary, detail, search result, and provenance block carries
+`synthetic: bool`; persons appear only as pseudonymous public keys.
 
 The API image builds with `docker build -f infra/docker/api.Dockerfile .`
 and runs beside the services with `docker compose --profile app up`
@@ -124,10 +134,16 @@ and runs beside the services with `docker compose --profile app up`
 
 The web application in [`web/`](web/) (Next.js App Router, TypeScript,
 Tailwind CSS, shadcn/ui, TanStack Table; light and dark mode) renders
-the home page with global search and coverage tiles, `/search`,
-`/judges/[judgeId]` (identity, service timeline, source coverage panel
-with each artifact's sha256), `/courts/[courtId]` (judges serving on a
-chosen date), and `/methodology`. Its API client is generated from
+the home page with global search and coverage tiles, `/search` (judges,
+courts, exact case numbers), `/judges/[judgeId]` (identity, service
+timeline, cases panel, source coverage panel with each artifact's
+sha256), `/judges/[judgeId]/cases` (filtered, paginated case list),
+`/cases/[caseId]` (timeline, charges, judge assignments, attributed
+decisions with actor badges, disposition, sentence, sources),
+`/courts/[courtId]` (judges serving on a chosen date), `/coverage` (one
+card per source), and `/methodology`. A persistent demo-data banner
+appears whenever a synthetic source is present and every synthetic
+record carries a badge. Its API client is generated from
 `docs/openapi.json` and it reads one variable, `NEXT_PUBLIC_API_BASE_URL`.
 
 ```sh

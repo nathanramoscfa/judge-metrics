@@ -4,9 +4,11 @@
 `docs/openapi.json` must equal the rendered document (regenerate it with
 `judgemetrics openapi export` after any route change: Step 5 generates
 the web client from it). The document lists exactly the health probes and
-the eight v1 paths, every route's strict query allow-list matches the
+the twelve v1 paths, every route's strict query allow-list matches the
 parameters the document declares, every error response is an `ErrorBody`,
-and the API-key scheme is declared optional.
+the API-key scheme is declared optional, and no schema property carries a
+restricted name (the contract that `person_identifier` is unreachable
+through any public route).
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from typer.testing import CliRunner
 
 from judgemetrics.api import API_PREFIX
 from judgemetrics.api.deps import StrictQuery
-from judgemetrics.api.routes import courts, judges, jurisdictions, search
+from judgemetrics.api.routes import cases, courts, coverage, judges, jurisdictions, search
 from judgemetrics.cli import app as cli
 from judgemetrics.openapi import openapi_document, render_openapi
 
@@ -35,11 +37,27 @@ EXPECTED_PATHS = {
     "/api/v1/judges",
     "/api/v1/judges/{judge_id}",
     "/api/v1/judges/{judge_id}/service",
+    "/api/v1/judges/{judge_id}/cases",
     "/api/v1/courts",
     "/api/v1/courts/{court_id}",
     "/api/v1/jurisdictions",
     "/api/v1/jurisdictions/{jurisdiction_id}",
+    "/api/v1/cases/{case_id}",
+    "/api/v1/cases/{case_id}/timeline",
     "/api/v1/search",
+    "/api/v1/coverage",
+}
+# Names that belong to the restricted schema (`person_identifier`,
+# `correction_request`) or to internal storage, and must never be a
+# property of any response schema.
+RESTRICTED_PROPERTY_NAMES = {
+    "value_hash",
+    "encrypted_value",
+    "date_of_birth",
+    "full_name",
+    "person_identifier",
+    "raw_object_path",
+    "requester_contact",
 }
 
 
@@ -84,7 +102,14 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
     """A parameter a route declares but the allow-list omits would be rejected as unknown."""
     document = openapi_document()
     checked = 0
-    for router in (judges.router, courts.router, jurisdictions.router, search.router):
+    for router in (
+        judges.router,
+        courts.router,
+        jurisdictions.router,
+        cases.router,
+        search.router,
+        coverage.router,
+    ):
         for route in router.routes:
             assert isinstance(route, APIRoute)
             path = API_PREFIX + route.path
@@ -100,7 +125,7 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
             }
             assert strict[0].allowed == declared, path
             checked += 1
-    assert checked == 8
+    assert checked == 12
 
 
 def test_api_key_scheme_is_declared_optional() -> None:
@@ -118,7 +143,13 @@ def test_api_key_scheme_is_declared_optional() -> None:
 
 def test_page_sizes_are_capped_in_the_document() -> None:
     document = openapi_document()
-    for path in ("/api/v1/judges", "/api/v1/courts", "/api/v1/jurisdictions", "/api/v1/search"):
+    for path in (
+        "/api/v1/judges",
+        "/api/v1/courts",
+        "/api/v1/jurisdictions",
+        "/api/v1/search",
+        "/api/v1/judges/{judge_id}/cases",
+    ):
         parameters: dict[str, dict[str, Any]] = {
             parameter["name"]: parameter["schema"]
             for parameter in document["paths"][path]["get"]["parameters"]
@@ -135,3 +166,70 @@ def test_cli_export_writes_the_same_document(tmp_path: Path) -> None:
     result = CliRunner().invoke(cli, ["openapi", "export", "--out", str(out)])
     assert result.exit_code == 0, result.output
     assert out.read_bytes() == render_openapi().encode("utf-8")
+
+
+def _property_names(schema: dict[str, Any]) -> set[str]:
+    """Every property name anywhere under a JSON-schema fragment."""
+    names: set[str] = set()
+    for key, value in schema.items():
+        if key == "properties" and isinstance(value, dict):
+            names |= set(value)
+            for inner in value.values():
+                names |= _property_names(inner)
+        elif isinstance(value, dict):
+            names |= _property_names(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    names |= _property_names(item)
+    return names
+
+
+def test_no_schema_property_carries_a_restricted_name() -> None:
+    """The contract test of Phase 2: nothing from `person_identifier` leaves the API."""
+    document = openapi_document()
+    names = _property_names(document["components"]["schemas"])
+    assert names, "no schema properties found"
+    assert not (names & RESTRICTED_PROPERTY_NAMES)
+    # Persons appear only as their pseudonymous key.
+    assert "public_person_key" in names
+    assert not any(name.startswith("person_id") for name in names)
+    # Every summary, detail, provenance block, and search result carries the synthetic flag.
+    schemas = document["components"]["schemas"]
+    for name in (
+        "JudgeSummary",
+        "JudgeDetail",
+        "CourtSummary",
+        "CourtDetail",
+        "CaseSummary",
+        "CaseDetail",
+        "SearchResult",
+        "Provenance",
+        "Timeline",
+        "CoverageSource",
+    ):
+        assert "synthetic" in schemas[name]["required"], name
+
+
+def test_judge_cases_filters_and_timeline_kinds_are_declared() -> None:
+    document = openapi_document()
+    parameters = {
+        parameter["name"]
+        for parameter in document["paths"]["/api/v1/judges/{judge_id}/cases"]["get"]["parameters"]
+        if parameter["in"] == "query"
+    }
+    assert parameters == {"limit", "offset", "filed_from", "filed_to", "status", "case_type"}
+    kinds = document["components"]["schemas"]["TimelineEntry"]["properties"]["kind"]["enum"]
+    assert kinds == [
+        "filed",
+        "assignment_start",
+        "assignment_end",
+        "event",
+        "decision",
+        "charge_filed",
+        "charge_disposed",
+        "sentence",
+        "closed",
+    ]
+    coverage_get = document["paths"]["/api/v1/coverage"]["get"]
+    assert coverage_get.get("parameters", []) == []

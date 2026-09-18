@@ -269,28 +269,56 @@ which knows only the one beneath it:
                   `from_attributes`): Page[T], Provenance, ErrorBody, …
 ```
 
-- **Routes** (`api/routes/{judges,courts,jurisdictions,search}.py`)
+- **Routes** (`api/routes/{judges,courts,jurisdictions,cases,search,coverage}.py`)
   declare parameters with validation (`limit` 1–100, `offset` ≥ 0,
-  enum statuses, UUID ids, ISO dates) and a `StrictQuery` allow-list
-  per route, so an undeclared query parameter is a 422 rather than an
-  ignored filter; a unit test checks each allow-list against the
-  parameters the OpenAPI document declares. List and detail routes add
+  enum statuses, UUID ids, ISO dates, vocabulary values by shape) and a
+  `StrictQuery` allow-list per route, so an undeclared query parameter
+  is a 422 rather than an ignored filter; a unit test checks each
+  allow-list against the parameters the OpenAPI document declares.
+  `/judges/{id}/cases` rejects `filed_to < filed_from` with a 422 that
+  names the parameter. List and detail routes add
   `Cache-Control: public, max-age=60` through a router dependency, which
   a raised error bypasses.
 - **Services** (`services/`) return the schemas. `services.search`
-  normalizes the query with `normalize_person_name`, sets
-  `pg_trgm.similarity_threshold` for the request's transaction with
-  `set_config(…, true)` (a bound parameter from
-  `JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD`), and unions judge and
-  court matches ordered by `similarity()`. `services.provenance` builds
-  the provenance block from the public columns of `source_record`.
+  normalizes the query twice — with `normalize_person_name` for the
+  trigram arms and `normalize_case_number` for the exact case-number
+  arm — sets `pg_trgm.similarity_threshold` for the request's
+  transaction with `set_config(…, true)` (a bound parameter from
+  `JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD`), and returns the union
+  ordered by `similarity()` (an exact case number scores 1).
+  `services.provenance` builds the provenance block from the public
+  columns of `source_record` and its source's type. `services.cases`
+  assembles the case detail and the timeline from one
+  `repositories.cases.load_case` result: the timeline's entries are the
+  same loaded rows re-keyed by time, kind rank, and row id — never a
+  second round of queries — each citing its row's artifact.
+  `services.coverage` folds the per-source counts and latest runs into
+  the `Coverage` response and derives `synthetic_present` from rows,
+  not from registered sources.
 - **Repositories** (`repositories/`) take a `Session` and return ORM
-  rows plus totals. `paginate` adds `count(*) OVER ()` to the page query
-  so a list is one statement (a plain count only when the page is
-  empty); `get_judge` loads service records with `selectinload` and
-  their courts with a chained `joinedload`, so a judge detail is three
-  statements including provenance. `tests/integration/test_query_counts.py`
-  counts statements at the cursor and fails on more.
+  rows plus totals. `paginate_rows` adds `count(*) OVER ()` to the page
+  query so a list is one statement (a plain count only when the page
+  is empty); every list and detail statement joins `source_record` and
+  `source` through `repositories.provenance.with_source` and selects
+  `synthetic_flag()` (`source.source_type = 'synthetic'`) beside the
+  entity, so the flag costs no extra statement. `get_judge` loads
+  service records with `selectinload` and their courts with a chained
+  `joinedload`, and `case_window` aggregates the judge's assigned cases
+  in one statement, so a judge detail is four statements including
+  provenance. `repositories.cases.load_case` is one explicit statement
+  per case-level table (the case with its court; parties joined to
+  persons; assignments, events, decisions with pretrial releases, and
+  sentences joined to judges; charges) plus one for the provenance rows:
+  eight whatever the case holds. Every person join applies
+  `entity_resolution.merge.unmerged()` and selects `public_person_key`
+  only. `list_judge_cases` filters with `Case.assignments.any(...)`;
+  when a page is empty, one more statement returns the total together
+  with the judge's existence, so the route can answer 404 without a
+  separate lookup. `repositories.coverage` is one statement over
+  `source` with a correlated count per canonical table and the filing
+  window, plus one `DISTINCT ON` for the latest completed run per
+  source. `tests/integration/test_query_counts.py` counts statements at
+  the cursor and fails on more.
 - **Errors** (`api/errors.py`): every non-2xx response is an `ErrorBody`
   (`code`, `message`, `request_id`). Validation errors name the
   parameter; `ApiError` carries its code; a `SQLAlchemyError` is a 503
@@ -381,22 +409,52 @@ no third-party script, and reads exactly one variable,
   unreachable. Pages render an `ErrorState` (code, status, request id)
   or an `EmptyState` for every fetch; a 404 from the API becomes the
   Next.js not-found page, and a malformed id never reaches the API.
-- **Rendering.** Every data page is `force-dynamic`: it fetches on the
-  server per request, so nothing is baked in at build time (the `web`
-  CI job and the image build run without an API). Static pages
-  (`/methodology`, `/coverage`, `/about`) are prerendered.
+- **Rendering.** The root layout is `force-dynamic` because it renders
+  the demo-data banner (below) from `/coverage` on every request, so
+  every page — including `/methodology` and `/about` — is
+  server-rendered on demand and nothing is baked in at build time (the
+  `web` CI job and the image build run without an API: a failed call
+  simply shows no banner). Data pages declare `force-dynamic` themselves
+  as well.
+- **Synthetic labelling.** `components/synthetic-banner.tsx` is an
+  async server component the layout renders: it calls `getCoverage()`
+  and shows a persistent, non-dismissable `role="note"` banner ("Demo
+  data: this site currently includes a synthetic dataset; synthetic
+  records are labelled") when `synthetic_present` is true, and nothing
+  when it is false or the call fails. `SyntheticBadge`
+  (`components/badges.tsx`) sits beside every entity whose `synthetic`
+  flag is true: a judge, court, or case header, a search result, a case
+  row, a provenance entry, a coverage source. `ActorBadge` covers every
+  `ActorType` (the judge alone takes the filled variant) and
+  `DiscretionBadge` the discretion classification, so a prosecutor's
+  dismissal is visibly not a judge's.
 - **Pages.** `/` (headline, global search, coverage tiles from
-  `/jurisdictions` and the list totals, methodology link), `/search`
-  (`?q=` → `/search`, entity-type badges, the 429 wait time when the
-  limiter answers), `/judges/[judgeId]` (identity, status, sortable
-  service table, FJC biography link by `nid`, the "Source coverage"
-  panel: source name, retrieved-at, truncated sha256 with copy, parser
-  version, ingest run, source export link, "Report a data issue" to the
-  GitHub data-source issue form), `/courts/[courtId]` (court, type,
-  jurisdiction, a date form driving `/judges?court_id=&active_on=`,
-  paginated), `/methodology` (the ten principles, the
-  association-is-not-causation statement, the Phase 3 note),
-  `/coverage` (Phase 2 note), `/about`.
+  `/jurisdictions`, the list totals, and the case counts of
+  `/coverage`, methodology link), `/search` (`?q=` → `/search`,
+  entity-type badges for judges, courts, and exact case numbers, the
+  synthetic badge, the 429 wait time when the limiter answers),
+  `/judges/[judgeId]` (identity, status, sortable service table, FJC
+  biography link by `nid`, the "Cases" panel — count, coverage window,
+  link to the case list — and the "Source coverage" panel: source name,
+  retrieved-at, truncated sha256 with copy, parser version, ingest run,
+  source export link, "Report a data issue" to the GitHub data-source
+  issue form), `/judges/[judgeId]/cases` (the four API filters as a
+  plain GET form, a paginated table newest filing first, rows linking to
+  the case page; malformed query values are dropped before the API is
+  called and the API's inverted-range 422 becomes the error state),
+  `/cases/[caseId]` (header with court link, number, type, status,
+  filed and closed dates, pseudonymous parties; the timeline as an
+  ordered list with `<time>` elements, actor and discretion badges, and
+  the source per entry (`components/case-timeline.tsx`); the charges
+  table with the disposing actor; judge assignments; the disposition;
+  attributed decisions with pretrial detail; the sentence; and the
+  "Sources" panel through `ProvenancePanel`), `/courts/[courtId]`
+  (court, type, jurisdiction, a date form driving
+  `/judges?court_id=&active_on=`, paginated), `/methodology` (the ten
+  principles, the association-is-not-causation statement, the Phase 3
+  note), `/coverage` (one card per source with a row-count table, the
+  filing window, the last run, and the source documentation link; the
+  Phase 3 completeness note), `/about`.
 - **Accessibility.** Skip link, `header`/`nav`/`main`/`footer`
   landmarks, `scope="col"` on every table header, `aria-sort` on the
   sortable table, visible `:focus-visible` rings, the `/` shortcut
@@ -424,12 +482,24 @@ no third-party script, and reads exactly one variable,
   `WEB_API_BASE_URL` overrides it. CI builds, smokes, and Trivy-scans
   both images.
 - **Tests.** Vitest (client helpers with a stubbed `fetch`, the
-  provenance panel's truncation and copy, schema freshness, bundle
-  scan); Playwright `web/tests/e2e/smoke.spec.ts` against a running web
-  app and API (home and the `/` shortcut, search by a fixture surname,
-  judge page service rows and source panel, theme toggle, court page by
-  date, 404 and the methodology statement). The Playwright config starts
-  nothing: the `e2e` CI job migrates, ingests the FJC fixture, starts
-  the API and the built web app, and runs Chromium; locally the operator
-  runs `uv run poe dev-api` and `pnpm dev` (or `pnpm build && pnpm
-  start`) first.
+  provenance panel's truncation, copy, and synthetic label, the banner
+  rendering only on `synthetic_present`, the badges, the timeline entry
+  rendering, schema freshness, bundle scan); Playwright
+  `web/tests/e2e/smoke.spec.ts` against a running web app and API (home
+  and the `/` shortcut, search by a fixture surname, judge page service
+  rows and source panel, theme toggle, court page by date, 404 and the
+  methodology statement, the case flow — search a synthetic judge → the
+  judge page shows the banner, badge, and cases panel → the filtered
+  cases list → the case page renders the timeline, charges, a
+  prosecutor and a judge actor badge, the sentence, and the sources
+  panel — and the coverage page). The golden fixture and the demo seed
+  name different judges, so the case flow discovers its judge and case
+  through the API (a synthetic circuit court → its judges → a closed
+  case with a prosecutor dismissal, a judicial decision, and a
+  sentence) and holds on either dataset. The Playwright config starts
+  nothing: the `e2e` CI job migrates, ingests the FJC fixture and the
+  golden synthetic fixture (`tests/fixtures/golden`, with the job's
+  `JUDGEMETRICS_IDENTIFIER_PEPPER`), starts the API and the built web
+  app, and runs Chromium; locally the operator runs `uv run poe dev-api`
+  and `pnpm dev` (or `pnpm build && pnpm start`) over a database that
+  holds the FJC fixture (or live ingest) and `uv run poe seed` first.

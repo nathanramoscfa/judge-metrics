@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 from judgemetrics.api.ratelimit import RETRY_AFTER_HEADER, TokenBucketLimiter
 from judgemetrics.config import Settings
 from judgemetrics.main import REQUEST_ID_HEADER
-from tests.integration.conftest import FjcFixture, make_app
+from tests.integration.conftest import FjcFixture, GoldenFixture, make_app
 
 pytestmark = pytest.mark.integration
 
@@ -35,12 +35,13 @@ def test_misspelled_surname_finds_the_judge(api: TestClient, fjc_fixture: FjcFix
     assert body["limit"] == 25
     assert body["items"], "no results"
     top = body["items"][0]
-    assert set(top) == {"entity_type", "id", "name", "score"}
+    assert set(top) == {"entity_type", "id", "name", "score", "synthetic"}
     assert top == {
         "entity_type": "judge",
         "id": str(fjc_fixture.judge_ids[SOTOMAYOR]),
         "name": "Sonia Sotomayor",
         "score": top["score"],
+        "synthetic": False,
     }
     assert 0.3 <= top["score"] <= 1.0
 
@@ -57,7 +58,7 @@ def test_results_are_ordered_by_score_and_include_courts(
     courts = [item for item in body["items"] if item["entity_type"] == "court"]
     assert courts and courts[0]["name"] == "Supreme Court of the United States"
     assert courts[0]["id"] == str(fjc_fixture.court_ids["Supreme Court of the United States"])
-    assert {item["entity_type"] for item in body["items"]} <= {"judge", "court"}
+    assert {item["entity_type"] for item in body["items"]} <= {"judge", "court", "case"}
 
 
 def test_query_is_normalized_and_limit_applies(api: TestClient) -> None:
@@ -91,6 +92,47 @@ def test_invalid_parameters_are_422(
     assert set(body) == {"code", "message", "request_id"}
     assert body["code"] == "validation_error"
     assert fragment in body["message"]
+
+
+# --- case numbers (golden synthetic fixture) ------------------------------------------
+
+
+def test_exact_case_number_matches_and_a_partial_one_does_not(
+    api: TestClient, golden_fixture: GoldenFixture
+) -> None:
+    case_id = str(golden_fixture.case_ids["SYN-2020-000005"])
+    for query in ("SYN-2020-000005", "syn 2020 000005", "  syn-2020-000005 ", "SYN/2020/000005"):
+        body = api.get("/api/v1/search", params={"q": query}).json()
+        cases = [item for item in body["items"] if item["entity_type"] == "case"]
+        assert cases == [
+            {
+                "entity_type": "case",
+                "id": case_id,
+                "name": "SYN-2020-000005",
+                "score": 1.0,
+                "synthetic": True,
+            }
+        ], query
+        # An exact number outranks any similar name.
+        assert body["items"][0]["entity_type"] == "case"
+    for partial in ("2020-000005", "SYN-2020", "SYN-2020-00000", "000005"):
+        body = api.get("/api/v1/search", params={"q": partial}).json()
+        assert not [item for item in body["items"] if item["entity_type"] == "case"], partial
+
+
+def test_synthetic_judges_and_courts_are_flagged_in_search(
+    api: TestClient, golden_fixture: GoldenFixture
+) -> None:
+    body = api.get("/api/v1/search", params={"q": "Puce Wingnut"}).json()
+    top = body["items"][0]
+    assert top["entity_type"] == "judge"
+    assert top["id"] == str(golden_fixture.judge_ids["J-0003"])
+    assert top["synthetic"] is True
+    courts = api.get("/api/v1/search", params={"q": "Synthetic County Circuit Court"}).json()
+    by_name = {item["name"]: item for item in courts["items"] if item["entity_type"] == "court"}
+    assert by_name["Synthetic County Circuit Court, Division 3"]["synthetic"] is True
+    # An FJC court similar enough to match is not flagged.
+    assert all(not item["synthetic"] for name, item in by_name.items() if "U.S." in name)
 
 
 # --- the rate limiter ---------------------------------------------------------------

@@ -1,10 +1,13 @@
 # tests/integration/test_api_judges.py
-"""`/api/v1/judges` over the committed FJC fixture ingest.
+"""`/api/v1/judges` over the committed FJC fixture ingest, and `/judges/{id}/cases`
+over the committed golden synthetic ingest.
 
 Pagination bounds, strict filter validation, the `active_on` / `court_id`
 / `status` / `q` filters, the 404 envelope, provenance on the detail, the
-cache header, and the guarantee that no internal storage key or error
-detail leaves the API.
+cache header, the guarantee that no internal storage key or error detail
+leaves the API; and for the cases list: pagination, the four filters, the
+inverted-range and unknown-parameter 422s, plus `case_count` and
+`coverage` on a synthetic judge's detail.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from sqlalchemy.exc import OperationalError
 from judgemetrics.api.deps import CACHE_CONTROL
 from judgemetrics.api.routes import judges as judges_routes
 from judgemetrics.main import REQUEST_ID_HEADER
-from tests.integration.conftest import FjcFixture
+from tests.integration.conftest import FjcFixture, GoldenFixture
 
 pytestmark = pytest.mark.integration
 
@@ -51,7 +54,7 @@ def test_list_pages_with_the_uniform_envelope(api: TestClient) -> None:
     assert len(page["items"]) == 10
     assert page["total"] >= 25  # the fixture's judges, plus any live ingest
     assert (page["limit"], page["offset"], page["next_offset"]) == (10, 0, 10)
-    assert set(page["items"][0]) == {"id", "canonical_name", "status"}
+    assert set(page["items"][0]) == {"id", "canonical_name", "status", "synthetic"}
     names = [item["canonical_name"] for item in page["items"]]
     assert names == sorted(names)
 
@@ -176,9 +179,16 @@ def test_detail_carries_service_records_and_provenance(
         "external_ids",
         "metadata",
         "service",
+        "case_count",
+        "coverage",
+        "synthetic",
         "provenance",
     }
     assert body["canonical_name"] == "Samuel A. Alito, Jr."
+    assert body["synthetic"] is False
+    # The FJC directory carries no cases; the window is null, never a zero-day span.
+    assert body["case_count"] == 0
+    assert body["coverage"] is None
     assert body["normalized_name"] == "samuel a alito jr"
     assert body["status"] == "active"
     assert body["external_ids"]["fjc_nid"] == ALITO
@@ -210,8 +220,10 @@ def test_detail_carries_service_records_and_provenance(
             "raw_sha256",
             "parser_version",
             "ingest_run_id",
+            "synthetic",
         }
         assert block["source"] == "fjc"
+        assert block["synthetic"] is False
         assert SHA256.match(block["raw_sha256"])
         assert block["parser_version"] == "2026.09.1"
         uuid.UUID(block["ingest_run_id"])
@@ -298,3 +310,163 @@ def test_database_error_is_503_without_sql(
     assert body["message"] == "database unavailable"
     assert "planted_secret_column" not in response.text
     assert "SELECT" not in response.text
+
+
+# --- the judge's cases (golden synthetic fixture) ---------------------------------
+
+# J-0003 (Puce Wingnut) sits on fifteen distinct golden cases filed between
+# 2019-04-27 and 2021-11-14: ten closed and five open, nine misdemeanors
+# and six felonies.
+SYNTHETIC_JUDGE = "J-0003"
+SYNTHETIC_JUDGE_CASES = 15
+
+
+def test_synthetic_judge_detail_carries_the_case_window_and_badge(
+    api: TestClient, golden_fixture: GoldenFixture
+) -> None:
+    body = api.get(f"/api/v1/judges/{golden_fixture.judge_ids[SYNTHETIC_JUDGE]}").json()
+    assert body["canonical_name"] == "Puce Wingnut"
+    assert body["synthetic"] is True
+    assert body["case_count"] == SYNTHETIC_JUDGE_CASES
+    assert body["coverage"] == {
+        "earliest_filed": "2019-04-27",
+        "latest_filed": "2021-11-14",
+        "case_count": SYNTHETIC_JUDGE_CASES,
+    }
+    assert all(block["synthetic"] is True for block in body["provenance"])
+    listed = api.get("/api/v1/judges", params={"q": "Puce Wingnut"}).json()
+    assert listed["items"][0]["synthetic"] is True
+
+
+def test_judge_cases_paginate_newest_filing_first(
+    api: TestClient, golden_fixture: GoldenFixture
+) -> None:
+    judge_id = golden_fixture.judge_ids[SYNTHETIC_JUDGE]
+    response = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 10})
+    assert response.status_code == 200, response.text
+    assert response.headers["Cache-Control"] == CACHE_CONTROL
+    page = response.json()
+    assert set(page) == {"items", "total", "limit", "offset", "next_offset"}
+    assert (page["total"], page["limit"], page["offset"], page["next_offset"]) == (
+        SYNTHETIC_JUDGE_CASES,
+        10,
+        0,
+        10,
+    )
+    assert len(page["items"]) == 10
+    assert set(page["items"][0]) == {
+        "id",
+        "court",
+        "case_number",
+        "case_type",
+        "filed_date",
+        "closed_date",
+        "status",
+        "synthetic",
+    }
+    filed = [item["filed_date"] for item in page["items"]]
+    assert filed == sorted(filed, reverse=True)
+    assert page["items"][0]["case_number"] == "SYN-2021-000028"
+    assert page["items"][0]["court"]["id"] == str(golden_fixture.court_ids["C-0003"])
+    assert all(item["synthetic"] is True for item in page["items"])
+
+    rest = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 10, "offset": 10}).json()
+    assert len(rest["items"]) == 5
+    assert rest["next_offset"] is None
+    assert {item["id"] for item in rest["items"]}.isdisjoint({item["id"] for item in page["items"]})
+    every = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 100}).json()
+    assert {item["case_number"] for item in every["items"]} == set(
+        [item["case_number"] for item in page["items"]]
+        + [item["case_number"] for item in rest["items"]]
+    )
+    # An offset past the end: the empty page still reports the total.
+    beyond = api.get(f"/api/v1/judges/{judge_id}/cases", params={"offset": 1000}).json()
+    assert beyond == {
+        "items": [],
+        "total": SYNTHETIC_JUDGE_CASES,
+        "limit": 25,
+        "offset": 1000,
+        "next_offset": None,
+    }
+
+
+def test_judge_cases_filters(api: TestClient, golden_fixture: GoldenFixture) -> None:
+    judge_id = golden_fixture.judge_ids[SYNTHETIC_JUDGE]
+
+    def numbers(**params: str) -> list[str]:
+        page = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 100, **params})
+        assert page.status_code == 200, page.text
+        return [item["case_number"] for item in page.json()["items"]]
+
+    assert len(numbers(status="closed")) == 10
+    assert len(numbers(status="open")) == 5
+    assert len(numbers(case_type="misdemeanor")) == 9
+    assert len(numbers(case_type="felony")) == 6
+    assert numbers(filed_from="2021-01-01") == [
+        "SYN-2021-000028",
+        "SYN-2021-000020",
+        "SYN-2021-000019",
+        "SYN-2021-000017",
+        "SYN-2021-000016",
+        "SYN-2021-000014",
+        "SYN-2021-000005",
+        "SYN-2021-000002",
+    ]
+    assert numbers(filed_to="2019-12-31") == [
+        "SYN-2019-000013",
+        "SYN-2019-000007",
+        "SYN-2019-000004",
+    ]
+    assert numbers(filed_from="2020-06-20", filed_to="2020-06-20") == ["SYN-2020-000005"]
+    assert numbers(filed_from="2020-01-01", filed_to="2020-12-31", status="closed") == [
+        "SYN-2020-000018",
+        "SYN-2020-000016",
+        "SYN-2020-000005",
+        "SYN-2020-000002",
+    ]
+    assert numbers(status="open", case_type="felony") == ["SYN-2021-000028", "SYN-2021-000020"]
+    assert numbers(status="closed", filed_from="2099-01-01") == []
+
+
+@pytest.mark.parametrize(
+    ("params", "fragment"),
+    [
+        ({"filed_from": "2021-01-01", "filed_to": "2020-01-01"}, "filed_to"),
+        ({"filed_from": "yesterday"}, "filed_from"),
+        ({"filed_to": "2020-13-01"}, "filed_to"),
+        ({"status": "Closed"}, "status"),
+        ({"status": ""}, "status"),
+        ({"case_type": "felony;drop"}, "case_type"),
+        ({"limit": 101}, "limit"),
+        ({"offset": -1}, "offset"),
+        ({"court_id": "x"}, "court_id"),
+        ({"sort": "filed"}, "sort"),
+    ],
+)
+def test_judge_cases_invalid_parameters_are_422(
+    api: TestClient, golden_fixture: GoldenFixture, params: dict[str, object], fragment: str
+) -> None:
+    judge_id = golden_fixture.judge_ids[SYNTHETIC_JUDGE]
+    response = api.get(f"/api/v1/judges/{judge_id}/cases", params=params)
+    assert response.status_code == 422, response.text
+    body = _error(response)
+    assert body["code"] == "validation_error"
+    assert fragment in body["message"]
+
+
+def test_judge_cases_of_a_missing_judge_is_404_and_of_a_caseless_judge_is_empty(
+    api: TestClient, fjc_fixture: FjcFixture, golden_fixture: GoldenFixture
+) -> None:
+    missing = api.get(f"/api/v1/judges/{uuid.UUID(int=0)}/cases")
+    assert missing.status_code == 404
+    assert _error(missing)["code"] == "not_found"
+    # An FJC judge exists but has no case on file: an empty page, not a 404.
+    alito = api.get(f"/api/v1/judges/{fjc_fixture.judge_ids[ALITO]}/cases")
+    assert alito.status_code == 200
+    assert alito.json() == {
+        "items": [],
+        "total": 0,
+        "limit": 25,
+        "offset": 0,
+        "next_offset": None,
+    }

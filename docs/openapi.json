@@ -1,6 +1,367 @@
 {
   "components": {
     "schemas": {
+      "ActorType": {
+        "description": "Who took an action; the basis of every judge-level inclusion rule.",
+        "enum": [
+          "judge",
+          "prosecutor",
+          "defense",
+          "jury",
+          "clerk",
+          "law_enforcement",
+          "legislature_or_mandatory_rule",
+          "appellate_court",
+          "unknown"
+        ],
+        "title": "ActorType",
+        "type": "string"
+      },
+      "AssignmentOut": {
+        "properties": {
+          "assignment_type": {
+            "description": "`initial` or `reassignment`.",
+            "title": "Assignment Type",
+            "type": "string"
+          },
+          "end_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null while the assignment is current.",
+            "title": "End At"
+          },
+          "judge": {
+            "$ref": "#/components/schemas/JudgeRef"
+          },
+          "start_at": {
+            "format": "date-time",
+            "title": "Start At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "judge",
+          "assignment_type",
+          "start_at",
+          "end_at"
+        ],
+        "title": "AssignmentOut",
+        "type": "object"
+      },
+      "CaseDetail": {
+        "properties": {
+          "assignments": {
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/AssignmentOut"
+            },
+            "title": "Assignments",
+            "type": "array"
+          },
+          "case_number": {
+            "description": "The docket number as the source recorded it.",
+            "title": "Case Number",
+            "type": "string"
+          },
+          "case_type": {
+            "description": "`felony` or `misdemeanor` (data/reference/case_vocabulary.yaml).",
+            "title": "Case Type",
+            "type": "string"
+          },
+          "charges": {
+            "description": "By filing time.",
+            "items": {
+              "$ref": "#/components/schemas/ChargeOut"
+            },
+            "title": "Charges",
+            "type": "array"
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "court": {
+            "$ref": "#/components/schemas/CourtRef"
+          },
+          "decisions": {
+            "description": "By decision time.",
+            "items": {
+              "$ref": "#/components/schemas/DecisionOut"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "filed_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filed Date"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "parties": {
+            "items": {
+              "$ref": "#/components/schemas/CasePartyOut"
+            },
+            "title": "Parties",
+            "type": "array"
+          },
+          "provenance": {
+            "description": "The distinct raw artifacts behind the case and every row it contains.",
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "title": "Provenance",
+            "type": "array"
+          },
+          "sentences": {
+            "description": "By sentencing time.",
+            "items": {
+              "$ref": "#/components/schemas/SentenceOut"
+            },
+            "title": "Sentences",
+            "type": "array"
+          },
+          "status": {
+            "description": "`open` or `closed`.",
+            "title": "Status",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "court",
+          "case_number",
+          "case_type",
+          "filed_date",
+          "closed_date",
+          "status",
+          "synthetic",
+          "parties",
+          "assignments",
+          "charges",
+          "decisions",
+          "sentences",
+          "provenance"
+        ],
+        "title": "CaseDetail",
+        "type": "object"
+      },
+      "CasePartyOut": {
+        "properties": {
+          "party_type": {
+            "description": "`defendant` in the current vocabulary.",
+            "title": "Party Type",
+            "type": "string"
+          },
+          "public_person_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pseudonymous public key of the resolved person; the only person identifier the API ever returns.",
+            "title": "Public Person Key"
+          }
+        },
+        "required": [
+          "party_type",
+          "public_person_key"
+        ],
+        "title": "CasePartyOut",
+        "type": "object"
+      },
+      "CaseSummary": {
+        "properties": {
+          "case_number": {
+            "description": "The docket number as the source recorded it.",
+            "title": "Case Number",
+            "type": "string"
+          },
+          "case_type": {
+            "description": "`felony` or `misdemeanor` (data/reference/case_vocabulary.yaml).",
+            "title": "Case Type",
+            "type": "string"
+          },
+          "closed_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Date"
+          },
+          "court": {
+            "$ref": "#/components/schemas/CourtRef"
+          },
+          "filed_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filed Date"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "`open` or `closed`.",
+            "title": "Status",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "court",
+          "case_number",
+          "case_type",
+          "filed_date",
+          "closed_date",
+          "status",
+          "synthetic"
+        ],
+        "title": "CaseSummary",
+        "type": "object"
+      },
+      "ChargeOut": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "disposed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disposed At"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`dismissed`, `acquitted`, `convicted_plea`, `convicted_verdict`, `pending`, or null.",
+            "title": "Disposition"
+          },
+          "disposition_actor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActorType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who disposed of the charge; a prosecutor's dismissal is not a judicial one."
+          },
+          "filed_at": {
+            "format": "date-time",
+            "title": "Filed At",
+            "type": "string"
+          },
+          "offense_category": {
+            "title": "Offense Category",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "statute_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statute Code"
+          },
+          "violent_flag": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Violent Flag"
+          }
+        },
+        "required": [
+          "statute_code",
+          "description",
+          "offense_category",
+          "severity",
+          "violent_flag",
+          "filed_at",
+          "disposed_at",
+          "disposition",
+          "disposition_actor"
+        ],
+        "title": "ChargeOut",
+        "type": "object"
+      },
       "CourtDetail": {
         "properties": {
           "active_from": {
@@ -69,6 +430,11 @@
             ],
             "description": "USPS code parsed from a district-court name.",
             "title": "State Code"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
@@ -77,6 +443,7 @@
           "court_type",
           "state_code",
           "jurisdiction_id",
+          "synthetic",
           "external_ids",
           "active_from",
           "active_to",
@@ -142,6 +509,11 @@
             ],
             "description": "USPS code parsed from a district-court name.",
             "title": "State Code"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
@@ -149,9 +521,247 @@
           "canonical_name",
           "court_type",
           "state_code",
-          "jurisdiction_id"
+          "jurisdiction_id",
+          "synthetic"
         ],
         "title": "CourtSummary",
+        "type": "object"
+      },
+      "Coverage": {
+        "properties": {
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "sources": {
+            "description": "Every registered source, by name.",
+            "items": {
+              "$ref": "#/components/schemas/CoverageSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "synthetic_present": {
+            "description": "True when any synthetic source has rows in the canonical tables.",
+            "title": "Synthetic Present",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sources",
+          "synthetic_present",
+          "generated_at"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "CoverageSource": {
+        "properties": {
+          "cases": {
+            "minimum": 0.0,
+            "title": "Cases",
+            "type": "integer"
+          },
+          "courts": {
+            "minimum": 0.0,
+            "title": "Courts",
+            "type": "integer"
+          },
+          "earliest_filed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Filed"
+          },
+          "judges": {
+            "minimum": 0.0,
+            "title": "Judges",
+            "type": "integer"
+          },
+          "jurisdictions": {
+            "minimum": 0.0,
+            "title": "Jurisdictions",
+            "type": "integer"
+          },
+          "last_ingest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastIngest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The most recent completed run, any status."
+          },
+          "latest_filed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Filed"
+          },
+          "persons": {
+            "description": "Resolved persons (merged rows excluded).",
+            "minimum": 0.0,
+            "title": "Persons",
+            "type": "integer"
+          },
+          "source": {
+            "description": "Source register key (docs/DATA_SOURCES.md).",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True for the in-repo generator's dataset.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "source_type",
+          "synthetic",
+          "jurisdictions",
+          "courts",
+          "judges",
+          "cases",
+          "persons",
+          "earliest_filed",
+          "latest_filed",
+          "last_ingest"
+        ],
+        "title": "CoverageSource",
+        "type": "object"
+      },
+      "CoverageWindow": {
+        "description": "The span of filing dates behind a set of cases, with their count.",
+        "properties": {
+          "case_count": {
+            "minimum": 0.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "earliest_filed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest Filed"
+          },
+          "latest_filed": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Filed"
+          }
+        },
+        "required": [
+          "earliest_filed",
+          "latest_filed",
+          "case_count"
+        ],
+        "title": "CoverageWindow",
+        "type": "object"
+      },
+      "DecisionOut": {
+        "properties": {
+          "actor_type": {
+            "$ref": "#/components/schemas/ActorType",
+            "description": "Who decided: the basis of every inclusion rule."
+          },
+          "decision_at": {
+            "format": "date-time",
+            "title": "Decision At",
+            "type": "string"
+          },
+          "decision_type": {
+            "description": "`pretrial_release`, `dismissal`, `disposition`, or `sentencing`.",
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "decision_value": {
+            "additionalProperties": true,
+            "title": "Decision Value",
+            "type": "object"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The deciding judge, when the decision was judicial."
+          },
+          "judicial_discretion_classification": {
+            "description": "`discretionary`, `mandatory`, `non_judicial`, or `unknown`.",
+            "title": "Judicial Discretion Classification",
+            "type": "string"
+          },
+          "pretrial_release": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PretrialReleaseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "public_person_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pseudonymous public key of the resolved person; the only person identifier the API ever returns.",
+            "title": "Public Person Key"
+          }
+        },
+        "required": [
+          "decision_type",
+          "decision_at",
+          "actor_type",
+          "judicial_discretion_classification",
+          "judge",
+          "public_person_key",
+          "decision_value",
+          "pretrial_release"
+        ],
+        "title": "DecisionOut",
         "type": "object"
       },
       "ErrorBody": {
@@ -216,11 +826,38 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "IngestRunStatus": {
+        "enum": [
+          "running",
+          "succeeded",
+          "failed",
+          "refused"
+        ],
+        "title": "IngestRunStatus",
+        "type": "string"
+      },
       "JudgeDetail": {
         "properties": {
           "canonical_name": {
             "title": "Canonical Name",
             "type": "string"
+          },
+          "case_count": {
+            "description": "Distinct cases with an assignment to this judge, across all sources.",
+            "minimum": 0.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoverageWindow"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The filing-date span of the judge's assigned cases, or null when no case is on file."
           },
           "external_ids": {
             "additionalProperties": true,
@@ -271,19 +908,47 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "canonical_name",
           "status",
+          "synthetic",
           "normalized_name",
           "external_ids",
           "metadata",
           "service",
+          "case_count",
+          "coverage",
           "provenance"
         ],
         "title": "JudgeDetail",
+        "type": "object"
+      },
+      "JudgeRef": {
+        "description": "A judge named by a case-level row, enough to link and label it.",
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name"
+        ],
+        "title": "JudgeRef",
         "type": "object"
       },
       "JudgeSummary": {
@@ -310,12 +975,18 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "canonical_name",
-          "status"
+          "status",
+          "synthetic"
         ],
         "title": "JudgeSummary",
         "type": "object"
@@ -460,6 +1131,37 @@
         "title": "JurisdictionType",
         "type": "string"
       },
+      "LastIngest": {
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IngestRunStatus"
+          }
+        },
+        "required": [
+          "run_id",
+          "completed_at",
+          "status"
+        ],
+        "title": "LastIngest",
+        "type": "object"
+      },
       "NotReadyResponse": {
         "properties": {
           "reason": {
@@ -477,6 +1179,56 @@
           "reason"
         ],
         "title": "NotReadyResponse",
+        "type": "object"
+      },
+      "Page_CaseSummary_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CaseSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the next page, or null on the last.",
+            "title": "Next Offset"
+          },
+          "offset": {
+            "description": "Rows skipped before this page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows matching the filters, across all pages.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "next_offset"
+        ],
+        "title": "Page[CaseSummary]",
         "type": "object"
       },
       "Page_CourtSummary_": {
@@ -629,6 +1381,57 @@
         "title": "Page[JurisdictionSummary]",
         "type": "object"
       },
+      "PretrialReleaseOut": {
+        "properties": {
+          "bond_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bond Amount"
+          },
+          "conditions": {
+            "additionalProperties": true,
+            "title": "Conditions",
+            "type": "object"
+          },
+          "detained_flag": {
+            "title": "Detained Flag",
+            "type": "boolean"
+          },
+          "release_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release At"
+          },
+          "release_type": {
+            "description": "`recognizance`, `monetary_bond`, `detained`, or `statutory`.",
+            "title": "Release Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release_type",
+          "bond_amount",
+          "conditions",
+          "release_at",
+          "detained_flag"
+        ],
+        "title": "PretrialReleaseOut",
+        "type": "object"
+      },
       "Provenance": {
         "description": "Where a row's current values came from: one retrieved raw artifact.\n\nThe raw object itself lives in the immutable lake under an internal\nstorage key that is never published; ``raw_sha256`` identifies its\nbytes and ``ingest_run_id`` the run that fetched it.",
         "properties": {
@@ -669,6 +1472,11 @@
             "description": "Source register key (docs/DATA_SOURCES.md), e.g. `fjc`.",
             "title": "Source",
             "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the artifact belongs to a source of type `synthetic` (the in-repo generator): the row is demo data, never a court record.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
@@ -677,7 +1485,8 @@
           "retrieved_at",
           "raw_sha256",
           "parser_version",
-          "ingest_run_id"
+          "ingest_run_id",
+          "synthetic"
         ],
         "title": "Provenance",
         "type": "object"
@@ -747,7 +1556,8 @@
           "entity_type": {
             "enum": [
               "judge",
-              "court"
+              "court",
+              "case"
             ],
             "title": "Entity Type",
             "type": "string"
@@ -758,24 +1568,100 @@
             "type": "string"
           },
           "name": {
+            "description": "The judge's or court's name, or the case number as filed.",
             "title": "Name",
             "type": "string"
           },
           "score": {
-            "description": "pg_trgm similarity to the query.",
+            "description": "pg_trgm similarity to the query; an exact case-number match scores 1.",
             "maximum": 1.0,
             "minimum": 0.0,
             "title": "Score",
             "type": "number"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
           }
         },
         "required": [
           "entity_type",
           "id",
           "name",
-          "score"
+          "score",
+          "synthetic"
         ],
         "title": "SearchResult",
+        "type": "object"
+      },
+      "SentenceOut": {
+        "properties": {
+          "components": {
+            "additionalProperties": true,
+            "description": "The sentence components as the source listed them.",
+            "title": "Components",
+            "type": "object"
+          },
+          "fine_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fine Amount"
+          },
+          "incarceration_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Incarceration Days"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "probation_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probation Days"
+          },
+          "sentence_at": {
+            "format": "date-time",
+            "title": "Sentence At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sentence_at",
+          "judge",
+          "incarceration_days",
+          "probation_days",
+          "fine_amount",
+          "components"
+        ],
+        "title": "SentenceOut",
         "type": "object"
       },
       "ServiceRecord": {
@@ -835,6 +1721,107 @@
         ],
         "title": "ServiceRecord",
         "type": "object"
+      },
+      "Timeline": {
+        "properties": {
+          "case_id": {
+            "format": "uuid",
+            "title": "Case Id",
+            "type": "string"
+          },
+          "entries": {
+            "description": "Chronological: by `at`, then the documented kind order, then the row id.",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEntry"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "case_id",
+          "synthetic",
+          "entries"
+        ],
+        "title": "Timeline",
+        "type": "object"
+      },
+      "TimelineEntry": {
+        "properties": {
+          "actor_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ActorType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who acted, when the source records it."
+          },
+          "at": {
+            "description": "When the entry happened. Date-only facts sit at the start (`filed`) or the end (`closed`) of their day, so a day's events fall between them.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": true,
+            "description": "The public columns of the underlying row.",
+            "title": "Detail",
+            "type": "object"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "enum": [
+              "filed",
+              "assignment_start",
+              "assignment_end",
+              "event",
+              "decision",
+              "charge_filed",
+              "charge_disposed",
+              "sentence",
+              "closed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "description": "A short human-readable line for the entry.",
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Provenance",
+            "description": "The raw artifact the underlying row came from."
+          }
+        },
+        "required": [
+          "at",
+          "kind",
+          "actor_type",
+          "judge",
+          "label",
+          "detail",
+          "source"
+        ],
+        "title": "TimelineEntry",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -847,12 +1834,118 @@
     }
   },
   "info": {
-    "description": "Read-only, versioned access to JudgeMetrics' canonical data: judges, courts, jurisdictions, and name search, each with the provenance of the raw source artifacts behind it. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), and every error is an `ErrorBody`. See docs/API.md.",
+    "description": "Read-only, versioned access to JudgeMetrics' canonical data: judges, courts, jurisdictions, cases with their timelines, source coverage, and search, each with the provenance of the raw source artifacts behind it and a `synthetic` flag on every row derived from the in-repo demo dataset. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), persons appear only as pseudonymous public keys, and every error is an `ErrorBody`. See docs/API.md.",
     "title": "JudgeMetrics API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/cases/{case_id}": {
+      "get": {
+        "operationId": "get_case_api_v1_cases__case_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Case detail: parties, assignments, charges, decisions, sentences, provenance",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/timeline": {
+      "get": {
+        "operationId": "get_case_timeline_api_v1_cases__case_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timeline"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Every dated fact of a case in chronological order, each citing its artifact",
+        "tags": [
+          "cases"
+        ]
+      }
+    },
     "/api/v1/courts": {
       "get": {
         "operationId": "list_courts_api_v1_courts_get",
@@ -1003,6 +2096,37 @@
         "summary": "Court detail with provenance",
         "tags": [
           "courts"
+        ]
+      }
+    },
+    "/api/v1/coverage": {
+      "get": {
+        "operationId": "get_coverage_api_v1_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Coverage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Coverage per source: counts, filing window, last run, synthetic flag",
+        "tags": [
+          "coverage"
         ]
       }
     },
@@ -1221,6 +2345,166 @@
           }
         },
         "summary": "Judge detail with service records and provenance",
+        "tags": [
+          "judges"
+        ]
+      }
+    },
+    "/api/v1/judges/{judge_id}/cases": {
+      "get": {
+        "operationId": "list_judge_cases_api_v1_judges__judge_id__cases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "judge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Judge Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only cases filed on or after this date (ISO 8601).",
+            "in": "query",
+            "name": "filed_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only cases filed on or after this date (ISO 8601).",
+              "title": "Filed From"
+            }
+          },
+          {
+            "description": "Only cases filed on or before this date (ISO 8601).",
+            "in": "query",
+            "name": "filed_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only cases filed on or before this date (ISO 8601).",
+              "title": "Filed To"
+            }
+          },
+          {
+            "description": "Exact case status: `open` or `closed` (data/reference/case_vocabulary.yaml).",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 1,
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact case status: `open` or `closed` (data/reference/case_vocabulary.yaml).",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Exact case type: `felony` or `misdemeanor` (case_vocabulary.yaml).",
+            "in": "query",
+            "name": "case_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[a-z][a-z0-9_]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact case type: `felony` or `misdemeanor` (case_vocabulary.yaml).",
+              "title": "Case Type"
+            }
+          },
+          {
+            "description": "Page size, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Page size, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rows to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_CaseSummary_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Cases assigned to a judge, newest filing first",
         "tags": [
           "judges"
         ]

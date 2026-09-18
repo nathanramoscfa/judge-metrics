@@ -6,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   API_BASE_URL,
+  getCase,
+  getCaseTimeline,
   getCourt,
+  getCoverage,
   getJudge,
+  getJudgeCases,
   listJudges,
   listJurisdictions,
   search,
@@ -178,5 +182,78 @@ describe("search", () => {
     expect(result.ok).toBe(false);
     expect(result.error?.code).toBe("rate_limited");
     expect(result.error?.retryAfterSeconds).toBe(7);
+  });
+});
+
+describe("cases, judge cases, and coverage", () => {
+  const CASE_ID = "cf20b745-230e-461f-afd6-9d5fa882fa26";
+
+  it("fetches a case and its timeline by id", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ id: CASE_ID, case_number: "SYN-2020-000005" }))
+      .mockResolvedValueOnce(jsonResponse({ case_id: CASE_ID, synthetic: true, entries: [] }));
+
+    const detail = await getCase(CASE_ID);
+    expect(detail.ok).toBe(true);
+    expect(detail.data?.case_number).toBe("SYN-2020-000005");
+    expect(lastRequestUrl().pathname).toBe(`/api/v1/cases/${CASE_ID}`);
+
+    const timeline = await getCaseTimeline(CASE_ID);
+    expect(timeline.ok).toBe(true);
+    expect(timeline.data?.entries).toEqual([]);
+    expect(lastRequestUrl().pathname).toBe(`/api/v1/cases/${CASE_ID}/timeline`);
+  });
+
+  it("passes only the case filters that are set", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ items: [], total: 0, limit: 25, offset: 0, next_offset: null }),
+    );
+
+    const result = await getJudgeCases(JUDGE_ID, {
+      filed_from: "2020-01-01",
+      status: "closed",
+      limit: 25,
+      offset: 0,
+      filed_to: undefined,
+    });
+
+    expect(result.ok).toBe(true);
+    const url = lastRequestUrl();
+    expect(url.pathname).toBe(`/api/v1/judges/${JUDGE_ID}/cases`);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      filed_from: "2020-01-01",
+      status: "closed",
+      limit: "25",
+      offset: "0",
+    });
+  });
+
+  it("returns the inverted-range 422 as an error", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          code: "validation_error",
+          message: "filed_to: must not be earlier than filed_from",
+          request_id: "req-3",
+        },
+        { status: 422 },
+      ),
+    );
+    const result = await getJudgeCases(JUDGE_ID, { filed_from: "2021-01-01", filed_to: "2020-01-01" });
+    expect(result.ok).toBe(false);
+    expect(result.error?.code).toBe("validation_error");
+    expect(result.error?.message).toContain("filed_to");
+  });
+
+  it("fetches coverage without parameters", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ sources: [], synthetic_present: false, generated_at: "2026-09-18T00:00:00Z" }),
+    );
+    const result = await getCoverage();
+    expect(result.ok).toBe(true);
+    expect(result.data?.synthetic_present).toBe(false);
+    const url = lastRequestUrl();
+    expect(url.pathname).toBe("/api/v1/coverage");
+    expect(url.search).toBe("");
   });
 });

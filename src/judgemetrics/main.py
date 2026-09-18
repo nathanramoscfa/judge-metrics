@@ -24,7 +24,7 @@ from judgemetrics.api import API_PREFIX, REQUEST_ID_HEADER
 from judgemetrics.api.errors import install_exception_handlers
 from judgemetrics.api.identity import API_KEY_HEADER
 from judgemetrics.api.ratelimit import TokenBucketLimiter
-from judgemetrics.api.routes import courts, health, judges, jurisdictions, search
+from judgemetrics.api.routes import cases, courts, coverage, health, judges, jurisdictions, search
 from judgemetrics.config import Settings, get_settings
 from judgemetrics.db.session import make_engine, make_session_factory
 from judgemetrics.logging import configure_logging, get_logger
@@ -33,10 +33,12 @@ __all__ = ["API_PREFIX", "REQUEST_ID_HEADER", "app", "create_app"]
 
 API_DESCRIPTION = (
     "Read-only, versioned access to JudgeMetrics' canonical data: judges, courts, "
-    "jurisdictions, and name search, each with the provenance of the raw source "
-    "artifacts behind it. Lists are paginated (`limit` ≤ 100), filters are validated "
-    "strictly (unknown parameters are 422), and every error is an `ErrorBody`. "
-    "See docs/API.md."
+    "jurisdictions, cases with their timelines, source coverage, and search, each with "
+    "the provenance of the raw source artifacts behind it and a `synthetic` flag on "
+    "every row derived from the in-repo demo dataset. Lists are paginated "
+    "(`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), "
+    "persons appear only as pseudonymous public keys, and every error is an "
+    "`ErrorBody`. See docs/API.md."
 )
 API_KEY_SCHEME = "ApiKey"  # pragma: allowlist secret - the OpenAPI scheme name
 # An incoming request id is echoed into logs and headers, so it is accepted
@@ -116,7 +118,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(judges.router, prefix=API_PREFIX)
     app.include_router(courts.router, prefix=API_PREFIX)
     app.include_router(jurisdictions.router, prefix=API_PREFIX)
+    app.include_router(cases.router, prefix=API_PREFIX)
     app.include_router(search.router, prefix=API_PREFIX)
+    app.include_router(coverage.router, prefix=API_PREFIX)
     app.openapi = lambda: _openapi(app)  # type: ignore[method-assign]
     return app
 

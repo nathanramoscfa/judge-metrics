@@ -314,12 +314,14 @@ def test_ci_web_and_e2e_jobs() -> None:
         "postgresql+psycopg://judgemetrics_ingest:"
     )
     assert e2e["env"]["NEXT_PUBLIC_API_BASE_URL"] == "http://localhost:8000"
+    assert "JUDGEMETRICS_IDENTIFIER_PEPPER" in e2e["env"]
     e2e_runs = "\n".join(s.get("run", "") for s in e2e["steps"])
     for command in (
         "02-roles.sql",
         "uv sync --frozen",
         "uv run poe migrate",
         "uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc",
+        "uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden",
         "uv run judgemetrics serve",
         "pnpm exec playwright install --with-deps chromium",
         "pnpm e2e",

@@ -24,12 +24,15 @@ def courts_page(
     rows, total = list_courts(
         session, jurisdiction_id=jurisdiction_id, court_type=court_type, limit=limit, offset=offset
     )
-    items = [CourtSummary.model_validate(row) for row in rows]
+    items = [CourtSummary.from_row(court, synthetic=synthetic) for court, synthetic in rows]
     return Page[CourtSummary].build(items, total=total, limit=limit, offset=offset)
 
 
 def court_detail(session: Session, court_id: uuid.UUID) -> CourtDetail | None:
-    court = get_court(session, court_id)
-    if court is None:
+    found = get_court(session, court_id)
+    if found is None:
         return None
-    return CourtDetail.from_row(court, provenance=provenance_for(session, [court.source_record_id]))
+    court, synthetic = found
+    return CourtDetail.from_row(
+        court, synthetic=synthetic, provenance=provenance_for(session, [court.source_record_id])
+    )

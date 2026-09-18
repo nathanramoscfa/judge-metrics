@@ -20,6 +20,7 @@ const ENTRIES: Provenance[] = [
     raw_sha256: SHA,
     parser_version: "2026.09.1",
     ingest_run_id: "b7784a75-5690-42f1-a509-2e4cf88b9d75",
+    synthetic: false,
   },
   {
     source: "fjc",
@@ -28,6 +29,7 @@ const ENTRIES: Provenance[] = [
     raw_sha256: "ffc63d463627d15343006d2e72e54751202d10fe1e702f837d6f3e885f865ac5", // pragma: allowlist secret
     parser_version: "2026.09.1",
     ingest_run_id: "b7784a75-5690-42f1-a509-2e4cf88b9d75",
+    synthetic: false,
   },
 ];
 
@@ -88,5 +90,20 @@ describe("ProvenancePanel", () => {
   it("renders an empty state without entries", () => {
     renderPanel([]);
     expect(screen.getByTestId("empty-state")).toHaveTextContent("No source record");
+  });
+
+  it("labels a synthetic artifact and takes a custom title", () => {
+    render(
+      <TooltipProvider>
+        <ProvenancePanel
+          title="Sources"
+          entries={[{ ...ENTRIES[0], source: "synthetic", synthetic: true }]}
+          issueTitle="Case SYN-2020-000005"
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "Sources" })).toBeInTheDocument();
+    expect(screen.getByTestId("synthetic-badge")).toHaveTextContent("Synthetic");
+    expect(screen.getByText(/Synthetic dataset/)).toBeInTheDocument();
   });
 });

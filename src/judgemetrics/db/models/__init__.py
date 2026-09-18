@@ -37,7 +37,13 @@ from judgemetrics.db.models.enums import (
 )
 from judgemetrics.db.models.metrics import MetricDefinition, MetricObservation
 from judgemetrics.db.models.persons import JusticeEvent, Person, PersonIdentifier
-from judgemetrics.db.models.provenance import DataQualityIssue, IngestRun, Source, SourceRecord
+from judgemetrics.db.models.provenance import (
+    SYNTHETIC_SOURCE_TYPE,
+    DataQualityIssue,
+    IngestRun,
+    Source,
+    SourceRecord,
+)
 from judgemetrics.db.models.reference import Court, Judge, JudgeService, Jurisdiction
 from judgemetrics.db.models.resolution import EntityResolutionCandidate
 
@@ -79,6 +85,7 @@ __all__ = [
     "CANONICAL_TABLES",
     "PG_ENUM_NAMES",
     "RESTRICTED_TABLES",
+    "SYNTHETIC_SOURCE_TYPE",
     "ActorType",
     "AuditLog",
     "Base",

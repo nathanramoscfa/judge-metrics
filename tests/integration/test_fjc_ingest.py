@@ -54,7 +54,7 @@ from judgemetrics.ingest.fjc.connector import FjcConnector
 from judgemetrics.ingest.runner import run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.test_synthetic_ingest import purge_source as purge_synthetic_source
+from tests.integration.conftest import purge_source as purge_synthetic_source
 
 pytestmark = pytest.mark.integration
 

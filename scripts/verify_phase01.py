@@ -467,11 +467,11 @@ def check_29() -> str | None:
     if (reason := _missing("docs/openapi.json")) is not None:
         return reason
     document = json.loads(_read("docs/openapi.json"))
+    # Later phases add paths (Phase 2: cases, timeline, judge cases, coverage);
+    # the Phase 1 contract is that its own paths are all still served.
     paths = set(document.get("paths", {}))
-    if paths != OPENAPI_PATHS:
-        extra = sorted(paths - OPENAPI_PATHS)
-        absent = sorted(OPENAPI_PATHS - paths)
-        return f"openapi.json paths differ (missing {absent}, unexpected {extra})"
+    if absent := sorted(OPENAPI_PATHS - paths):
+        return f"openapi.json lacks Phase 1 paths {absent}"
     return None
 
 
@@ -624,7 +624,7 @@ STATIC_CHECKS: tuple[tuple[int, str, CheckFn], ...] = (
     (26, "docs/ARCHITECTURE.md, docs/DATA_MODEL.md, data/README.md exist", check_26),
     (27, "docs/DATA_SOURCES.md `fjc` entry lists verified headers", check_27),
     (28, "api/routes judges, courts, jurisdictions, search exist", check_28),
-    (29, "docs/openapi.json lists the eight v1 paths plus health and ready", check_29),
+    (29, "docs/openapi.json lists the eight Phase 1 v1 paths plus health and ready", check_29),
     (30, "schemas/common.py defines Page and Provenance", check_30),
     (31, "api/ratelimit.py exists and config.py defines the search rate-limit settings", check_31),
     (32, "docs/API.md, tests/integration/test_api_*.py, test_query_counts.py exist", check_32),

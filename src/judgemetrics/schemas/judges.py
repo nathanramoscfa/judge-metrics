@@ -9,12 +9,17 @@ from typing import Any, Literal
 
 from pydantic import Field
 
-from judgemetrics.schemas.common import ApiModel, Provenance
+from judgemetrics.schemas.common import ApiModel, CoverageWindow, Provenance
 
 # The vocabulary `judge.status` is derived into (ingest/fjc/schema.py).
 JudgeStatus = Literal[
     "active", "senior", "deceased", "retired", "resigned", "removed", "inactive", "unknown"
 ]
+
+SYNTHETIC_DESCRIPTION = (
+    "True when the row was derived from a source of type `synthetic` (the in-repo "
+    "generator): demo data, labelled as such on every surface."
+)
 
 
 class CourtRef(ApiModel):
@@ -23,6 +28,13 @@ class CourtRef(ApiModel):
     id: uuid.UUID
     canonical_name: str
     court_type: str
+
+
+class JudgeRef(ApiModel):
+    """A judge named by a case-level row, enough to link and label it."""
+
+    id: uuid.UUID
+    canonical_name: str
 
 
 class ServiceRecord(ApiModel):
@@ -43,6 +55,7 @@ class JudgeSummary(ApiModel):
     id: uuid.UUID
     canonical_name: str
     status: JudgeStatus
+    synthetic: bool = Field(description=SYNTHETIC_DESCRIPTION)
 
 
 class JudgeDetail(JudgeSummary):
@@ -52,6 +65,14 @@ class JudgeDetail(JudgeSummary):
         validation_alias="metadata_", description="Public biographical facts only."
     )
     service: list[ServiceRecord]
+    case_count: int = Field(
+        ge=0, description="Distinct cases with an assignment to this judge, across all sources."
+    )
+    coverage: CoverageWindow | None = Field(
+        description=(
+            "The filing-date span of the judge's assigned cases, or null when no case is on file."
+        )
+    )
     provenance: list[Provenance] = Field(
         description="The raw artifacts behind this judge and each service record."
     )

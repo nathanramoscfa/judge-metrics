@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { CourtTypeBadge, StatusBadge } from "@/components/badges";
+import { CourtTypeBadge, StatusBadge, SyntheticBadge } from "@/components/badges";
 import { ProvenancePanel } from "@/components/provenance-panel";
 import { EmptyState, ErrorState } from "@/components/states";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,7 @@ export default async function CourtPage({
             {court.data.canonical_name}
           </h1>
           <CourtTypeBadge type={court.data.court_type} />
+          {court.data.synthetic ? <SyntheticBadge /> : null}
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
           <div className="flex gap-1.5">
@@ -171,7 +172,10 @@ export default async function CourtPage({
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={judge.status} />
+                        <span className="flex flex-wrap items-center gap-2">
+                          <StatusBadge status={judge.status} />
+                          {judge.synthetic ? <SyntheticBadge /> : null}
+                        </span>
                       </TableCell>
                     </TableRow>
                   ))}

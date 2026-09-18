@@ -1,11 +1,13 @@
 // web/app/search/page.tsx
 // Search: `?q=` → GET /api/v1/search, rendered as a table with an entity
-// type badge per row. The rate-limited API answers 429 under a burst; that
-// becomes the error state with the wait time, never a blank page.
+// type badge per row (judge, court, or an exact case number) and the
+// synthetic badge beside demo records. The rate-limited API answers 429
+// under a burst; that becomes the error state with the wait time, never a
+// blank page.
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { EntityTypeBadge } from "@/components/badges";
+import { EntityTypeBadge, SyntheticBadge } from "@/components/badges";
 import { SearchForm } from "@/components/search-form";
 import { EmptyState, ErrorState } from "@/components/states";
 import {
@@ -28,8 +30,14 @@ function firstValue(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
+const RESULT_PATHS: Record<SearchResult["entity_type"], string> = {
+  judge: "/judges",
+  court: "/courts",
+  case: "/cases",
+};
+
 function resultHref(result: SearchResult): string {
-  return result.entity_type === "judge" ? `/judges/${result.id}` : `/courts/${result.id}`;
+  return `${RESULT_PATHS[result.entity_type]}/${result.id}`;
 }
 
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
@@ -41,7 +49,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
       <header className="flex flex-col gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
         <p className="text-sm text-muted-foreground">
-          Judges and courts by name similarity. A close spelling still matches.
+          Judges and courts by name similarity — a close spelling still matches — and cases by
+          their exact docket number.
         </p>
         <SearchForm defaultValue={q} autoFocus={!q} className="max-w-2xl" />
       </header>
@@ -58,9 +67,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
         ) : !result.ok ? (
           <ErrorState what="search results" error={result.error} />
         ) : result.data.items.length === 0 ? (
-          <EmptyState title={`No judge or court matches “${q}”`}>
-            Only names in the ingested sources can match. Try a different spelling or a
-            shorter query.
+          <EmptyState title={`No judge, court, or case matches “${q}”`}>
+            Only names in the ingested sources can match, and a case only by its exact number.
+            Try a different spelling or a shorter query.
           </EmptyState>
         ) : (
           <div className="overflow-x-auto rounded-xl border">
@@ -86,7 +95,10 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <EntityTypeBadge type={item.entity_type} />
+                      <span className="flex flex-wrap items-center gap-2">
+                        <EntityTypeBadge type={item.entity_type} />
+                        {item.synthetic ? <SyntheticBadge /> : null}
+                      </span>
                     </TableCell>
                     <TableCell className="text-right font-mono text-xs tabular-nums">
                       {item.score.toFixed(2)}
