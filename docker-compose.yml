@@ -24,6 +24,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/docker/postgres/01-extensions.sql:/docker-entrypoint-initdb.d/01-extensions.sql:ro
       - ./infra/docker/postgres/02-roles.sql:/docker-entrypoint-initdb.d/02-roles.sql:ro
+      - ./infra/docker/postgres/03-test-database.sql:/docker-entrypoint-initdb.d/03-test-database.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
@@ -31,6 +32,28 @@ services:
       retries: 12
       start_period: 10s
     restart: unless-stopped
+
+  postgres-test-init:
+    # Runs once after PostgreSQL is healthy: creates the scratch database
+    # `judgemetrics_test` for the test suite (Phase 2 Step 5) with pg_trgm
+    # and the same grants as the main database, so `uv run poe check` never
+    # empties a live ingest. The same script runs from initdb on a fresh
+    # volume; this job brings an older volume up to date. Idempotent; then exits.
+    image: postgres:17
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./infra/docker/postgres/03-test-database.sql:/init/03-test-database.sql:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        psql -v ON_ERROR_STOP=1 -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"           -f /init/03-test-database.sql
+    restart: "no"
 
   minio:
     # MinIO publishes its official images on Quay (the Docker Hub repository

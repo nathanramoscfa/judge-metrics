@@ -541,8 +541,9 @@ def test_resolution_log_lines_carry_no_restricted_values(
 
 
 def test_cli_validates_the_candidate_id_and_decision_before_touching_the_database(
-    settings: Settings,
+    test_settings: Settings,
 ) -> None:
+    settings = test_settings
     env = {
         "JUDGEMETRICS_ENV": "test",
         "JUDGEMETRICS_DATABASE_URL": settings.database_url,

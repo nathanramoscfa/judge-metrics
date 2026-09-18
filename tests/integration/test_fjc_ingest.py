@@ -551,7 +551,10 @@ def purge_run(session: Session, run_id: uuid.UUID) -> None:
     session.flush()
 
 
-def test_cli_run_and_runs(settings: Settings, migrated_database: Engine, tmp_path: Path) -> None:
+def test_cli_run_and_runs(
+    test_settings: Settings, migrated_database: Engine, tmp_path: Path
+) -> None:
+    settings = test_settings
     env = {
         "JUDGEMETRICS_ENV": "test",
         "JUDGEMETRICS_DATABASE_URL": settings.database_url,

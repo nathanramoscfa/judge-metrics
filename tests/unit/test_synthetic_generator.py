@@ -45,6 +45,7 @@ from judgemetrics.synthetic.config import (
     scale_spec,
 )
 from judgemetrics.synthetic.edge_cases import (
+    EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT,
     KIND_AMBIGUOUS_MISSING_DOB,
     KIND_AMBIGUOUS_SAME_DOB,
     KIND_DUPLICATE,
@@ -473,14 +474,56 @@ def test_ambiguous_pairs_are_distinct_persons(dataset: Dataset) -> None:
             if kind == KIND_AMBIGUOUS_SAME_DOB:
                 assert len({row["date_of_birth"] for row in left_rows + right_rows}) == 1
                 assert all(row["date_of_birth"] for row in left_rows + right_rows)
-                assert not (
-                    {r["court_code"] for r in left_rows} & {r["court_code"] for r in right_rows}
+                # Disjoint courts unless the world had no such pair (tiny scale only).
+                same_court = {r["court_code"] for r in left_rows} & {
+                    r["court_code"] for r in right_rows
+                }
+                fallback = any(
+                    row["expected_behaviour"] == EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT
+                    for row in dataset.planted
+                    if row["kind"] == kind and ids["participant_ids"] in row["ids"]
                 )
+                assert bool(same_court) == fallback
             else:
                 known = {row["date_of_birth"] != "" for row in left_rows} | {
                     row["date_of_birth"] != "" for row in right_rows
                 }
                 assert known == {True, False}, "exactly one side has a date of birth"
+
+
+# A tiny-scale seed (found by tests/property) whose world holds no two unused
+# persons in disjoint courts: the same-date-of-birth plant falls back to a
+# same-court pair rather than failing the generation.
+TINY_SEED_WITHOUT_DISJOINT_COURTS = 511
+
+
+def test_tiny_seed_without_disjoint_courts_plants_a_same_court_ambiguous_pair(
+    tmp_path: Path,
+) -> None:
+    generate_dataset(TINY_SEED_WITHOUT_DISJOINT_COURTS, "tiny", tmp_path)
+    dataset = Dataset(tmp_path)
+    rows = [row for row in dataset.planted if row["kind"] == KIND_AMBIGUOUS_SAME_DOB]
+    assert len(rows) == 1
+    (row,) = rows
+    assert row["expected_behaviour"] == EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT
+    ids = dict(pair.split("=", 1) for pair in row["ids"].split(";"))
+    left, right = ids["participant_ids"].split(",")
+    participants = dataset.originals("participants.csv")
+    left_rows = [r for r in participants if r["participant_id"] == left]
+    right_rows = [r for r in participants if r["participant_id"] == right]
+    assert {r["court_code"] for r in left_rows} & {r["court_code"] for r in right_rows}
+    assert not ({r["case_number"] for r in left_rows} & {r["case_number"] for r in right_rows})
+    assert len({r["date_of_birth"] for r in left_rows + right_rows}) == 1
+    expectation = next(
+        e
+        for e in dataset.expectations
+        if {e["left_participant_id"], e["right_participant_id"]} == {left, right}
+    )
+    assert expectation["expected_decision"] == "review"
+    # The golden scale never needs the fallback: its planted text is the disjoint one.
+    golden = Dataset(GOLDEN_DIR)
+    for golden_row in golden.planted:
+        assert golden_row["expected_behaviour"] != EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT
 
 
 def test_split_persons_share_identity_name_dob_and_a_case_link(dataset: Dataset) -> None:

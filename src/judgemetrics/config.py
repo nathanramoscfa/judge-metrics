@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     ingest_database_url: str | None = Field(
         default=None, description="SQLAlchemy URL for the ingest (DML) role."
     )
+    # The scratch database the test suite migrates, fills, and empties
+    # (`judgemetrics_test`, created by infra/docker/postgres/03-test-database.sql;
+    # CI points it at the service database). Only tests/conftest.py reads it:
+    # `test_settings` runs migrations through it as the owner and retargets the
+    # app and ingest URLs above at its database. Unset, the suite falls back
+    # to the URLs above and warns once (a live ingest is then emptied).
+    test_database_url: str | None = Field(
+        default=None, description="SQLAlchemy URL (owner) for the scratch test database."
+    )
     raw_store_url: str = Field(
         default="file://./data/lake",
         description="Raw object lake: `file://<dir>` or `s3://<bucket>`.",
@@ -129,7 +138,9 @@ class Settings(BaseSettings):
     # set per request with `set_config` (never interpolated into SQL).
     search_similarity_threshold: float = Field(default=0.3, gt=0.0, le=1.0)
 
-    @field_validator("database_url", "admin_database_url", "ingest_database_url")
+    @field_validator(
+        "database_url", "admin_database_url", "ingest_database_url", "test_database_url"
+    )
     @classmethod
     def _require_psycopg_driver(cls, value: str | None) -> str | None:
         if value is not None and not value.startswith("postgresql+psycopg://"):

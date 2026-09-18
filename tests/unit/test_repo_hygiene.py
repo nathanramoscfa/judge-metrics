@@ -363,6 +363,19 @@ def test_compose_defines_postgres_and_minio() -> None:
     mounts = " ".join(postgres["volumes"])
     assert "01-extensions.sql:/docker-entrypoint-initdb.d/" in mounts
     assert "02-roles.sql:/docker-entrypoint-initdb.d/" in mounts
+    assert "03-test-database.sql:/docker-entrypoint-initdb.d/" in mounts
+    # The scratch test database: created from initdb on a fresh volume and by
+    # the one-shot job on an older one (`uv run poe up`), idempotently.
+    test_init = services["postgres-test-init"]
+    assert test_init["depends_on"]["postgres"]["condition"] == "service_healthy"
+    assert "03-test-database.sql" in "\n".join(test_init["command"])
+    assert "PGPASSWORD" in test_init["environment"]
+    test_database = _read("infra/docker/postgres/03-test-database.sql")
+    assert "judgemetrics_test" in test_database
+    assert "WHERE NOT EXISTS (SELECT 1 FROM pg_database" in test_database
+    assert "CREATE EXTENSION IF NOT EXISTS pg_trgm;" in test_database
+    assert "GRANT SELECT ON ALL TABLES IN SCHEMA public TO judgemetrics_app;" in test_database
+    assert "PASSWORD" not in test_database
     for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"):
         assert key in postgres["environment"]
     assert "healthcheck" in services["minio"]
@@ -481,6 +494,8 @@ def test_command_interface_targets_present() -> None:
         assert body is not None and body.group(1) == f"uv run poe {target}", target
     assert tasks["down"] == "docker compose down"
     assert "docker compose up -d --wait" in tasks["up-services"]
+    assert tasks["up"] == ["up-services", "up-init", "up-test-db"]
+    assert tasks["up-test-db"] == "docker compose run --rm postgres-test-init"
     assert tasks["gate"] == ["gate-commit", "gate-push"]
     assert tasks["gate-commit"] == "pre-commit run --all-files"
     assert tasks["migrate"] == "judgemetrics db upgrade"
@@ -493,9 +508,17 @@ def test_command_interface_targets_present() -> None:
 
 def test_pytest_config_has_markers_and_testpaths() -> None:
     options = _pyproject()["tool"]["pytest"]["ini_options"]
-    assert options["testpaths"] == ["tests/unit", "tests/integration"]
+    assert options["testpaths"] == [
+        "tests/unit",
+        "tests/integration",
+        "tests/property",
+        "tests/golden",
+    ]
     markers = " ".join(options["markers"])
-    assert "unit:" in markers and "integration:" in markers
+    for marker in ("unit:", "integration:", "property:", "golden:"):
+        assert marker in markers, marker
+    dev = _pyproject()["dependency-groups"]["dev"]
+    assert any(spec.startswith("hypothesis") for spec in dev)
 
 
 def test_bandit_configured_to_exclude_tests() -> None:

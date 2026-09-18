@@ -57,6 +57,12 @@ jobs:
       # scripts with these CI-only passwords.
       JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:ci-only-app@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
+      # The scratch test database (tests/conftest.py `test_settings`): the
+      # throwaway service database itself, as its owner — one database is
+      # enough here; locally it is `judgemetrics_test` beside a live ingest.
+      JUDGEMETRICS_TEST_DATABASE_URL: postgresql+psycopg://judgemetrics:ci-only-not-a-secret@localhost:5432/judgemetrics # pragma: allowlist secret
+      # Hypothesis profile for tests/property (50 examples, no deadline).
+      HYPOTHESIS_PROFILE: ci
       JUDGEMETRICS_LOG_FORMAT: json
       # Pepper for person-identifier hashes (a fixed CI-only value; the
       # test suite sets its own constant regardless).
@@ -87,9 +93,15 @@ jobs:
       - name: Install (locked)
         run: uv sync --frozen
 
-      - name: Create the database roles (same init scripts as Compose)
+      # The scratch-database script runs too, so a broken init script fails
+      # here rather than on a developer's next `uv run poe up`; the tests
+      # still use the service database (JUDGEMETRICS_TEST_DATABASE_URL above).
+      - name: Create the database roles and the scratch database (same init scripts as Compose)
         run: |
-          psql -v ON_ERROR_STOP=1 -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB"             -f infra/docker/postgres/01-extensions.sql             -f infra/docker/postgres/02-roles.sql
+          psql -v ON_ERROR_STOP=1 -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -f infra/docker/postgres/01-extensions.sql \
+            -f infra/docker/postgres/02-roles.sql \
+            -f infra/docker/postgres/03-test-database.sql
 
       - name: Start MinIO (S3 raw-store contract test)
         env:

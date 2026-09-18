@@ -5,16 +5,19 @@ The API opens its own sessions, so the data it reads must be committed —
 the transactional ``db_session`` of the root conftest cannot feed it. The
 ``fjc_fixture`` fixture runs the fourteen-step runner once per test module
 against the fixture excerpt (``tests/fixtures/fjc``) and, at module
-teardown, removes exactly what that run created. On a database that
-already holds a live FJC ingest the fixture rows resolve to the existing
-judges and courts (same natural keys), so the tests assert against the
-fixture's judges by their public FJC ids and never against absolute totals.
+teardown, removes exactly what that run created. Every fixture and the
+``api`` client use the root conftest's ``test_settings``, so with
+``JUDGEMETRICS_TEST_DATABASE_URL`` set the ingests land in the scratch
+database and a live ingest is never touched; the tests still assert
+against the fixture's judges by their public FJC ids rather than absolute
+totals, so they also pass on the fallback (configured) database, where
+the fixture rows resolve to the live judges.
 
 ``golden_fixture`` ingests the golden synthetic dataset
 (``tests/fixtures/golden``) the same way. The golden and demo datasets
 share natural keys (judge codes, participant ids, case numbers), so the
-fixture first purges every row of the ``synthetic`` source — on a
-developer's database that is the demo seed, which ``uv run poe seed``
+fixture first purges every row of the ``synthetic`` source — on the
+fallback database that is the demo seed, which ``uv run poe seed``
 restores in seconds — and purges the source again at teardown. The
 merges the ingest performs write ``audit_log`` rows that are append-only
 by trigger and therefore stay; they carry ids and counts only.
@@ -96,7 +99,7 @@ def purge_run(session: Session, run_id: uuid.UUID) -> None:
 
 @pytest.fixture(scope="module")
 def fjc_fixture(
-    migrated_database: Engine, tmp_path_factory: pytest.TempPathFactory
+    migrated_database: Engine, test_settings: Settings, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[FjcFixture]:
     """The FJC fixture excerpt ingested and committed for the module."""
     store = FilesystemRawObjectStore(tmp_path_factory.mktemp("lake"))
@@ -105,7 +108,7 @@ def fjc_fixture(
             "fjc",
             session=session,
             store=store,
-            settings=Settings(env="test"),
+            settings=test_settings.model_copy(update={"env": "test"}),
             from_fixture=FJC_FIXTURES,
         )
         assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
@@ -202,7 +205,7 @@ def purge_synthetic(engine: Engine) -> None:
 
 @pytest.fixture(scope="module")
 def golden_fixture(
-    migrated_database: Engine, tmp_path_factory: pytest.TempPathFactory
+    migrated_database: Engine, test_settings: Settings, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[GoldenFixture]:
     """The golden synthetic dataset ingested and committed for the module (see the module doc)."""
     purge_synthetic(migrated_database)
@@ -212,7 +215,7 @@ def golden_fixture(
             SYNTHETIC_SOURCE,
             session=session,
             store=store,
-            settings=Settings(env="test"),
+            settings=test_settings.model_copy(update={"env": "test"}),
             from_fixture=GOLDEN_FIXTURES,
         )
         assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
@@ -270,13 +273,13 @@ def make_app(settings: Settings, **overrides: Any) -> FastAPI:
 
 
 @pytest.fixture(scope="module")
-def api(fjc_fixture: FjcFixture) -> Iterator[TestClient]:
+def api(fjc_fixture: FjcFixture, test_settings: Settings) -> Iterator[TestClient]:
     """The API over the module's fixture data (the limiter is off under `env == test`).
 
     Server errors are rendered through the handlers, not re-raised, so the
     500 envelope can be asserted.
     """
-    app = make_app(Settings())
+    app = make_app(test_settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
     app.state.engine.dispose()
