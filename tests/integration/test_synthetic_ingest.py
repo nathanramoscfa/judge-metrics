@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 import structlog
 from pydantic import SecretStr
-from sqlalchemy import Engine, delete, func, select, text
+from sqlalchemy import Engine, delete, func, select, text, update
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
@@ -45,6 +45,7 @@ from judgemetrics.db.models import (
     CourtEvent,
     DataQualityIssue,
     Decision,
+    EntityResolutionCandidate,
     IngestRun,
     IngestRunStatus,
     IssueSeverity,
@@ -140,6 +141,19 @@ def purge_source(session: Session, name: str) -> None:
     session.execute(delete(Case).where(Case.source_record_id.in_(records)))
     persons = select(Person.id).where(Person.source_record_id.in_(records))
     session.execute(delete(PersonIdentifier).where(PersonIdentifier.person_id.in_(persons)))
+    # Resolution bookkeeping of those persons: candidates, then the merge pointers
+    # (a self reference with RESTRICT) before the rows themselves.
+    session.execute(
+        delete(EntityResolutionCandidate).where(
+            EntityResolutionCandidate.left_record_id.in_(persons)
+            | EntityResolutionCandidate.right_record_id.in_(persons)
+        )
+    )
+    session.execute(
+        update(Person)
+        .where(Person.source_record_id.in_(records))
+        .values(merged_into_person_id=None)
+    )
     session.execute(delete(Person).where(Person.source_record_id.in_(records)))
     session.execute(delete(JudgeService).where(JudgeService.source_record_id.in_(records)))
     session.execute(delete(Judge).where(Judge.source_record_id.in_(records)))
@@ -207,6 +221,39 @@ def _issues(session: Session) -> list[DataQualityIssue]:
     return list(session.scalars(stmt))
 
 
+def _expected_hashes() -> dict[str, set[tuple[str, str]]]:
+    """The identifier rows the source implies, per participant id, computed independently."""
+    expected: dict[str, set[tuple[str, str]]] = {}
+    for participant in _rows("participants.csv"):
+        pid = participant["participant_id"]
+        name = participant["full_name"]
+        dob = participant["date_of_birth"]
+        hashes = expected.setdefault(pid, set())
+        hashes.add(("source_participant_id", hash_identifier(PEPPER, "source_participant_id", pid)))
+        hashes.add(("full_name", hash_identifier(PEPPER, "full_name", name)))
+        if dob:
+            hashes.add(("date_of_birth", hash_identifier(PEPPER, "date_of_birth", dob)))
+            hashes.add(("name_dob", hash_identifier(PEPPER, "name_dob", name_dob_value(name, dob))))
+    return expected
+
+
+def _merged_groups() -> list[set[str]]:
+    """Participant ids grouped as entity resolution merges them (the matched pairs of truth/)."""
+    groups: dict[str, set[str]] = {pid: {pid} for pid in _expected_hashes()}
+    with (GOLDEN / "truth" / "resolution_expectations.csv").open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            if row["expected_decision"] != "matched":
+                continue
+            merged = groups[row["left_participant_id"]] | groups[row["right_participant_id"]]
+            for pid in merged:
+                groups[pid] = merged
+    seen: list[set[str]] = []
+    for group in groups.values():
+        if group not in seen:
+            seen.append(group)
+    return seen
+
+
 def _planted() -> list[dict[str, str]]:
     with (GOLDEN / "truth" / "planted.csv").open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
@@ -255,8 +302,12 @@ def test_first_run_creates_the_manifest_counts_minus_duplicates_with_provenance(
     assert expected["person"] == 42
     justice_events = _count(session, "justice_event")
     assert justice_events > 0
-    identifiers = _count(session, "person_identifier")
-    assert run.records_created == sum(expected.values()) + justice_events + identifiers
+    # Identifier rows as the source implies them: entity resolution then merges
+    # the two planted split persons, which drops their duplicated name and
+    # date-of-birth hashes (three per merge) from the live table.
+    expected_identifiers = sum(len(hashes) for hashes in _expected_hashes().values())
+    assert run.records_created == sum(expected.values()) + justice_events + expected_identifiers
+    assert _count(session, "person_identifier") == expected_identifiers - 2 * 3
 
     source = session.scalar(select(Source).where(Source.name == SOURCE_ID))
     assert source is not None
@@ -318,6 +369,7 @@ def test_person_rows_hold_pseudonyms_and_hashes_only(
         "resolution_status",
         "resolution_confidence",
         "source_record_id",
+        "merged_into_person_id",
     }
     live = {
         row[0]
@@ -328,8 +380,11 @@ def test_person_rows_hold_pseudonyms_and_hashes_only(
     assert live == columns
     for person in session.scalars(select(Person)):
         assert re.fullmatch(r"[A-Za-z0-9_-]{16}", person.public_person_key)
-        assert person.resolution_status == "deterministic"
-        assert person.resolution_confidence == 1
+        if person.merged_into_person_id is None:
+            assert person.resolution_status in {"deterministic", "rule"}
+            assert person.resolution_confidence is not None
+        else:
+            assert person.resolution_status == "merged"  # the planted split persons
     keys = list(session.scalars(select(Person.public_person_key)))
     assert len(keys) == len(set(keys)) == 42
 
@@ -341,20 +396,12 @@ def test_person_rows_hold_pseudonyms_and_hashes_only(
         by_person.setdefault(identifier.person_id, set()).add(
             (identifier.identifier_type, identifier.value_hash)
         )
-    # Exactly the hashes the source implies, computed independently.
-    expected: dict[str, set[tuple[str, str]]] = {}
-    for participant in _rows("participants.csv"):
-        pid = participant["participant_id"]
-        name = participant["full_name"]
-        dob = participant["date_of_birth"]
-        hashes = expected.setdefault(pid, set())
-        hashes.add(("source_participant_id", hash_identifier(PEPPER, "source_participant_id", pid)))
-        hashes.add(("full_name", hash_identifier(PEPPER, "full_name", name)))
-        if dob:
-            hashes.add(("date_of_birth", hash_identifier(PEPPER, "date_of_birth", dob)))
-            hashes.add(("name_dob", hash_identifier(PEPPER, "name_dob", name_dob_value(name, dob))))
+    # Exactly the hashes the source implies, computed independently, grouped the
+    # way entity resolution merges the planted split persons (Step 3).
+    expected = _expected_hashes()
+    grouped = [set().union(*(expected[pid] for pid in group)) for group in _merged_groups()]
     assert Counter(frozenset(v) for v in by_person.values()) == Counter(
-        frozenset(v) for v in expected.values()
+        frozenset(v) for v in grouped
     )
     # A stable identifier belongs to one person; name hashes may repeat (planted collisions).
     stable = [r.value_hash for r in identifiers if r.identifier_type == "source_participant_id"]

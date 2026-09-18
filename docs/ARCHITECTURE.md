@@ -92,7 +92,7 @@ without the person hash.
 | 7 | Schema validate                | `connector.validate_raw()` — executed before step 6, because the raw artifact must be validated before it is parsed; errors end the run as `failed` before anything is derived |
 | 8 | Normalize                      | `connector.normalize()` per parsed row; a `NormalizationError` rejects the row and records a `normalize_failed` issue. A `SupportsContext` connector received every artifact through `load_context` before step 7. |
 | 9 | Deduplicate                    | `_deduplicate` by `natural_key` (first draft wins; conflicting duplicates are counted in the log). `case_number_duplicate` runs just before, over the drafts as parsed, because the collapse would hide it. |
-| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through the `resolve_persons(session, drafts, run)` hook — in this phase an exact match of the `source_participant_id` hash against `person_identifier`, otherwise a new person (Step 3 replaces the hook with the staged framework). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. |
+| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through `entity_resolution.pipeline.resolve_persons(session, drafts, run)` — the deterministic stage: a draft whose `source_participant_id` hash already sits in `person_identifier` is that person, otherwise a new person and its identifier rows are written here. The rule, probabilistic, and review stages (`pipeline.resolve_candidates`) run right after step 12, because case linkage is a feature they read from the published rows: the run's persons are blocked against every person they share a name or identifier hash with, candidates are stored, system merges applied, and the run's published person ids follow the merges (`docs/ENTITY_RESOLUTION.md`). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. |
 | 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts (the reference checks of Phase 1 and the case-level checks: `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`) |
 | 12 | Publish canonical rows        | `_publish`: `INSERT … ON CONFLICT DO UPDATE` per entity type, in dependency order — jurisdiction → court → judge → judge_service in the runner, then persons (+ identifier rows) → cases → parties → assignments → charges → court events → decisions (+ pretrial release) → sentences → justice events in `ingest/publish.py`, batched 500 rows per statement |
 | 13 | Recompute affected metrics    | `recompute_metrics` — a no-op hook until the Phase 3 metrics engine |
@@ -155,6 +155,17 @@ without the person hash.
    inserted with `ON CONFLICT DO NOTHING` on `(person_id, identifier_type,
    value_hash)`.
 
+### The audit log
+
+`audit_log` (revision 0004) records every administrative and
+entity-resolution decision: `occurred_at`, `actor` (an operator label or
+`system:<model version>`), `action` (`er.merge`, `er.decide`, …), the
+entity, a JSON payload of ids, counts, decisions, and reasons, and a
+request id. The trigger `audit_log_append_only()` raises on `UPDATE` and
+`DELETE` for every role, so a written row is history; the ingest role
+inserts and reads, the public API role has no privilege. Phase 6's admin
+surface writes to the same table.
+
 ### Person hashing and resolution
 
 A participant's name, date of birth, and source identifier never reach a
@@ -169,16 +180,20 @@ and `seed` refuse to start without it), with the normalization per kind
 those hashes only; the publish step writes them to the restricted
 `person_identifier` table (`encrypted_value` stays NULL in this phase).
 
-`resolve_persons(session, drafts, run)` in `ingest/runner.py` is the
-Phase 2 Step 2 hook: a draft whose stable-identifier hash already sits in
-`person_identifier` (partial unique index `uq_person_identifier_stable`)
-resolves to that person; every other draft becomes a new `person` with
-`resolution_status = deterministic` and confidence 1. Step 3 replaces the
-hook with the staged framework (deterministic → rules → scoring → review)
-and records its candidates against the run. The participant id is used
-in the namespace the source assigns it (the generator's ids are one per
-person across its courts; a real clerk system's ids are scoped the same
-way), never combined with a court code.
+`entity_resolution.pipeline.resolve_persons(session, drafts, run)` is the
+deterministic stage applied to incoming rows: a draft whose
+stable-identifier hash already sits in `person_identifier` (partial
+unique index `uq_person_identifier_stable`) resolves to that person;
+every other draft becomes a new `person` with `resolution_status =
+deterministic` and confidence 1. The staged framework — rules that never
+merge on a name alone, a stubbed probabilistic scorer, the manual-review
+queue, merges, and the audit log — is documented in
+[`ENTITY_RESOLUTION.md`](ENTITY_RESOLUTION.md). The participant id is
+used in the namespace the source assigns it (the generator's ids are one
+per person across its courts; a real clerk system's ids are scoped the
+same way), never combined with a court code. A merged person keeps its
+row with `merged_into_person_id` set and every public query filters it
+out (`entity_resolution.merge.unmerged()`).
 
 ### The synthetic connector
 
@@ -213,8 +228,8 @@ refusal.
 
 | Role                  | Used by                                              | Rights                                            |
 |-----------------------|------------------------------------------------------|---------------------------------------------------|
-| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs` | `SELECT` on public tables; nothing on `person_identifier`, `correction_request` |
-| `judgemetrics_ingest` | `ingest run` (`JUDGEMETRICS_INGEST_DATABASE_URL`)    | `SELECT, INSERT, UPDATE, DELETE` on every table; no DDL |
+| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs` | `SELECT` on public tables; nothing on `person_identifier`, `correction_request`, `entity_resolution_candidate`, `audit_log` |
+| `judgemetrics_ingest` | `ingest run`, `seed`, `er …` (`JUDGEMETRICS_INGEST_DATABASE_URL`) | `SELECT, INSERT, UPDATE, DELETE` on every table except `audit_log` (`SELECT, INSERT`: append-only); no DDL |
 | `judgemetrics_admin`  | `db upgrade` / `downgrade` (`JUDGEMETRICS_ADMIN_DATABASE_URL`) | full control of the public schema (not a superuser) |
 
 The roles are created by `infra/docker/postgres/02-roles.sql`; migrations
@@ -325,6 +340,9 @@ because the web client is generated from it ("Web tier" below).
 | `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector. |
 | `judgemetrics ingest runs [--source ID] [--limit N]` | app | A table of runs with counts, status, and parser version. |
 | `judgemetrics seed [--seed 20260916] [--scale demo] [--force]` | ingest | Generate `data/synthetic/<seed>` (skipped when its manifest already records the seed, scale, and generator version) and ingest it through the synthetic connector. `uv run poe seed`. |
+| `judgemetrics er run [--source ID]`              | ingest | Recompute person candidates under the current model version and apply system merges; prints pairs, candidates created and updated, matched, rejected, review, merges. |
+| `judgemetrics er review list [--entity-type person] [--limit N] [--json]` | ingest | The manual-review queue: candidate ids, public person keys, stage, score, feature booleans. |
+| `judgemetrics er review decide <id> --decision matched\|rejected --reviewer LABEL --reason TEXT` | ingest | Record a reviewer's decision (merge or rejection) with an `er.decide` audit row; refused in production until Phase 6. |
 
 Logs (structlog, scrubbed) carry counts (per table on `ingest.published`
 and `ingest.succeeded`), source identifiers, file hashes, and object keys
