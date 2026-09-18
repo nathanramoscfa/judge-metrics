@@ -31,10 +31,10 @@ mirrors every target for environments with GNU make (`make check`).
 | Task            | Runs                                                   |
 |-----------------|--------------------------------------------------------|
 | `check`         | lint, format check, type check, tests                  |
-| `test`          | pytest (`tests/unit`, `tests/integration`)             |
+| `test`          | pytest (`tests/unit`, `tests/integration`, `tests/property`, `tests/golden`) |
 | `lint`, `fmt`, `fmt-check`, `typecheck` | ruff check, ruff format, ruff format --check, mypy --strict |
 | `gate`          | the full security gate: every pre-commit hook plus the pre-push stage |
-| `up`, `down`    | Docker Compose services (PostgreSQL 17, MinIO) up / down |
+| `up`, `down`    | Docker Compose services (PostgreSQL 17, MinIO) up / down; `up` also creates the scratch test database (`up-test-db`) |
 | `kit`           | re-export the roadmodel planning kit                   |
 | `migrate`       | Alembic migrations to head, as the admin role          |
 | `dev-api`       | the API with auto-reload                               |
@@ -117,17 +117,47 @@ security finding, data-semantics finding, data-access question) per
 ## Tests
 
 ```sh
-uv run poe test                  # unit + integration (integration skips
-                                 # unless the Compose services are up)
+uv run poe test                  # unit + integration + property + golden
+                                 # (database tests skip unless a database
+                                 # URL is configured: `uv run poe up`)
 uv run pytest -m unit            # unit only
-uv run pytest -m integration     # integration only; run `uv run poe up` first
+uv run pytest -m integration     # everything that needs the database
+uv run pytest -m property        # the Hypothesis property tests
+uv run pytest -m golden          # the golden fixture regression suite
 uv run pytest --cov              # with coverage
 ```
 
-Tests live in `tests/unit/` and `tests/integration/` and are marked
-`unit` or `integration`. Property tests use hypothesis. Verify scripts
-are Python (`scripts/verify_phaseNN.py`) so they run identically on
-Windows and Ubuntu CI.
+Tests live in `tests/unit/`, `tests/integration/`, `tests/property/`,
+and `tests/golden/` and carry the markers `unit`, `integration`,
+`property`, and `golden` (`pyproject.toml`; `--strict-markers`). A
+property or golden test that needs the database also carries
+`integration`. Verify scripts are Python (`scripts/verify_phaseNN.py`)
+so they run identically on Windows and Ubuntu CI.
+
+**The scratch test database.** Every database test runs through the
+`test_settings` fixture (`tests/conftest.py`). With
+`JUDGEMETRICS_TEST_DATABASE_URL` set — `uv run poe up` creates
+`judgemetrics_test` beside the main database, owned by the Compose
+superuser, with `pg_trgm` and the same role grants
+(`infra/docker/postgres/03-test-database.sql`; the one-shot
+`postgres-test-init` job brings an older volume up to date) — the
+migration round trip, the fixture ingests, the property tests, and the
+golden suite all run there: the variable's URL is the owner that runs
+the migrations, and the app and ingest roles' configured URLs are
+retargeted at that database, so the role split is still exercised. A
+live ingest in the main database survives `uv run poe check`. With the
+variable unset the suite falls back to the configured database as
+before and warns once (`ScratchDatabaseUnsetWarning`), and the round
+trip then empties a local live ingest. CI points the variable at the
+throwaway service database.
+
+**Hypothesis.** `tests/property/` runs under the profile named by
+`HYPOTHESIS_PROFILE`: `ci` (50 examples per test, no deadline; CI sets
+it) or `dev` (the default: 20 examples, no deadline, because generating
+a dataset takes longer than Hypothesis's 200 ms default). Strategies
+draw seeds, orderings, and formatting variants only — never names — and
+a failing example prints the seed and the scale. The example database
+`.hypothesis/` is ignored by git.
 
 ## Compose services
 

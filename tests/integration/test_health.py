@@ -39,8 +39,8 @@ def unreachable_client() -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def live_client(migrated_database: Engine, settings: Settings) -> Iterator[TestClient]:
-    app = create_app(Settings(env=settings.env, database_url=settings.database_url))
+def live_client(migrated_database: Engine, test_settings: Settings) -> Iterator[TestClient]:
+    app = create_app(Settings(env=test_settings.env, database_url=test_settings.database_url))
     with TestClient(app) as client:
         yield client
     app.state.engine.dispose()

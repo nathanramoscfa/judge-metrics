@@ -83,9 +83,17 @@ the golden fixture under `tests/fixtures/golden/` is tracked.
 3,000 defendants) and a unit test asserts it, on the `ScaleSpec` and on
 a generated run. `golden` is small enough that every planted item is
 hand-checkable from `truth/README.md`; it is the permanent regression
-fixture. `tiny` exists for property tests and smoke runs. A `ScaleSpec`
-validates itself: at least one judge per court, at least as many cases
-as persons, at most four cases per person, room for every plant.
+fixture. `tiny` exists for the property tests (`tests/property/`, Phase
+2 Step 5: a dataset generates and normalizes in well under a second, so
+Hypothesis can draw dozens of seeds per test) and for smoke runs. A
+`ScaleSpec` validates itself: at least one judge per court, at least as
+many cases as persons, at most four cases per person, room for every
+plant. What a spec cannot validate is the random draw: a two-court
+`tiny` world occasionally holds no two unused persons in disjoint
+courts, and the same-date-of-birth ambiguous plant then falls back to a
+same-court pair (below) rather than failing the generation, so every
+seed generates at every scale (3,000 consecutive seeds checked at
+`tiny` and `golden`).
 
 ## The world model
 
@@ -264,7 +272,7 @@ expected pipeline behaviour) and, for person pairs, in
 | Kind                           | Construction | What the pipeline must do |
 |--------------------------------|--------------|---------------------------|
 | `split_person`                 | One true person whose cases sit in two courts appears under a second participant id for the cases of the second court, with the same name and date of birth; the earliest case there cites the person's first case in `related_case_number`. | Step 3's rule stage decides `matched` (same name and date of birth plus a case link) and merges the two persons under one `public_person_key`. |
-| `ambiguous_person_same_dob`    | Two distinct persons given the same name and date of birth, with cases in disjoint courts and no shared case. | Two `person` rows; the candidate pair is decided `review`, never merged automatically. |
+| `ambiguous_person_same_dob`    | Two distinct persons given the same name and date of birth, with cases in disjoint courts and no shared case. When the world holds no two unused persons in disjoint courts (possible at `tiny` scale only; never in the golden fixture), a same-court pair is planted instead and `planted.csv` says so in its `expected_behaviour`. | Two `person` rows; the candidate pair is decided `review`, never merged automatically (the same-court fallback is queued by the rule stage's `name_dob_same_court`). |
 | `ambiguous_person_missing_dob` | Two distinct persons given the same name, one with its date of birth blanked. | Two `person` rows; the candidate pair is decided `rejected` (reason `name_only`) — never merge on a name alone. |
 | `duplicate_source_record`      | A case emitted twice, the copy with formatting differences only (see above). | The copy collapses onto the same `court_case` and child rows; the second source row is attributed; `data_quality_issue` `case_number_duplicate` (info). |
 | `missing_dob`                  | A person whose every participant row has an empty `date_of_birth`. | The person resolves by participant id; no candidate is matched on the name alone. |
@@ -349,6 +357,49 @@ Phase 3's registry must reproduce these values exactly on the golden
 fixture; disposition- and sentence-indexed windowed rates are derivable
 from `subsequent_events.csv` and will join `metrics.json` under a new
 `TRUTH_VERSION` when the registry defines them.
+
+## Property invariants (`tests/property/`)
+
+The brief's property tests (`<testing_strategy>`) run with Hypothesis
+over generated datasets (Phase 2 Step 5; `HYPOTHESIS_PROFILE=ci` draws
+50 examples per test, the local `dev` profile 20). Strategies draw
+seeds, draft orderings, and case-number formatting variants only; every
+name still comes from the word lists, and a failing example prints the
+seed and the scale, never a restricted value. The invariants, each
+checked on the generated files and again on the drafts the synthetic
+connector produces from them:
+
+- **A subsequent event never precedes its index event**
+  (`test_event_ordering.py`, `tiny` and `golden`): every
+  `truth/subsequent_events.csv` row has `outcome_at > index_at` and
+  `days_after >= 1`, with `days_after` the smallest whole number of days
+  covering the gap; every charge is disposed on or after its filing;
+  every sentence follows its case's disposition; every decision lies
+  inside its case's filed/closed window; every derived `new_case` or
+  `reconviction` justice event has an earlier filing or disposition in
+  another case of the same person.
+- **Case-number normalization is format-insensitive and idempotent**
+  (`test_case_numbers.py`): inserted separators at segment boundaries,
+  case changes, and leading or trailing separators normalize to the
+  same key; a key normalizes to itself; a key holds only upper-case
+  alphanumerics and single hyphens.
+- **Identical deterministic identifiers resolve consistently**
+  (`test_resolution_consistency.py`, integration): `resolve_persons`
+  over the participant drafts in two Hypothesis-drawn orders — the
+  second including the planted duplicate row — yields the same person
+  per participant hash and creates nothing the second time; equal
+  `source_participant_id` hashes are exactly the pairs that share a
+  person, and `lookup_by_identity` returns the same map.
+- **Rerunning an ingestion produces no duplicates**
+  (`test_ingest_idempotent.py`, integration, five derandomized seeds):
+  after the first ingest every row of the dataset's own
+  `truth/resolution_expectations.csv` holds; the second ingest of the
+  same dataset parses nothing, creates and updates zero rows in every
+  canonical table (row counts and the latest `updated_at` per table
+  unchanged), and writes zero candidates and zero source records.
+
+The integration properties run inside one rolled-back transaction per
+example on the scratch test database (`CONTRIBUTING.md`, "Tests").
 
 ## The word-list rule
 

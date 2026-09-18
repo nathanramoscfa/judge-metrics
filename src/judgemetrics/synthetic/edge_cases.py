@@ -185,13 +185,30 @@ def _ambiguous_pair(
     return None
 
 
+# The same-date-of-birth plant when no two unused persons sit in disjoint
+# courts (a small two-court world, seeds the property tests found): the pair
+# shares a court, so the rule stage itself queues it (name_dob_same_court).
+EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT = (
+    "two distinct persons with the same name and date of birth in a shared court and no "
+    "shared case: two person rows; the candidate pair is decided review by the rule stage "
+    "(name_dob_same_court), never merged automatically"
+)
+
+
 def _plant_ambiguous(world: World, rng: random.Random, plants: Plants, used: set[str]) -> None:
     for index in range(world.spec.ambiguous_person_pairs):
         same_dob = index % 2 == 0
         available = [p for p in world.persons if p.true_id not in used]
         pair = _ambiguous_pair(world, rng, available, same_dob=same_dob)
+        expected = EXPECTED.get
+        if pair is None and same_dob:
+            # No disjoint-court pair exists (possible at the tiny scale): a
+            # same-court pair still reviews, never merges. Extra draws happen
+            # only here, so every seed that generated before generates the same.
+            pair = _ambiguous_pair(world, rng, available, same_dob=False)
+            expected = {KIND_AMBIGUOUS_SAME_DOB: EXPECTED_AMBIGUOUS_SAME_DOB_SAME_COURT}.get
         if pair is None:
-            msg = "no two unused persons with disjoint courts for an ambiguous pair"
+            msg = "fewer than two unused persons for an ambiguous pair"
             raise GenerationError(msg)
         first, second = pair
         first_courts = _courts_of(world, first)
@@ -222,7 +239,7 @@ def _plant_ambiguous(world: World, rng: random.Random, plants: Plants, used: set
                     ("shared_name", first.full_name),
                     ("courts", ",".join(sorted(first_courts | _courts_of(world, second)))),
                 ),
-                EXPECTED[kind],
+                expected(kind, EXPECTED[kind]),
             )
         )
         plants.expectations.append(_expectation(left, right, decision, reason))

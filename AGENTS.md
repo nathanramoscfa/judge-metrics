@@ -444,6 +444,31 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   that count merge audits scope them to the persons kept.
   `scripts/verify_phase01.py` check 29 asserts the Phase 1 paths are a
   subset of `docs/openapi.json`, not the whole set.
+- Tests (Phase 2 Step 5): every database test runs through the root
+  conftest's `test_settings`; with `JUDGEMETRICS_TEST_DATABASE_URL` set
+  (the scratch database `judgemetrics_test` that
+  `infra/docker/postgres/03-test-database.sql` creates on `uv run poe
+  up`, owned by the Compose superuser) its admin URL is that URL and the
+  app and ingest role URLs are retargeted at that database, so the
+  migration round trip and the fixture ingests never touch a live
+  ingest and the role grants are still exercised; unset, the suite
+  falls back to the configured database and warns once (never silently).
+  CI points the variable at the service database. `tests/property/`
+  (Hypothesis, profiles `ci`/`dev` from `HYPOTHESIS_PROFILE`) uses the
+  `TINY` scale (2 courts, 3 judges, 12 persons, 16 cases) so a dataset
+  generates and normalizes in well under a second; the two integration
+  properties run each example in one rolled-back transaction, and the
+  ingest-idempotency property is derandomized (five fixed seeds) so CI
+  is reproducible; strategies never generate names. `tests/golden/` is
+  the permanent, parametrized regression suite over the golden fixture
+  (its conftest re-exports `golden_fixture` from
+  `tests/integration/conftest.py`); a `GENERATOR_VERSION` or
+  `TRUTH_VERSION` bump without regenerating the fixture fails it. The
+  property tests found `tiny`-scale seeds whose world had no two unused
+  persons in disjoint courts; the same-date-of-birth ambiguous plant
+  now falls back to a same-court pair (still `review`) with its own
+  `expected_behaviour` text, without a version bump because no
+  previously generated dataset changed.
 - The two secret scanners reconcile through `.gitleaks.toml`: the
   detect-secrets baseline records each allowlisted false positive as a
   `hashed_secret` sha1 fingerprint, which gitleaks' `generic-api-key`

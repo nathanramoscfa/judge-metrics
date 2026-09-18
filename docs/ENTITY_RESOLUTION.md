@@ -223,6 +223,48 @@ role, including the migration owner; the ingest role may insert and
 read; the public API role has no privilege on it, nor on
 `entity_resolution_candidate`.
 
+## The regression gate
+
+The golden fixture (`tests/fixtures/golden/`, seed 7) is the permanent
+regression dataset for entity resolution, as the brief's
+`<golden_dataset>` asks, and `tests/golden/` (marker `golden`, Phase 2
+Step 5) is the gate that runs on every pull request:
+
+- `test_golden_resolution.py` ingests the fixture once per module on the
+  scratch test database and is parametrized over every row of
+  `truth/resolution_expectations.csv`: the stored candidate's decision
+  equals the expected one, with the stage, actor, and features the
+  decision implies (a `matched` pair by the rule stage with
+  `same_name_dob` and `related_case_link`; a `review` pair undecided
+  with no case link; a `rejected` pair with reason `name_only` and a
+  missing date of birth). It then checks that the split persons share
+  one public key and every party and identifier row moved to the
+  survivor, that the ambiguous pairs sit in the review queue as public
+  keys only, that distinct persons keep distinct keys, and that the
+  planted pairs are the only candidates the fixture produces.
+- `test_public_contract.py` proves the restricted tables stay
+  unreachable: no restricted name in the OpenAPI document, an
+  `InsufficientPrivilege` error for the app role on
+  `person_identifier`, `entity_resolution_candidate`, `audit_log`, and
+  `correction_request`, and public keys only in every golden
+  `/cases/{id}` response.
+- `tests/property/test_resolution_consistency.py` and
+  `test_ingest_idempotent.py` extend the same expectations to random
+  `tiny`-scale seeds: identical stable identifiers resolve to the same
+  person in any draft order, every generated dataset's own
+  `resolution_expectations.csv` holds after one ingest, and a second
+  ingest writes no candidate (`docs/SYNTHETIC_DATA.md`, "Property
+  invariants").
+
+A change to a rule, a score, a feature, or a threshold that alters a
+decision bumps `MODEL_VERSION` *and* must keep this gate green; if the
+golden expectations are meant to change, the generator's truth
+(`synthetic/edge_cases.py`) changes with them under a new
+`GENERATOR_VERSION`, never the fixture by hand. The Step 3 integration
+test (`tests/integration/test_entity_resolution.py`) keeps its
+narrower, transactional assertions on the review workflow and the
+audit log.
+
 ## What later phases add
 
 - **Phase 4** reads resolved persons for cohorts; a merged person's

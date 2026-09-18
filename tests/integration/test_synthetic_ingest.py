@@ -634,8 +634,12 @@ def test_the_real_synthetic_connector_is_refused_in_production(
 
 
 def test_seed_is_refused_in_production_and_generates_nothing(
-    settings: Settings, migrated_database: Engine, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    test_settings: Settings,
+    migrated_database: Engine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    settings = test_settings
     monkeypatch.chdir(tmp_path)
     env = {
         "JUDGEMETRICS_ENV": "production",
@@ -662,12 +666,12 @@ def test_seed_is_refused_in_production_and_generates_nothing(
 
 
 def test_seed_needs_the_pepper(
-    settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    test_settings: Settings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
     env = {
         "JUDGEMETRICS_ENV": "test",
-        "JUDGEMETRICS_DATABASE_URL": settings.database_url,
+        "JUDGEMETRICS_DATABASE_URL": test_settings.database_url,
         "JUDGEMETRICS_IDENTIFIER_PEPPER": "",
     }
     result = CliRunner().invoke(app, ["seed", "--scale", "tiny"], env=env)

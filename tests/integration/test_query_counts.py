@@ -42,8 +42,10 @@ class StatementCounter:
 
 
 @pytest.fixture(scope="module")
-def counted(fjc_fixture: FjcFixture) -> Iterator[tuple[TestClient, StatementCounter]]:
-    app = make_app(Settings())
+def counted(
+    fjc_fixture: FjcFixture, test_settings: Settings
+) -> Iterator[tuple[TestClient, StatementCounter]]:
+    app = make_app(test_settings)
     counter = StatementCounter()
     event.listen(app.state.engine, "before_cursor_execute", counter)
     with TestClient(app) as client:

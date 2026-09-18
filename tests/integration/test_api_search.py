@@ -145,10 +145,10 @@ def test_limiter_is_off_by_default_under_test(api: TestClient) -> None:
 
 
 @pytest.fixture
-def limited(fjc_fixture: FjcFixture) -> Iterator[TestClient]:
+def limited(fjc_fixture: FjcFixture, test_settings: Settings) -> Iterator[TestClient]:
     """An app with the limiter on (burst 3) and a clock that never advances."""
     app = make_app(
-        Settings(),
+        test_settings,
         search_rate_limit_enabled=True,
         search_rate_limit_burst=3,
         search_rate_limit_per_minute=60,
@@ -187,8 +187,10 @@ def test_buckets_are_per_client_behind_a_trusted_proxy(limited: TestClient) -> N
     assert limited.get("/api/v1/search", params={"q": "alito"}, headers=second).status_code == 200
 
 
-def test_forwarded_header_is_ignored_without_trust_proxy(fjc_fixture: FjcFixture) -> None:
-    app = make_app(Settings(), search_rate_limit_enabled=True, search_rate_limit_burst=2)
+def test_forwarded_header_is_ignored_without_trust_proxy(
+    fjc_fixture: FjcFixture, test_settings: Settings
+) -> None:
+    app = make_app(test_settings, search_rate_limit_enabled=True, search_rate_limit_burst=2)
     app.state.search_limiter = TokenBucketLimiter(per_minute=60, burst=2, clock=lambda: 0.0)
     with TestClient(app, raise_server_exceptions=False) as client:
         for address in ("203.0.113.1", "203.0.113.2"):

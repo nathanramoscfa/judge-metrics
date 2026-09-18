@@ -10,6 +10,9 @@ dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# Hypothesis's example database (tests/property); failing examples are
+# replayed from it locally and it is never shared.
+.hypothesis/
 .coverage
 .coverage.*
 htmlcov/

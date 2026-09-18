@@ -3,7 +3,7 @@
 # so the brief's `make <target>` interface works wherever GNU make exists.
 # On Windows without make, run `uv run poe <task>` directly; the targets are
 # identical. Later steps add: compute-metrics, bootstrap.
-.PHONY: install test lint fmt fmt-check typecheck check gate kit up down migrate dev-api dev-web ingest-fjc seed
+.PHONY: install test lint fmt fmt-check typecheck check gate kit up up-test-db down migrate dev-api dev-web ingest-fjc seed
 
 install:
 	uv sync
@@ -34,6 +34,9 @@ kit:
 
 up:
 	uv run poe up
+
+up-test-db:
+	uv run poe up-test-db
 
 down:
 	uv run poe down

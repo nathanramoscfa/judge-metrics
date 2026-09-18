@@ -102,6 +102,19 @@ def test_database_urls_must_use_psycopg(monkeypatch: pytest.MonkeyPatch) -> None
         Settings()
 
 
+def test_test_database_url_is_optional_and_validated(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JUDGEMETRICS_ENV", "test")
+    assert Settings().test_database_url is None
+    monkeypatch.setenv("JUDGEMETRICS_TEST_DATABASE_URL", LEGACY_DRIVER_URL)
+    with pytest.raises(ValidationError, match="postgresql\\+psycopg"):
+        Settings()
+    scratch = (
+        "postgresql+psycopg://owner:pw@localhost:5432/judgemetrics_test"  # pragma: allowlist secret
+    )
+    monkeypatch.setenv("JUDGEMETRICS_TEST_DATABASE_URL", scratch)
+    assert Settings().test_database_url == scratch
+
+
 def test_git_sha_prefers_configured_value(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("JUDGEMETRICS_GIT_SHA", "a" * 40)
     assert Settings().resolved_git_sha() == "a" * 40

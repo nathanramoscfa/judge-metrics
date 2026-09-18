@@ -47,6 +47,7 @@ dev = [
     "bandit>=1.9.4",
     "boto3-stubs[s3]>=1.43.95",
     "detect-secrets>=1.5.0",
+    "hypothesis>=6.168.0",
     "mypy>=2.3.1",
     "pip-audit>=2.10.1",
     "poethepoet>=0.48.0",
@@ -87,7 +88,7 @@ files = ["src", "tests", "scripts", "alembic"]
 plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration"]
+testpaths = ["tests/unit", "tests/integration", "tests/property", "tests/golden"]
 addopts = "-q --strict-markers"
 filterwarnings = [
     # Starlette's TestClient still imports httpx 0.x; the project follows
@@ -98,6 +99,8 @@ filterwarnings = [
 markers = [
     "unit: fast tests with no external services",
     "integration: tests that need the Compose services (`uv run poe up`)",
+    "property: Hypothesis property tests over generated datasets (profile from HYPOTHESIS_PROFILE)",
+    "golden: the golden fixture regression suite (tests/fixtures/golden, seed 7)",
 ]
 
 [tool.bandit]
@@ -128,10 +131,13 @@ gate-push = "pre-commit run --all-files --hook-stage pre-push"
 kit = "roadmodel export-kit . --force"
 # Local services: PostgreSQL 17 (pg_trgm, three roles) and MinIO. `up` waits
 # for the long-running services to be healthy, then runs the one-shot
-# bucket-creation job (`--wait` alone treats a cleanly exited job as failure).
-up = ["up-services", "up-init"]
+# bucket-creation job (`--wait` alone treats a cleanly exited job as failure)
+# and the one-shot scratch-database job (`judgemetrics_test` for the test
+# suite, idempotent; a volume created before Phase 2 Step 5 gets it here).
+up = ["up-services", "up-init", "up-test-db"]
 up-services = "docker compose up -d --wait postgres minio"
 up-init = "docker compose run --rm minio-init"
+up-test-db = "docker compose run --rm postgres-test-init"
 down = "docker compose down"
 # Schema and API: migrations run as the admin role (JUDGEMETRICS_ADMIN_DATABASE_URL);
 # dev-api serves judgemetrics.main:app with auto-reload.
