@@ -1,7 +1,8 @@
 // web/app/page.tsx
 // Home: the headline, the global search box, coverage summary tiles from the
-// jurisdiction and list totals, and the prominent methodology link. Rendered
-// on every request so the counts are live, never baked in at build time.
+// jurisdiction and list totals and the per-source case counts of /coverage,
+// and the prominent methodology link. Rendered on every request so the
+// counts are live, never baked in at build time.
 import { ArrowRight, BookOpenText } from "lucide-react";
 import Link from "next/link";
 
@@ -9,7 +10,7 @@ import { SearchForm } from "@/components/search-form";
 import { ErrorState } from "@/components/states";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { listCourts, listJudges, listJurisdictions } from "@/lib/api/client";
+import { getCoverage, listCourts, listJudges, listJurisdictions } from "@/lib/api/client";
 import { formatInteger } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +40,18 @@ function Tile({
 }
 
 export default async function HomePage() {
-  const [jurisdictions, judges, courts] = await Promise.all([
+  const [jurisdictions, judges, courts, coverage] = await Promise.all([
     listJurisdictions({ limit: 100 }),
     listJudges({ limit: 1 }),
     listCourts({ limit: 1 }),
+    getCoverage(),
   ]);
 
-  const firstError = [jurisdictions, judges, courts].find((result) => !result.ok);
+  const firstError = [jurisdictions, judges, courts, coverage].find((result) => !result.ok);
+  const cases = coverage.ok ? coverage.data.sources.reduce((sum, s) => sum + s.cases, 0) : 0;
+  const syntheticCases = coverage.ok
+    ? coverage.data.sources.filter((s) => s.synthetic).reduce((sum, s) => sum + s.cases, 0)
+    : 0;
 
   return (
     <div className="flex flex-col gap-10">
@@ -87,19 +93,23 @@ export default async function HomePage() {
               testId="tile-judges"
               label="Judges indexed"
               value={judges.ok ? formatInteger(judges.data.total) : "—"}
-              detail="Article III judges from the Federal Judicial Center"
+              detail="Article III judges from the Federal Judicial Center, plus any synthetic demo judges"
             />
             <Tile
               testId="tile-courts"
               label="Courts indexed"
               value={courts.ok ? formatInteger(courts.data.total) : "—"}
-              detail="Federal courts from the FJC service records"
+              detail="Federal courts from the FJC service records, plus any synthetic demo courts"
             />
             <Tile
               testId="tile-cases"
               label="Cases indexed"
-              value="—"
-              detail="Case, charge, and disposition data arrive in Phase 2"
+              value={coverage.ok ? formatInteger(cases) : "—"}
+              detail={
+                syntheticCases > 0
+                  ? `${formatInteger(syntheticCases)} synthetic demo cases; real case data begins with the first state-court pipeline`
+                  : "Real case data begins with the first state-court pipeline (Phase 5)"
+              }
             />
           </div>
         )}

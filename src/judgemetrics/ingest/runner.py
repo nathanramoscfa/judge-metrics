@@ -81,6 +81,7 @@ from judgemetrics.db.models import (
     Source,
     SourceRecord,
 )
+from judgemetrics.db.models.provenance import SYNTHETIC_SOURCE_TYPE
 from judgemetrics.entity_resolution.deterministic import lookup_by_identity
 from judgemetrics.entity_resolution.pipeline import (
     PersonResolution,
@@ -144,7 +145,6 @@ from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplic
 
 log = get_logger(__name__)
 
-SYNTHETIC_SOURCE_TYPE = "synthetic"
 MAX_REASON_LENGTH = 2000
 NORMALIZE_FAILED = "normalize_failed"
 UNRESOLVED_JUDGE = "unresolved_judge"

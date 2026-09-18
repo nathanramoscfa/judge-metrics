@@ -31,17 +31,43 @@ served live at `/api/v1/openapi.json`, with Swagger UI at `/api/v1/docs`.
 | GET    | `/judges`                              | `Page[JudgeSummary]`                     |
 | GET    | `/judges/{judge_id}`                   | `JudgeDetail` (service records, provenance) |
 | GET    | `/judges/{judge_id}/service`           | `list[ServiceRecord]`, oldest first      |
+| GET    | `/judges/{judge_id}/cases`             | `Page[CaseSummary]`, newest filing first |
 | GET    | `/courts`                              | `Page[CourtSummary]`                     |
 | GET    | `/courts/{court_id}`                   | `CourtDetail` (provenance)               |
 | GET    | `/jurisdictions`                       | `Page[JurisdictionSummary]`              |
 | GET    | `/jurisdictions/{jurisdiction_id}`     | `JurisdictionDetail` (provenance)        |
-| GET    | `/search`                              | `SearchResponse`: judges and courts by name (rate limited) |
+| GET    | `/cases/{case_id}`                     | `CaseDetail` (parties, assignments, charges, decisions, sentences, provenance) |
+| GET    | `/cases/{case_id}/timeline`            | `Timeline`: every dated fact of the case, chronological |
+| GET    | `/search`                              | `SearchResponse`: judges and courts by name, cases by exact number (rate limited) |
+| GET    | `/coverage`                            | `Coverage`: per-source counts, filing window, last run, `synthetic_present` |
 
 Identifiers are UUIDs. The API exposes public UUIDs, public judge data
 (name, status, appointment facts, the FJC identifiers under
-`external_ids`), and provenance metadata; it never exposes internal
-storage keys, database identifiers of any other kind, or restricted
-attributes. Persons (defendants) do not appear in `v1`.
+`external_ids`), case-level facts, and provenance metadata; it never
+exposes internal storage keys, database identifiers of any other kind,
+or restricted attributes. A person (defendant) appears only as the
+pseudonymous `public_person_key` of the resolved `person` row — never a
+name, date of birth, or source identifier (those exist only as peppered
+hashes in the restricted `person_identifier` table, which the API role
+cannot read and no route selects from) — and a person merged into
+another by entity resolution is never returned (every person join
+filters `merged_into_person_id IS NULL`). A unit test over the committed
+OpenAPI document asserts that no schema property is named `value_hash`,
+`encrypted_value`, `date_of_birth`, `full_name`, `person_identifier`,
+`raw_object_path`, or `requester_contact`.
+
+## The `synthetic` flag
+
+Every summary, detail, search result, provenance block, timeline, and
+coverage entry carries `synthetic: bool`: true when the row's
+`source_record` belongs to a source whose `source_type` is `synthetic`
+(the in-repo generator, `docs/SYNTHETIC_DATA.md`). The flag is computed
+in the same statement as the row (a join to `source_record` and
+`source`), so a list page still costs one statement. The web tier shows
+a "Synthetic" badge beside every flagged entity and a site-wide demo
+banner whenever `/coverage` reports `synthetic_present`; the ingest
+runner refuses synthetic sources in production, so a production
+deployment never sets the flag.
 
 ## Pagination
 
@@ -97,14 +123,31 @@ status is still "active on" a date within the appointment; the
 | `jurisdiction_id` | UUID   | Courts of this jurisdiction                               |
 | `court_type`      | string | Exact type: `district`, `appeals`, `supreme`, `other` (federal vocabulary; state registries extend it in Phase 5) |
 
+`GET /judges/{judge_id}/cases`
+
+| Parameter    | Type     | Meaning                                                              |
+|--------------|----------|----------------------------------------------------------------------|
+| `filed_from` | ISO date | Only cases filed on or after this date                               |
+| `filed_to`   | ISO date | Only cases filed on or before this date; earlier than `filed_from` is a `422` |
+| `status`     | string   | Exact case status: `open` or `closed` (`data/reference/case_vocabulary.yaml`) |
+| `case_type`  | string   | Exact case type: `felony` or `misdemeanor` (same vocabulary)          |
+
+A case is the judge's when any `judge_assignment` names the judge. Rows
+order newest filing first (undated last), then by normalized number. An
+unknown judge is a `404`; a judge with no case on file (every FJC judge
+today) is an empty page with `total: 0`. `status` and `case_type` are
+validated by shape (`^[a-z][a-z0-9_]*$`) rather than by enumeration so
+the vocabulary file can grow without an API change; a value outside it
+simply matches nothing.
+
 `GET /search`
 
 | Parameter | Type          | Meaning                                                |
 |-----------|---------------|--------------------------------------------------------|
-| `q`       | string, 1–200 | Required. Normalized like a judge name, then matched by trigram similarity against judge normalized names and court names |
+| `q`       | string, 1–200 | Required. Normalized like a judge name, then matched by trigram similarity against judge normalized names and court names; normalized like a case number (`normalize_case_number`) and matched exactly against `case_number_normalized` |
 | `limit`   | 1–100         | Results to return, default `25`                        |
 
-Search returns judges and courts in one list ordered by `score`
+Search returns judges, courts, and cases in one list ordered by `score`
 (`pg_trgm` `similarity()`, `0`–`1`), using the `%` operator so the GIN
 trigram indexes apply. Only names at or above the similarity threshold
 (`JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD`, default `0.3`) match; the
@@ -112,7 +155,11 @@ threshold is set per request with `set_config`, never interpolated into
 SQL. Similarity is computed over the whole name, so a misspelt surname
 finds a judge when the surname is a large share of the full name
 ("Sotomayer" → Sonia Sotomayor); a short token against a long name may
-fall below the threshold.
+fall below the threshold. A case matches only when the whole query,
+normalized (`syn 2020 000005` → `SYN-2020-000005`), equals its
+normalized number: an exact match scores `1` and therefore outranks
+every similar name, and a partial number matches nothing. A case
+result's `name` is the number as the source filed it.
 
 ## Error envelope
 
@@ -139,11 +186,69 @@ send its own, up to 128 URL-safe characters). Error responses never
 contain stack traces, SQL, or configuration values; the class of a
 failure is logged with the request id and nothing more.
 
+## Cases and the timeline
+
+`GET /cases/{case_id}` returns the `CaseDetail`: the summary fields
+(court reference, number, type, status, filed and closed dates,
+`synthetic`), `parties` (`party_type`, `public_person_key`),
+`assignments` (judge reference, type, interval, oldest first), `charges`
+(statute, description, category, severity, violent flag, filing and
+disposition times, `disposition`, and `disposition_actor` — who disposed
+of the charge, so a prosecutor's dismissal is never a judicial one),
+`decisions` (type, time, `actor_type`,
+`judicial_discretion_classification`, the deciding judge when the
+decision was judicial, the subject's public key, `decision_value`, and
+the `pretrial_release` detail when the decision is one), `sentences`
+(time, judge, incarceration and probation days, fine, components), and
+`provenance`: one block per distinct raw artifact behind the case and
+every row it contains (the synthetic dataset yields seven: one per
+source file).
+
+`GET /cases/{case_id}/timeline` returns the same facts as one
+chronological list. Each `TimelineEntry` has `at`, a `kind`, the
+`actor_type` when the source records who acted, the judge when one is
+named, a short `label`, a `detail` dictionary of the row's public
+columns, and `source`, the provenance block of that row. The kinds:
+
+| Kind               | Row                   | `at`                        | `actor_type`            |
+|--------------------|-----------------------|-----------------------------|-------------------------|
+| `filed`            | the case              | `filed_date` at 00:00 UTC   | —                       |
+| `assignment_start` | judge assignment      | `start_at`                  | —                       |
+| `assignment_end`   | judge assignment      | `end_at` (when set)         | —                       |
+| `event`            | court event           | `event_at`                  | the event's actor       |
+| `decision`         | decision              | `decision_at`               | the decision's actor    |
+| `charge_filed`     | charge                | `filed_at`                  | —                       |
+| `charge_disposed`  | charge                | `disposed_at` (when disposed) | `disposition_actor`   |
+| `sentence`         | sentence              | `sentence_at`               | —                       |
+| `closed`           | the case              | `closed_date` at 23:59:59.999999 UTC | —              |
+
+Entries sort by `at`, then by the kind order of the table (so a
+disposition decision precedes the charge dispositions of the same
+instant), then by row id. Date-only facts are placed at the start
+(`filed`) and the end (`closed`) of their day so a day's timestamped
+events fall between them; `detail.date` carries the plain date. An event
+recorded after the closing date (a revocation) follows the `closed`
+entry, which is the record, not an error.
+
+## Coverage
+
+`GET /coverage` reports every registered source: `source`,
+`source_type`, `synthetic`, the number of jurisdictions, courts,
+judges, cases, and resolved persons (merged rows excluded) whose rows
+derive from its artifacts, the earliest and latest `filed_date` of its
+cases, and `last_ingest` (the most recent completed run: id, completion
+time, status, which may be `failed`). `synthetic_present` is true when
+any synthetic source has at least one row in those tables — a source
+registered by a refused run raises no banner. `generated_at` is the
+server time of the response. Completeness estimates and the known-gaps
+register arrive with the Phase 3 metrics engine.
+
 ## Caching
 
-List and detail responses (`/judges`, `/courts`, `/jurisdictions` and
-their details) carry `Cache-Control: public, max-age=60`. Error
-responses and `/search` are not cached.
+List and detail responses (`/judges`, `/courts`, `/jurisdictions`,
+`/cases` and their details, `/judges/{id}/cases`, `/coverage`) carry
+`Cache-Control: public, max-age=60`. Error responses and `/search` are
+not cached.
 
 ## Rate limits
 
@@ -179,7 +284,8 @@ service records).
   "retrieved_at": "2026-09-16T19:08:18.323504Z",
   "raw_sha256": "b6a69ef2…870b475",
   "parser_version": "2026.09.1",
-  "ingest_run_id": "30e40b48-f9c7-40ca-8c0d-ace56a3e1ed3"
+  "ingest_run_id": "30e40b48-f9c7-40ca-8c0d-ace56a3e1ed3",
+  "synthetic": false
 }
 ```
 
@@ -193,10 +299,20 @@ even select it).
 ## Query budget
 
 The API is guarded against N+1 access patterns by a test that counts
-statements at the cursor: a judge detail costs at most three statements
-(the judge, its service records with their courts, the provenance
-rows), a list at most two (the page with its window count, plus the
-similarity `set_config` when `q` is given), and a search at most two.
+statements at the cursor (`tests/integration/test_query_counts.py`):
+
+| Request                        | Statements | What they are                                                       |
+|--------------------------------|------------|---------------------------------------------------------------------|
+| judge detail                   | ≤ 4        | the judge with its synthetic flag, its service records with their courts, the case window (count, earliest, latest filed), the provenance rows |
+| any list                       | ≤ 2        | the page with its window count, plus the similarity `set_config` when `q` is given |
+| search                         | ≤ 2        | `set_config` and the union                                          |
+| a judge's cases                | ≤ 2        | the page with its window count; an empty page costs one more that also settles whether the judge exists |
+| case detail, case timeline     | ≤ 8        | one statement per case-level table — the case with its court and flag, parties with persons, assignments with judges, charges, events with judges, decisions with pretrial releases, judges, and persons, sentences with judges — plus the provenance rows: a constant, whatever the case holds; the timeline is assembled from the same load |
+| coverage                       | ≤ 3        | one statement over `source` with correlated counts, one for the latest runs |
+
+The person joins select only `public_person_key`; no statement of any
+route touches `person_identifier`, `entity_resolution_candidate`, or
+`audit_log`, and the provenance query never selects `raw_object_path`.
 
 ## Examples
 
@@ -207,4 +323,9 @@ curl -s 'http://127.0.0.1:8000/api/v1/judges/<uuid>'
 curl -s 'http://127.0.0.1:8000/api/v1/courts?court_type=district&limit=100'
 curl -s 'http://127.0.0.1:8000/api/v1/search?q=ninth%20circuit'
 curl -si 'http://127.0.0.1:8000/api/v1/judges?limit=101'        # 422
+curl -s 'http://127.0.0.1:8000/api/v1/judges/<uuid>/cases?status=closed&filed_from=2020-01-01'
+curl -s 'http://127.0.0.1:8000/api/v1/cases/<uuid>'
+curl -s 'http://127.0.0.1:8000/api/v1/cases/<uuid>/timeline'
+curl -s 'http://127.0.0.1:8000/api/v1/search?q=SYN-2020-000005'  # an exact case number
+curl -s 'http://127.0.0.1:8000/api/v1/coverage'
 ```

@@ -1,22 +1,24 @@
 # src/judgemetrics/services/search.py
-"""Trigram search over judges and courts (``/api/v1/search``).
+"""Search over judges, courts, and case numbers (``/api/v1/search``).
 
-The query is normalized with ``normalize_person_name`` (the same rule that
-produced ``judge.normalized_name``), the ``pg_trgm`` similarity threshold
-is set for the request's transaction from settings, and one ``UNION ALL``
-returns judge and court matches ordered by ``similarity()``. Matching
-uses the ``%`` operator so the GIN trigram indexes of the baseline
-(``ix_judge_normalized_name_trgm``, ``ix_court_canonical_name_trgm``)
-apply. Every value is a bound parameter; nothing is interpolated.
+The query is normalized twice: with ``normalize_person_name`` (the rule
+that produced ``judge.normalized_name``) for the trigram arms, and with
+``normalize_case_number`` (the rule that produced
+``court_case.case_number_normalized``) for the exact case-number arm.
+The ``pg_trgm`` similarity threshold is set for the request's transaction
+from settings, and ``repositories.search`` runs the union ordered by
+``similarity()`` (an exact case number scores 1). Every value is a bound
+parameter; nothing is interpolated.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import func, literal, select, union_all
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from judgemetrics.db.models import Court, Judge
+from judgemetrics.normalization.case_numbers import normalize_case_number
 from judgemetrics.normalization.names import normalize_person_name
+from judgemetrics.repositories.search import search_matches
 from judgemetrics.schemas.search import SearchResponse, SearchResult
 
 SIMILARITY_SETTING = "pg_trgm.similarity_threshold"
@@ -34,31 +36,18 @@ def set_similarity_threshold(session: Session, threshold: float) -> None:
 
 
 def search(session: Session, q: str, limit: int, *, threshold: float) -> SearchResponse:
-    """Judges and courts whose names are similar to ``q``, best first."""
-    normalized = normalize_person_name(q)
-    if not normalized:
-        return SearchResponse(query=normalized, limit=limit, items=[])
-    set_similarity_threshold(session, threshold)
-    judges = select(
-        literal("judge").label("entity_type"),
-        Judge.id.label("id"),
-        Judge.canonical_name.label("name"),
-        func.similarity(Judge.normalized_name, normalized).label("score"),
-    ).where(Judge.normalized_name.op("%")(normalized))
-    courts = select(
-        literal("court").label("entity_type"),
-        Court.id.label("id"),
-        Court.canonical_name.label("name"),
-        func.similarity(Court.canonical_name, normalized).label("score"),
-    ).where(Court.canonical_name.op("%")(normalized))
-    matches = union_all(judges, courts).subquery("matches")
-    stmt = (
-        select(matches.c.entity_type, matches.c.id, matches.c.name, matches.c.score)
-        .order_by(matches.c.score.desc(), matches.c.name, matches.c.id)
-        .limit(limit)
+    """Judges and courts whose names are similar to ``q``, and the case numbered ``q``."""
+    normalized_name = normalize_person_name(q)
+    normalized_case_number = normalize_case_number(q)
+    if not normalized_name and not normalized_case_number:
+        return SearchResponse(query=normalized_name, limit=limit, items=[])
+    if normalized_name:
+        set_similarity_threshold(session, threshold)
+    matches = search_matches(
+        session,
+        normalized_name=normalized_name,
+        normalized_case_number=normalized_case_number,
+        limit=limit,
     )
-    items = [
-        SearchResult(entity_type=entity_type, id=entity_id, name=name, score=float(score))
-        for entity_type, entity_id, name, score in session.execute(stmt).all()
-    ]
-    return SearchResponse(query=normalized, limit=limit, items=items)
+    items = [SearchResult(**match._asdict()) for match in matches]
+    return SearchResponse(query=normalized_name, limit=limit, items=items)

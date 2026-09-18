@@ -27,6 +27,11 @@ from judgemetrics.db.base import Base, Timestamps, UUIDPrimaryKey
 from judgemetrics.db.models._types import JSONBDict, pg_enum
 from judgemetrics.db.models.enums import IngestRunStatus, IssueSeverity, IssueStatus
 
+# The ``source.source_type`` of the in-repo generator (docs/DATA_SOURCES.md
+# ``synthetic``): the ingest runner refuses it in production and the API
+# labels every row derived from it.
+SYNTHETIC_SOURCE_TYPE = "synthetic"
+
 
 class Source(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "source"

@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/v1/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Case detail: parties, assignments, charges, decisions, sentences, provenance */
+        get: operations["get_case_api_v1_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every dated fact of a case in chronological order, each citing its artifact */
+        get: operations["get_case_timeline_api_v1_cases__case_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courts": {
         parameters: {
             query?: never;
@@ -30,6 +64,23 @@ export interface paths {
         };
         /** Court detail with provenance */
         get: operations["get_court_api_v1_courts__court_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Coverage per source: counts, filing window, last run, synthetic flag */
+        get: operations["get_coverage_api_v1_coverage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -81,6 +132,23 @@ export interface paths {
         };
         /** Judge detail with service records and provenance */
         get: operations["get_judge_api_v1_judges__judge_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/judges/{judge_id}/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cases assigned to a judge, newest filing first */
+        get: operations["list_judge_cases_api_v1_judges__judge_id__cases_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -178,6 +246,164 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActorType
+         * @description Who took an action; the basis of every judge-level inclusion rule.
+         * @enum {string}
+         */
+        ActorType: "judge" | "prosecutor" | "defense" | "jury" | "clerk" | "law_enforcement" | "legislature_or_mandatory_rule" | "appellate_court" | "unknown";
+        /** AssignmentOut */
+        AssignmentOut: {
+            /**
+             * Assignment Type
+             * @description `initial` or `reassignment`.
+             */
+            assignment_type: string;
+            /**
+             * End At
+             * @description Null while the assignment is current.
+             */
+            end_at: string | null;
+            judge: components["schemas"]["JudgeRef"];
+            /**
+             * Start At
+             * Format: date-time
+             */
+            start_at: string;
+        };
+        /** CaseDetail */
+        CaseDetail: {
+            /**
+             * Assignments
+             * @description Oldest first.
+             */
+            assignments: components["schemas"]["AssignmentOut"][];
+            /**
+             * Case Number
+             * @description The docket number as the source recorded it.
+             */
+            case_number: string;
+            /**
+             * Case Type
+             * @description `felony` or `misdemeanor` (data/reference/case_vocabulary.yaml).
+             */
+            case_type: string;
+            /**
+             * Charges
+             * @description By filing time.
+             */
+            charges: components["schemas"]["ChargeOut"][];
+            /** Closed Date */
+            closed_date: string | null;
+            court: components["schemas"]["CourtRef"];
+            /**
+             * Decisions
+             * @description By decision time.
+             */
+            decisions: components["schemas"]["DecisionOut"][];
+            /** Filed Date */
+            filed_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Parties */
+            parties: components["schemas"]["CasePartyOut"][];
+            /**
+             * Provenance
+             * @description The distinct raw artifacts behind the case and every row it contains.
+             */
+            provenance: components["schemas"]["Provenance"][];
+            /**
+             * Sentences
+             * @description By sentencing time.
+             */
+            sentences: components["schemas"]["SentenceOut"][];
+            /**
+             * Status
+             * @description `open` or `closed`.
+             */
+            status: string;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** CasePartyOut */
+        CasePartyOut: {
+            /**
+             * Party Type
+             * @description `defendant` in the current vocabulary.
+             */
+            party_type: string;
+            /**
+             * Public Person Key
+             * @description The pseudonymous public key of the resolved person; the only person identifier the API ever returns.
+             */
+            public_person_key: string | null;
+        };
+        /** CaseSummary */
+        CaseSummary: {
+            /**
+             * Case Number
+             * @description The docket number as the source recorded it.
+             */
+            case_number: string;
+            /**
+             * Case Type
+             * @description `felony` or `misdemeanor` (data/reference/case_vocabulary.yaml).
+             */
+            case_type: string;
+            /** Closed Date */
+            closed_date: string | null;
+            court: components["schemas"]["CourtRef"];
+            /** Filed Date */
+            filed_date: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Status
+             * @description `open` or `closed`.
+             */
+            status: string;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** ChargeOut */
+        ChargeOut: {
+            /** Description */
+            description: string;
+            /** Disposed At */
+            disposed_at: string | null;
+            /**
+             * Disposition
+             * @description `dismissed`, `acquitted`, `convicted_plea`, `convicted_verdict`, `pending`, or null.
+             */
+            disposition: string | null;
+            /** @description Who disposed of the charge; a prosecutor's dismissal is not a judicial one. */
+            disposition_actor: components["schemas"]["ActorType"] | null;
+            /**
+             * Filed At
+             * Format: date-time
+             */
+            filed_at: string;
+            /** Offense Category */
+            offense_category: string;
+            /** Severity */
+            severity: string;
+            /** Statute Code */
+            statute_code: string | null;
+            /** Violent Flag */
+            violent_flag: boolean | null;
+        };
         /** CourtDetail */
         CourtDetail: {
             /** Active From */
@@ -212,6 +438,11 @@ export interface components {
              * @description USPS code parsed from a district-court name.
              */
             state_code: string | null;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
         };
         /**
          * CourtRef
@@ -252,6 +483,107 @@ export interface components {
              * @description USPS code parsed from a district-court name.
              */
             state_code: string | null;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** Coverage */
+        Coverage: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Sources
+             * @description Every registered source, by name.
+             */
+            sources: components["schemas"]["CoverageSource"][];
+            /**
+             * Synthetic Present
+             * @description True when any synthetic source has rows in the canonical tables.
+             */
+            synthetic_present: boolean;
+        };
+        /** CoverageSource */
+        CoverageSource: {
+            /** Cases */
+            cases: number;
+            /** Courts */
+            courts: number;
+            /** Earliest Filed */
+            earliest_filed: string | null;
+            /** Judges */
+            judges: number;
+            /** Jurisdictions */
+            jurisdictions: number;
+            /** @description The most recent completed run, any status. */
+            last_ingest: components["schemas"]["LastIngest"] | null;
+            /** Latest Filed */
+            latest_filed: string | null;
+            /**
+             * Persons
+             * @description Resolved persons (merged rows excluded).
+             */
+            persons: number;
+            /**
+             * Source
+             * @description Source register key (docs/DATA_SOURCES.md).
+             */
+            source: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Synthetic
+             * @description True for the in-repo generator's dataset.
+             */
+            synthetic: boolean;
+        };
+        /**
+         * CoverageWindow
+         * @description The span of filing dates behind a set of cases, with their count.
+         */
+        CoverageWindow: {
+            /** Case Count */
+            case_count: number;
+            /** Earliest Filed */
+            earliest_filed: string | null;
+            /** Latest Filed */
+            latest_filed: string | null;
+        };
+        /** DecisionOut */
+        DecisionOut: {
+            /** @description Who decided: the basis of every inclusion rule. */
+            actor_type: components["schemas"]["ActorType"];
+            /**
+             * Decision At
+             * Format: date-time
+             */
+            decision_at: string;
+            /**
+             * Decision Type
+             * @description `pretrial_release`, `dismissal`, `disposition`, or `sentencing`.
+             */
+            decision_type: string;
+            /** Decision Value */
+            decision_value: {
+                [key: string]: unknown;
+            };
+            /** @description The deciding judge, when the decision was judicial. */
+            judge: components["schemas"]["JudgeRef"] | null;
+            /**
+             * Judicial Discretion Classification
+             * @description `discretionary`, `mandatory`, `non_judicial`, or `unknown`.
+             */
+            judicial_discretion_classification: string;
+            pretrial_release: components["schemas"]["PretrialReleaseOut"] | null;
+            /**
+             * Public Person Key
+             * @description The pseudonymous public key of the resolved person; the only person identifier the API ever returns.
+             */
+            public_person_key: string | null;
         };
         /**
          * ErrorBody
@@ -285,10 +617,22 @@ export interface components {
             /** Version */
             version: string;
         };
+        /**
+         * IngestRunStatus
+         * @enum {string}
+         */
+        IngestRunStatus: "running" | "succeeded" | "failed" | "refused";
         /** JudgeDetail */
         JudgeDetail: {
             /** Canonical Name */
             canonical_name: string;
+            /**
+             * Case Count
+             * @description Distinct cases with an assignment to this judge, across all sources.
+             */
+            case_count: number;
+            /** @description The filing-date span of the judge's assigned cases, or null when no case is on file. */
+            coverage: components["schemas"]["CoverageWindow"] | null;
             /**
              * External Ids
              * @description Public source identifiers, e.g. `fjc_nid`.
@@ -322,6 +666,24 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "senior" | "deceased" | "retired" | "resigned" | "removed" | "inactive" | "unknown";
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /**
+         * JudgeRef
+         * @description A judge named by a case-level row, enough to link and label it.
+         */
+        JudgeRef: {
+            /** Canonical Name */
+            canonical_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /** JudgeSummary */
         JudgeSummary: {
@@ -337,6 +699,11 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "senior" | "deceased" | "retired" | "resigned" | "removed" | "inactive" | "unknown";
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
         };
         /** JurisdictionDetail */
         JurisdictionDetail: {
@@ -379,6 +746,17 @@ export interface components {
          * @enum {string}
          */
         JurisdictionType: "federal" | "state" | "county" | "city" | "district" | "circuit";
+        /** LastIngest */
+        LastIngest: {
+            /** Completed At */
+            completed_at: string | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            status: components["schemas"]["IngestRunStatus"];
+        };
         /** NotReadyResponse */
         NotReadyResponse: {
             /** Reason */
@@ -388,6 +766,31 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /** Page[CaseSummary] */
+        Page_CaseSummary_: {
+            /** Items */
+            items: components["schemas"]["CaseSummary"][];
+            /**
+             * Limit
+             * @description Page size that was applied.
+             */
+            limit: number;
+            /**
+             * Next Offset
+             * @description Offset of the next page, or null on the last.
+             */
+            next_offset: number | null;
+            /**
+             * Offset
+             * @description Rows skipped before this page.
+             */
+            offset: number;
+            /**
+             * Total
+             * @description Rows matching the filters, across all pages.
+             */
+            total: number;
         };
         /** Page[CourtSummary] */
         Page_CourtSummary_: {
@@ -464,6 +867,24 @@ export interface components {
              */
             total: number;
         };
+        /** PretrialReleaseOut */
+        PretrialReleaseOut: {
+            /** Bond Amount */
+            bond_amount: string | null;
+            /** Conditions */
+            conditions: {
+                [key: string]: unknown;
+            };
+            /** Detained Flag */
+            detained_flag: boolean;
+            /** Release At */
+            release_at: string | null;
+            /**
+             * Release Type
+             * @description `recognizance`, `monetary_bond`, `detained`, or `statutory`.
+             */
+            release_type: string;
+        };
         /**
          * Provenance
          * @description Where a row's current values came from: one retrieved raw artifact.
@@ -497,6 +918,11 @@ export interface components {
              * @description Source register key (docs/DATA_SOURCES.md), e.g. `fjc`.
              */
             source: string;
+            /**
+             * Synthetic
+             * @description True when the artifact belongs to a source of type `synthetic` (the in-repo generator): the row is demo data, never a court record.
+             */
+            synthetic: boolean;
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -534,19 +960,49 @@ export interface components {
              * Entity Type
              * @enum {string}
              */
-            entity_type: "judge" | "court";
+            entity_type: "judge" | "court" | "case";
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Name */
+            /**
+             * Name
+             * @description The judge's or court's name, or the case number as filed.
+             */
             name: string;
             /**
              * Score
-             * @description pg_trgm similarity to the query.
+             * @description pg_trgm similarity to the query; an exact case-number match scores 1.
              */
             score: number;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** SentenceOut */
+        SentenceOut: {
+            /**
+             * Components
+             * @description The sentence components as the source listed them.
+             */
+            components: {
+                [key: string]: unknown;
+            };
+            /** Fine Amount */
+            fine_amount: string | null;
+            /** Incarceration Days */
+            incarceration_days: number | null;
+            judge: components["schemas"]["JudgeRef"] | null;
+            /** Probation Days */
+            probation_days: number | null;
+            /**
+             * Sentence At
+             * Format: date-time
+             */
+            sentence_at: string;
         };
         /**
          * ServiceRecord
@@ -576,6 +1032,55 @@ export interface components {
             /** Start Date */
             start_date: string | null;
         };
+        /** Timeline */
+        Timeline: {
+            /**
+             * Case Id
+             * Format: uuid
+             */
+            case_id: string;
+            /**
+             * Entries
+             * @description Chronological: by `at`, then the documented kind order, then the row id.
+             */
+            entries: components["schemas"]["TimelineEntry"][];
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** TimelineEntry */
+        TimelineEntry: {
+            /** @description Who acted, when the source records it. */
+            actor_type: components["schemas"]["ActorType"] | null;
+            /**
+             * At
+             * Format: date-time
+             * @description When the entry happened. Date-only facts sit at the start (`filed`) or the end (`closed`) of their day, so a day's events fall between them.
+             */
+            at: string;
+            /**
+             * Detail
+             * @description The public columns of the underlying row.
+             */
+            detail: {
+                [key: string]: unknown;
+            };
+            judge: components["schemas"]["JudgeRef"] | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "filed" | "assignment_start" | "assignment_end" | "event" | "decision" | "charge_filed" | "charge_disposed" | "sentence" | "closed";
+            /**
+             * Label
+             * @description A short human-readable line for the entry.
+             */
+            label: string;
+            /** @description The raw artifact the underlying row came from. */
+            source: components["schemas"]["Provenance"];
+        };
     };
     responses: never;
     parameters: never;
@@ -585,6 +1090,86 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_case_api_v1_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseDetail"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_case_timeline_api_v1_cases__case_id__timeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Timeline"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_courts_api_v1_courts_get: {
         parameters: {
             query?: {
@@ -650,6 +1235,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_coverage_api_v1_coverage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Coverage"];
                 };
             };
             /** @description A parameter is invalid, or a query parameter is not one the route declares. */
@@ -743,6 +1357,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JudgeDetail"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_judge_cases_api_v1_judges__judge_id__cases_get: {
+        parameters: {
+            query?: {
+                /** @description Only cases filed on or after this date (ISO 8601). */
+                filed_from?: string | null;
+                /** @description Only cases filed on or before this date (ISO 8601). */
+                filed_to?: string | null;
+                /** @description Exact case status: `open` or `closed` (data/reference/case_vocabulary.yaml). */
+                status?: string | null;
+                /** @description Exact case type: `felony` or `misdemeanor` (case_vocabulary.yaml). */
+                case_type?: string | null;
+                /** @description Page size, at most 100. */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                judge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CaseSummary_"];
                 };
             };
             /** @description The resource does not exist. */

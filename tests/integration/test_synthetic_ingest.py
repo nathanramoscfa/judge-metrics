@@ -29,7 +29,7 @@ from typing import Any
 import pytest
 import structlog
 from pydantic import SecretStr
-from sqlalchemy import Engine, delete, func, select, text, update
+from sqlalchemy import Engine, delete, func, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
 from typer.testing import CliRunner
@@ -39,20 +39,13 @@ from judgemetrics.config import Settings
 from judgemetrics.db.models import (
     Base,
     Case,
-    CaseParty,
     Charge,
-    Court,
     CourtEvent,
     DataQualityIssue,
     Decision,
-    EntityResolutionCandidate,
     IngestRun,
     IngestRunStatus,
     IssueSeverity,
-    Judge,
-    JudgeAssignment,
-    JudgeService,
-    Jurisdiction,
     JusticeEvent,
     Person,
     PersonIdentifier,
@@ -69,6 +62,7 @@ from judgemetrics.ingest.synthetic.schema import SOURCE_FILES
 from judgemetrics.logging import configure_logging
 from judgemetrics.security.identifiers import hash_identifier, name_dob_value
 from tests.conftest import TEST_IDENTIFIER_PEPPER
+from tests.integration.conftest import purge_source
 
 pytestmark = pytest.mark.integration
 
@@ -124,45 +118,6 @@ def _expected_counts() -> dict[str, int]:
     expected["court"] = len(_rows("courts.csv"))
     expected["jurisdiction"] = 1
     return expected
-
-
-def purge_source(session: Session, name: str) -> None:
-    """Delete every row derived from source ``name`` (FK order), and the source itself."""
-    source_id = session.scalar(select(Source.id).where(Source.name == name))
-    if source_id is None:
-        return
-    records = select(SourceRecord.id).where(SourceRecord.source_id == source_id)
-    session.execute(delete(DataQualityIssue).where(DataQualityIssue.source_record_id.in_(records)))
-    session.execute(delete(JusticeEvent).where(JusticeEvent.source_record_id.in_(records)))
-    decisions = select(Decision.id).where(Decision.source_record_id.in_(records))
-    session.execute(delete(PretrialRelease).where(PretrialRelease.decision_id.in_(decisions)))
-    for model in (Sentence, Decision, CourtEvent, Charge, JudgeAssignment, CaseParty):
-        session.execute(delete(model).where(model.source_record_id.in_(records)))
-    session.execute(delete(Case).where(Case.source_record_id.in_(records)))
-    persons = select(Person.id).where(Person.source_record_id.in_(records))
-    session.execute(delete(PersonIdentifier).where(PersonIdentifier.person_id.in_(persons)))
-    # Resolution bookkeeping of those persons: candidates, then the merge pointers
-    # (a self reference with RESTRICT) before the rows themselves.
-    session.execute(
-        delete(EntityResolutionCandidate).where(
-            EntityResolutionCandidate.left_record_id.in_(persons)
-            | EntityResolutionCandidate.right_record_id.in_(persons)
-        )
-    )
-    session.execute(
-        update(Person)
-        .where(Person.source_record_id.in_(records))
-        .values(merged_into_person_id=None)
-    )
-    session.execute(delete(Person).where(Person.source_record_id.in_(records)))
-    session.execute(delete(JudgeService).where(JudgeService.source_record_id.in_(records)))
-    session.execute(delete(Judge).where(Judge.source_record_id.in_(records)))
-    session.execute(delete(Court).where(Court.source_record_id.in_(records)))
-    session.execute(delete(Jurisdiction).where(Jurisdiction.source_record_id.in_(records)))
-    session.execute(delete(SourceRecord).where(SourceRecord.source_id == source_id))
-    session.execute(delete(IngestRun).where(IngestRun.source_id == source_id))
-    session.execute(delete(Source).where(Source.id == source_id))
-    session.flush()
 
 
 @pytest.fixture

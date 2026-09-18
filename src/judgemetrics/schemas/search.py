@@ -8,12 +8,19 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from judgemetrics.schemas.judges import SYNTHETIC_DESCRIPTION
+
 
 class SearchResult(BaseModel):
-    entity_type: Literal["judge", "court"]
+    entity_type: Literal["judge", "court", "case"]
     id: uuid.UUID
-    name: str
-    score: float = Field(ge=0.0, le=1.0, description="pg_trgm similarity to the query.")
+    name: str = Field(description="The judge's or court's name, or the case number as filed.")
+    score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="pg_trgm similarity to the query; an exact case-number match scores 1.",
+    )
+    synthetic: bool = Field(description=SYNTHETIC_DESCRIPTION)
 
 
 class SearchResponse(BaseModel):

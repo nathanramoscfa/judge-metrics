@@ -7,6 +7,8 @@ export const DATA_SOURCES_URL = `${REPOSITORY_URL}/blob/main/docs/DATA_SOURCES.m
 
 export const ROADMAP_URL = `${REPOSITORY_URL}/blob/main/ROADMAP.md`;
 
+export const SYNTHETIC_DATA_URL = `${REPOSITORY_URL}/blob/main/docs/SYNTHETIC_DATA.md`;
+
 /** The GitHub issue form for a wrong, changed, or misread data source. */
 export function dataIssueUrl(title: string): string {
   const params = new URLSearchParams({
@@ -33,6 +35,11 @@ export const SOURCES: Record<string, SourceLinks> = {
       "https://www.fjc.gov/history/judges/biographical-directory-article-iii-federal-judges-export",
     // The directory serves each judge's biography at /node/<nid>.
     recordUrl: (nid: string) => `https://www.fjc.gov/node/${encodeURIComponent(nid)}`,
+  },
+  synthetic: {
+    name: "Synthetic dataset (JudgeMetrics generator, demo data)",
+    // The generator and its known-truth files are documented in the repository.
+    exportUrl: SYNTHETIC_DATA_URL,
   },
 };
 

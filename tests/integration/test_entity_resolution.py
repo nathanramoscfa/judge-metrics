@@ -52,7 +52,7 @@ from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.logging import configure_logging
 from judgemetrics.security.identifiers import KIND_SOURCE_PARTICIPANT_ID, hash_identifier
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.test_synthetic_ingest import purge_source
+from tests.integration.conftest import purge_source
 
 pytestmark = pytest.mark.integration
 
@@ -262,7 +262,19 @@ def test_split_persons_share_one_public_key_and_distinct_persons_keep_their_ids(
     )
     assert merged_ids
     assert not list(session.scalars(select(CaseParty).where(CaseParty.person_id.in_(merged_ids))))
-    audits = list(session.scalars(select(AuditLog).where(AuditLog.action == "er.merge")))
+    # Audit rows are append-only, so earlier committed merges (the demo seed,
+    # the API tests' golden ingests) remain: count the merges of this ingest,
+    # keyed by the persons kept.
+    kept_ids = set(
+        session.scalars(
+            select(Person.merged_into_person_id).where(Person.merged_into_person_id.is_not(None))
+        )
+    )
+    audits = list(
+        session.scalars(
+            select(AuditLog).where(AuditLog.action == "er.merge", AuditLog.entity_id.in_(kept_ids))
+        )
+    )
     assert len(audits) == 2
     for audit in audits:
         assert audit.actor == SYSTEM_ACTOR

@@ -1,5 +1,5 @@
 # src/judgemetrics/api/routes/judges.py
-"""``/api/v1/judges``: the list, the detail, and the service records."""
+"""``/api/v1/judges``: the list, the detail, the service records, and the judge's cases."""
 
 from __future__ import annotations
 
@@ -18,8 +18,10 @@ from judgemetrics.api.deps import (
     cache_public,
 )
 from judgemetrics.api.errors import ApiError, error_responses
+from judgemetrics.schemas.cases import CaseSummary
 from judgemetrics.schemas.common import Page
 from judgemetrics.schemas.judges import JudgeDetail, JudgeStatus, JudgeSummary, ServiceRecord
+from judgemetrics.services.cases import judge_cases_page
 from judgemetrics.services.judges import judge_detail, judge_service, judges_page
 
 router = APIRouter(prefix="/judges", tags=["judges"], dependencies=[Depends(cache_public)])
@@ -95,3 +97,65 @@ def get_judge_service(judge_id: uuid.UUID, session: SessionDep) -> list[ServiceR
     if service is None:
         raise _not_found(judge_id)
     return service
+
+
+VOCABULARY_VALUE = r"^[a-z][a-z0-9_]*$"
+
+
+@router.get(
+    "/{judge_id}/cases",
+    response_model=Page[CaseSummary],
+    responses=error_responses(404, 422),
+    summary="Cases assigned to a judge, newest filing first",
+    dependencies=[
+        Depends(StrictQuery("filed_from", "filed_to", "status", "case_type", *PAGE_PARAMS))
+    ],
+)
+def list_judge_cases(
+    judge_id: uuid.UUID,
+    session: SessionDep,
+    page: PageDep,
+    filed_from: Annotated[
+        date | None, Query(description="Only cases filed on or after this date (ISO 8601).")
+    ] = None,
+    filed_to: Annotated[
+        date | None, Query(description="Only cases filed on or before this date (ISO 8601).")
+    ] = None,
+    status: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=32,
+            pattern=VOCABULARY_VALUE,
+            description="Exact case status: `open` or `closed` (data/reference/case_vocabulary.yaml).",
+        ),
+    ] = None,
+    case_type: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=64,
+            pattern=VOCABULARY_VALUE,
+            description="Exact case type: `felony` or `misdemeanor` (case_vocabulary.yaml).",
+        ),
+    ] = None,
+) -> Page[CaseSummary]:
+    if filed_from is not None and filed_to is not None and filed_to < filed_from:
+        raise ApiError(
+            status_code=422,
+            code="validation_error",
+            message="filed_to: must not be earlier than filed_from",
+        )
+    cases = judge_cases_page(
+        session,
+        judge_id,
+        filed_from=filed_from,
+        filed_to=filed_to,
+        status=status,
+        case_type=case_type,
+        limit=page.limit,
+        offset=page.offset,
+    )
+    if cases is None:
+        raise _not_found(judge_id)
+    return cases

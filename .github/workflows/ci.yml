@@ -3,8 +3,8 @@
 # bandit, secret scan, dependency audit), runs the Python test suite against
 # a PostgreSQL service, lints, type-checks, tests, builds, and audits the web
 # application, runs the Playwright smoke test against the API over the FJC
-# fixture, and builds and vulnerability-scans the API and web images. The
-# aggregate `test` job is the single required status check on `main`.
+# and golden synthetic fixtures, and builds and vulnerability-scans the API
+# and web images. The aggregate `test` job is the single required status check on `main`.
 #
 # Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
 #   - every third-party action is pinned to a full commit SHA;
@@ -195,7 +195,7 @@ jobs:
         run: pnpm audit --audit-level=high
 
   e2e:
-    name: e2e (Playwright smoke against the API over the FJC fixture)
+    name: e2e (Playwright smoke against the API over the FJC and golden fixtures)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -255,6 +255,12 @@ jobs:
 
       - name: Ingest the FJC fixture (ingest role)
         run: uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc
+
+      # The golden synthetic dataset (tests/fixtures/golden: manifest.json
+      # beside source/) gives the case flow a synthetic judge and case; the
+      # job's JUDGEMETRICS_IDENTIFIER_PEPPER hashes its participant ids.
+      - name: Ingest the golden synthetic fixture (ingest role)
+        run: uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden
 
       - name: Start the API in the background
         run: |

@@ -62,6 +62,7 @@ def test_detail_carries_provenance(api: TestClient, fjc_fixture: FjcFixture) -> 
     assert body["type"] == "federal"
     (block,) = body["provenance"]
     assert block["source"] == "fjc"
+    assert block["synthetic"] is False
     assert SHA256.match(block["raw_sha256"])
     uuid.UUID(block["ingest_run_id"])
     assert "raw_object_path" not in response.text

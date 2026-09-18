@@ -1,10 +1,10 @@
 # src/judgemetrics/schemas/common.py
-"""Shapes shared by every endpoint: the page envelope, provenance, errors."""
+"""Shapes shared by every endpoint: the page envelope, provenance, coverage windows, errors."""
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,6 +75,20 @@ class Provenance(BaseModel):
     raw_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     parser_version: str
     ingest_run_id: uuid.UUID
+    synthetic: bool = Field(
+        description=(
+            "True when the artifact belongs to a source of type `synthetic` (the in-repo "
+            "generator): the row is demo data, never a court record."
+        )
+    )
+
+
+class CoverageWindow(BaseModel):
+    """The span of filing dates behind a set of cases, with their count."""
+
+    earliest_filed: date | None
+    latest_filed: date | None
+    case_count: int = Field(ge=0)
 
 
 class ErrorBody(BaseModel):
