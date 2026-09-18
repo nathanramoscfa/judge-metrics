@@ -14,7 +14,12 @@ created by the Alembic revisions under `alembic/versions/`:
   case, the justice-event natural key, `person.source_record_id`, the
   identifier indexes of the restricted table,
   `court_case.related_case_number_normalized`, `charge.disposition_actor`,
-  and the synthetic judge identity index.
+  and the synthetic judge identity index;
+- `0004_entity_resolution_review` — `stage`, `decided_at`, `decided_by`,
+  `reason`, and `ingest_run_id` on `entity_resolution_candidate` with the
+  pair-per-version unique index and the ordered-pair check,
+  `person.merged_into_person_id`, and the append-only `audit_log` with
+  its trigger (`docs/ENTITY_RESOLUTION.md`).
 
 `uv run alembic check` must report no drift between the models and the
 head. Every table has a UUID `id` (`gen_random_uuid()` server default)
@@ -28,7 +33,7 @@ and server-set `created_at` / `updated_at` (timezone-aware).
 | `court`                        | A court within a jurisdiction: `canonical_name`, `court_type`, `external_ids`, `state_code`, active range. | `source_record_id` (0002) |
 | `judge`                        | A judicial officer: `canonical_name`, `normalized_name`, `external_ids`, `status`, `metadata`. | `source_record_id` (0002) |
 | `judge_service`                | One appointment of a judge to a court: `position_type`, `start_date`, `end_date`, `metadata`. | `source_record_id`       |
-| `person`                       | Internal resolved person: `public_person_key` (the only public handle, `secrets.token_urlsafe(12)` assigned once at insert), `resolution_status`, `resolution_confidence`. No name, no date of birth — ever. | `source_record_id` (0003) |
+| `person`                       | Internal resolved person: `public_person_key` (the only public handle, `secrets.token_urlsafe(12)` assigned once at insert), `resolution_status` (`deterministic`, `rule`, `probabilistic`, `review`, or `merged`), `resolution_confidence`, `merged_into_person_id` (0004: set on a merged person, whose row stays as history and which every public query filters out). No name, no date of birth — ever. | `source_record_id` (0003) |
 | `person_identifier`            | Peppered sha256 hashes of a person's source identifiers by `identifier_type` (`source_participant_id`, `full_name`, `date_of_birth`, `name_dob`); `encrypted_value` NULL in Phase 2. **Restricted.** | `source_record_id`  |
 | `court_case`                   | The brief's `case` (reserved word): court, case number (raw and normalized), type, dates, status, `related_case_number_normalized` (0003). | `source_record_id`   |
 | `case_party`                   | A party to a case, optionally resolved to a person; `source_row_id` (0003).         | `source_record_id`            |
@@ -42,11 +47,12 @@ and server-set `created_at` / `updated_at` (timezone-aware).
 | `source`                       | A data source from `docs/DATA_SOURCES.md`: owner, type, access method, terms.        | —                             |
 | `source_record`                | One retrieved artifact: immutable object path, sha256, retrieval and effective time, parser version, run, `metadata`. | `ingest_run_id` |
 | `ingest_run`                   | One pipeline run: status, counts, `code_version`, `parser_version`, `checkpoint`, `failure_reason`. | —                  |
-| `entity_resolution_candidate`  | A candidate pair with probability, features, model version, and decision.            | —                             |
+| `entity_resolution_candidate`  | One ordered pair per model version: features (booleans, counts, the stage trace), score, decision, `stage`, `decided_at`/`decided_by` (`system:<model version>` or a reviewer label), `reason`, `ingest_run_id` (0004). **Restricted.** | `ingest_run_id` |
 | `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions.         | —                             |
 | `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version. | — |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
 | `correction_request`           | A public correction request with an encrypted requester contact. **Restricted.**     | —                             |
+| `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
 
 The `Source of provenance` column shows how every fact row traces to raw
 bytes: `source_record` → `ingest_run` → the immutable object in the raw
@@ -69,6 +75,7 @@ events they count (Phase 3).
 | `case_party`, `judge_assignment`, `charge`, `court_event`, `decision`, `sentence` | `(case_id, source_row_id)` — the source's own row id within the case | `uq_<table>_case_source_row` |
 | `pretrial_release` | `decision_id`                                                                                   | unique column                                |
 | `justice_event`    | `(person_id, event_type, event_at, related_case_id)`, `NULLS NOT DISTINCT`                      | `uq_justice_event_natural`                   |
+| `entity_resolution_candidate` | `(entity_type, left_record_id, right_record_id, model_version)`, with `left_record_id < right_record_id` | `uq_er_candidate_pair_version`, `ck_entity_resolution_candidate_ordered_pair` |
 | `source`           | `name`                                                                                          | `uq_source_name`                             |
 | `source_record`    | `(source_id, external_record_id, raw_sha256)`, `NULLS NOT DISTINCT`                             | `uq_source_record_source_external_sha256`    |
 | `metric_definition`| `(slug, version)`                                                                               | `metric_definition_slug_version`             |
@@ -179,6 +186,8 @@ extend it silently: adding, renaming, or removing a value bumps
 | `judge_service.metadata`   | `fjc_sequence`, `start_date_basis` (`commission_date` / `recess_appointment_date`), `senior_status_date`, `termination`. |
 | `source_record.metadata`   | `uri`, `export_page`, `final_url`, `etag`, `last_modified`, `content_type`, `content_length`. |
 | `ingest_run.checkpoint`    | Incremental state of a checkpointing connector (none in Phase 1).                             |
+| `entity_resolution_candidate.features` | `PairFeatures.as_dict()` (booleans, `filing_gap_days`, `age_consistent`) plus `stage_trace`; never a hash, name, date, or participant id. |
+| `audit_log.payload`        | Ids, counts, decision, reason, model version of the recorded action; never a restricted value. |
 | `decision.decision_value`  | `{"release_type": …, "detained": …}` for a pretrial decision; `{}` otherwise (the type and actor columns say the rest). |
 | `pretrial_release.conditions` | `{"<release_condition>": true, …}` — one key per condition, containment-queryable.        |
 | `sentence.sentence_components` | `{"<sentence_component>": true, …}`.                                                     |
@@ -190,9 +199,9 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier`, `correction_request` | Every other table                       |
 |-----------------------|--------------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked)                             | `SELECT`                                |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`           | `SELECT, INSERT, UPDATE, DELETE`        |
-| `judgemetrics_admin`  | all (owner of migrations)                  | all                                     |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `SELECT`              |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` |
+| `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all      |
 
 `ALTER DEFAULT PRIVILEGES` in `infra/docker/postgres/02-roles.sql`
 extends the split to objects created by later migrations, whether they
@@ -216,3 +225,8 @@ but the judicial-dismissal rule ("a prosecutor's dismissal is not a
 judicial dismissal") is evaluated per charge, so the charge carries the
 actor who disposed of it as well. No field of the brief was removed or
 renamed (the `case` table is `court_case`, as the root roadmap records).
+Revision 0004 adds `entity_resolution_candidate.stage`, `.decided_at`,
+`.decided_by`, `.reason`, `.ingest_run_id` (the brief's auditability
+clause asks for the stage, timestamp, and reviewer),
+`person.merged_into_person_id`, and the `audit_log` table the brief's
+security requirement "log administrative changes" needs.

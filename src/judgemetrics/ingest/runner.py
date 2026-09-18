@@ -37,10 +37,14 @@ canonical rows. A connector that implements ``SupportsContext`` receives
 every artifact of the run (parsed or not) before parsing starts, so its
 cross-file lookups are complete when a single file changed.
 
-Person resolution: ``resolve_persons(session, drafts, run)`` is the Phase 2
-Step 2 hook — exact match on the ``source_participant_id`` hash against
-``person_identifier``; otherwise a new person. Step 3 replaces it with the
-staged entity-resolution pipeline (deterministic → rules → scoring → review). Transactions: the ``ingest_run`` row is committed first
+Person resolution is ``judgemetrics.entity_resolution.pipeline`` (Phase 2
+Step 3): at step 10 ``resolve_persons`` finds each draft's person by its
+stable source identifier or creates it with its identifier rows; right
+after step 12, once the run's cases and parties are visible,
+``resolve_candidates`` blocks the run's persons against every person they
+share a name or identifier hash with, applies the stages (deterministic →
+rules → scoring → review), stores the candidates, and applies the system
+merges, and the run's published person ids follow the merges. Transactions: the ``ingest_run`` row is committed first
 (so a failed run is recorded), the whole publish — source records,
 canonical rows, issues, run statistics — is one transaction, and a
 failure rolls it back and records ``failed`` with the reason. The caller
@@ -76,6 +80,12 @@ from judgemetrics.db.models import (
     JurisdictionType,
     Source,
     SourceRecord,
+)
+from judgemetrics.entity_resolution.deterministic import lookup_by_identity
+from judgemetrics.entity_resolution.pipeline import (
+    PersonResolution,
+    resolve_candidates,
+    resolve_persons,
 )
 from judgemetrics.ingest.base import (
     HEADER_CONTENT_TYPE,
@@ -115,7 +125,6 @@ from judgemetrics.ingest.base import (
 )
 from judgemetrics.ingest.http import parse_http_date
 from judgemetrics.ingest.publish import (
-    PERSON_IDENTIFIER,
     RunCounts,
     TableCounts,
     lookup_cases,
@@ -126,15 +135,12 @@ from judgemetrics.ingest.publish import (
     upsert_events,
     upsert_justice_events,
     upsert_parties,
-    upsert_person_identifiers,
-    upsert_persons,
     upsert_sentences,
 )
 from judgemetrics.ingest.registry import get_connector
 from judgemetrics.ingest.store import RawObjectStore, object_key
 from judgemetrics.logging import get_logger
 from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplication_checks
-from judgemetrics.security.identifiers import STABLE_KINDS
 
 log = get_logger(__name__)
 
@@ -149,10 +155,14 @@ UNRESOLVED_PERSON = "unresolved_person"
 # Judge identity systems with a partial unique expression index on
 # ``external_ids ->> '<system>'`` (``uq_judge_external_ids_<system>``).
 JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid", "synthetic_judge_code"})
-# The identifier kinds a person resolves on deterministically.
-PERSON_IDENTITY_KINDS = STABLE_KINDS
-
-__all__ = ["IngestFailed", "PublishedIds", "RunCounts", "TableCounts", "run_ingest"]
+__all__ = [
+    "IngestFailed",
+    "PersonResolution",
+    "PublishedIds",
+    "RunCounts",
+    "TableCounts",
+    "run_ingest",
+]
 
 _EXTENSION = re.compile(r"[^a-z0-9.]")
 _INSERTED = sa.literal_column("(xmax = 0)", type_=sa.Boolean).label("inserted")
@@ -198,9 +208,8 @@ class _Resolved:
     db_judges: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
     db_cases: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
     db_persons: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
-    # Person drafts whose identifier already names a person (key → person id);
-    # the rest of ``persons`` are inserted.
-    existing_persons: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
+    # Every person draft's id after ``resolve_persons`` (found or created at step 10).
+    person_ids: dict[NaturalKey, uuid.UUID] = field(default_factory=dict)
 
     def all_tagged(self) -> list[TaggedRecord]:
         return [
@@ -221,16 +230,6 @@ class _Resolved:
 
 
 @dataclass(frozen=True, slots=True)
-class PersonResolution:
-    """What the person-resolution hook decided for the run's person drafts."""
-
-    # Draft key → the id of the person it resolved to.
-    existing: dict[NaturalKey, uuid.UUID]
-    # Drafts for which no person exists yet (inserted by the publish step).
-    new: list[TaggedRecord]
-
-
-@dataclass(frozen=True, slots=True)
 class PublishedIds:
     """Entity ids by entity type and natural key after the publish step."""
 
@@ -240,6 +239,19 @@ class PublishedIds:
         if key is None:
             return None
         return self.ids.get(entity_type, {}).get(key)
+
+    def follow_merges(self, merged: dict[uuid.UUID, uuid.UUID]) -> None:
+        """Point every person key at the survivor of a merge applied after publishing."""
+        persons = self.ids.get("person")
+        if not persons:
+            return
+        for key, person_id in list(persons.items()):
+            current = person_id
+            seen: set[uuid.UUID] = set()
+            while current in merged and current not in seen:
+                seen.add(current)
+                current = merged[current]
+            persons[key] = current
 
 
 def run_ingest(
@@ -468,11 +480,16 @@ def _execute(
 
     issues.extend(run_pre_deduplication_checks(tagged))  # step 11, the part step 9 would hide
     deduplicated = _deduplicate(tagged, bound)  # step 9
-    resolved = _resolve(session, deduplicated, run)  # step 10
+    resolved = _resolve(session, deduplicated, run, counts)  # step 10
     counts.rejected += len(resolved.rejections)
     issues.extend(resolved.rejections)
     issues.extend(run_checks(resolved.all_tagged()))  # step 11
     published = _publish(session, resolved, counts, bound)  # step 12
+    # Step 10, the rule stages: they read case linkage from what step 12 published.
+    stats = resolve_candidates(session, list(resolved.person_ids.values()), run)
+    if stats.merged:
+        published.follow_merges(stats.merged)
+    bound.info("ingest.persons_resolved", **stats.as_log())
     recompute_metrics(session, run)  # step 13
     _persist_issues(session, issues, published, bound)  # step 14 (lineage)
     checkpoint = connector.checkpoint() if isinstance(connector, SupportsCheckpoint) else None
@@ -690,7 +707,9 @@ def _deduplicate(tagged: Iterable[TaggedRecord], bound: Any) -> list[TaggedRecor
     return list(kept.values())
 
 
-def _resolve(session: Session, tagged: Sequence[TaggedRecord], run: IngestRun) -> _Resolved:
+def _resolve(
+    session: Session, tagged: Sequence[TaggedRecord], run: IngestRun, counts: RunCounts
+) -> _Resolved:
     resolved = _Resolved()
     services: list[TaggedRecord] = []
     courts: list[TaggedRecord] = []
@@ -811,12 +830,12 @@ def _resolve(session: Session, tagged: Sequence[TaggedRecord], run: IngestRun) -
     resolved.db_cases = lookup_cases(session, wanted_cases - case_keys, court_ids_for_lookup)
     known_cases = case_keys | set(resolved.db_cases)
 
-    # Persons: the resolution hook decides which drafts name an existing person.
-    resolution = resolve_persons(session, persons, run)
-    resolved.existing_persons = dict(resolution.existing)
+    # Persons: found by stable identifier or created now, with their identifier rows.
+    resolution = resolve_persons(session, persons, run, counts)
+    resolved.person_ids = dict(resolution.ids)
     resolved.persons = list(persons)
     person_keys = {item.record.natural_key for item in persons}
-    resolved.db_persons = _lookup_persons(session, wanted_persons - person_keys)
+    resolved.db_persons = lookup_by_identity(session, wanted_persons - person_keys)
     known_persons = person_keys | set(resolved.db_persons)
 
     for item in children:
@@ -867,23 +886,6 @@ def _resolve(session: Session, tagged: Sequence[TaggedRecord], run: IngestRun) -
         else:
             resolved.justice_events.append(item)
     return resolved
-
-
-def resolve_persons(
-    session: Session, drafts: Sequence[TaggedRecord], run: IngestRun
-) -> PersonResolution:
-    """Step 10 for persons: exact match on the stable source identifier hash.
-
-    A draft whose ``identity`` hash already sits in ``person_identifier``
-    (for one of the stable kinds) resolves to that person; every other
-    draft becomes a new person at publish time. Step 3 replaces this hook
-    with the staged framework (deterministic → rules → scoring → review)
-    and records its candidates against ``run``.
-    """
-    del run  # the staged pipeline records candidates per run; this stage has none
-    existing = _lookup_persons(session, [item.record.natural_key for item in drafts])
-    new = [item for item in drafts if item.record.natural_key not in existing]
-    return PersonResolution(existing=existing, new=new)
 
 
 def _case_key_of(record: CanonicalRecord) -> NaturalKey | None:
@@ -997,25 +999,6 @@ def _lookup_judges(session: Session, keys: Iterable[NaturalKey]) -> dict[Natural
     return found
 
 
-def _lookup_persons(session: Session, keys: Iterable[NaturalKey]) -> dict[NaturalKey, uuid.UUID]:
-    """Persons by ``("person", <stable kind>, <hash>)`` through their identifier rows."""
-    wanted = {key for key in set(keys) if len(key) == 3 and key[1] in PERSON_IDENTITY_KINDS}
-    found: dict[NaturalKey, uuid.UUID] = {}
-    for kind in {key[1] for key in wanted}:
-        hashes = {key[2] for key in wanted if key[1] == kind}
-        rows = session.execute(
-            select(PERSON_IDENTIFIER.c.person_id, PERSON_IDENTIFIER.c.value_hash).where(
-                PERSON_IDENTIFIER.c.identifier_type == kind,
-                PERSON_IDENTIFIER.c.value_hash.in_(hashes),
-            )
-        ).all()
-        for person_id, value_hash in rows:
-            key = ("person", kind, str(value_hash))
-            if key in wanted:
-                found[key] = person_id
-    return found
-
-
 # --- step 12: publish ---------------------------------------------------------------
 
 
@@ -1028,15 +1011,10 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
     judge_ids.update(_upsert_judges(session, resolved.judges, counts))
     service_ids = _upsert_services(session, resolved.services, judge_ids, court_ids, counts)
 
-    # Case level, in dependency order (judgemetrics.ingest.publish).
-    new_persons = [
-        item
-        for item in resolved.persons
-        if item.record.natural_key not in resolved.existing_persons
-    ]
+    # Case level, in dependency order (judgemetrics.ingest.publish); persons and
+    # their identifier rows were written by ``resolve_persons`` at step 10.
     person_ids = dict(resolved.db_persons)
-    person_ids.update(upsert_persons(session, new_persons, resolved.existing_persons, counts))
-    upsert_person_identifiers(session, resolved.persons, person_ids, counts)
+    person_ids.update(resolved.person_ids)
     case_ids = dict(resolved.db_cases)
     case_ids.update(upsert_cases(session, resolved.cases, court_ids, counts))
     party_ids = upsert_parties(session, resolved.parties, case_ids, person_ids, counts)
@@ -1059,7 +1037,6 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
         judges=len(resolved.judges),
         services=len(resolved.services),
         persons=len(resolved.persons),
-        persons_existing=len(resolved.existing_persons),
         cases=len(resolved.cases),
         parties=len(resolved.parties),
         assignments=len(resolved.assignments),

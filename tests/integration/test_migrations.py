@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0003): round trip, model constraints, and role grants.
+"""The migrations (0001–0004): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -13,7 +13,7 @@ from typing import NamedTuple
 
 import pytest
 from sqlalchemy import Engine, inspect, text
-from sqlalchemy.exc import IntegrityError, ProgrammingError
+from sqlalchemy.exc import DBAPIError, IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from judgemetrics.db.migrations import current_revision, downgrade, head_revision, upgrade
@@ -76,7 +76,7 @@ def _url(engine: Engine) -> str:
 def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database: Engine) -> None:
     snapshot = _snapshot(migrated_database)
     assert set(CANONICAL_TABLES) <= set(snapshot.tables)
-    assert len(CANONICAL_TABLES) == 23
+    assert len(CANONICAL_TABLES) == 24  # the brief's twenty-three plus audit_log (0004)
     assert EXPECTED_ENUMS <= set(snapshot.enums)
     assert "pg_trgm" in snapshot.extensions
     indexes = snapshot.indexes
@@ -130,10 +130,89 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "uq_person_identifier_person_type_hash" in indexes["person_identifier"]
     assert "ix_court_case_related_case_number_normalized" in indexes["court_case"]
     assert "uq_judge_external_ids_synthetic_judge_code" in indexes["judge"]
+    # Revision 0004: candidate bookkeeping, merged persons, the audit log.
+    assert "uq_er_candidate_pair_version" in indexes["entity_resolution_candidate"]
+    assert "ix_entity_resolution_candidate_ingest_run_id" in indexes["entity_resolution_candidate"]
+    assert "ix_person_merged_into_person_id" in indexes["person"]
+    assert "ix_audit_log_entity" in indexes["audit_log"]
+    assert "ix_audit_log_occurred_at" in indexes["audit_log"]
     uniques = snapshot.uniques
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
-    assert current_revision(migrated_database) == head_revision() == "0003"
+    assert current_revision(migrated_database) == head_revision() == "0004"
+
+
+def test_revision_0004_columns_check_and_trigger(migrated_database: Engine) -> None:
+    with migrated_database.connect() as connection:
+        columns = {
+            (table, column): (data_type, nullable == "YES")
+            for table, column, data_type, nullable in connection.execute(
+                text(
+                    "SELECT table_name, column_name, data_type, is_nullable "
+                    "FROM information_schema.columns WHERE table_schema = 'public'"
+                )
+            )
+        }
+        candidate = "entity_resolution_candidate"
+        assert columns[(candidate, "stage")] == ("character varying", False)
+        assert columns[(candidate, "decided_at")] == ("timestamp with time zone", True)
+        assert columns[(candidate, "decided_by")] == ("character varying", True)
+        assert columns[(candidate, "reason")] == ("text", True)
+        assert columns[(candidate, "ingest_run_id")] == ("uuid", True)
+        assert columns[("person", "merged_into_person_id")] == ("uuid", True)
+        assert columns[("audit_log", "actor")] == ("character varying", False)
+        assert columns[("audit_log", "payload")] == ("jsonb", False)
+        assert columns[("audit_log", "occurred_at")] == ("timestamp with time zone", False)
+        checks = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE contype = 'c' AND conrelid = 'entity_resolution_candidate'::regclass"
+                )
+            )
+        }
+        assert (
+            "left_record_id < right_record_id"
+            in checks["ck_entity_resolution_candidate_ordered_pair"]
+        )
+        triggers = {
+            row[0]
+            for row in connection.execute(
+                text("SELECT tgname FROM pg_trigger WHERE tgrelid = 'audit_log'::regclass")
+            )
+        }
+        assert "trg_audit_log_append_only" in triggers
+
+
+def test_audit_log_rejects_update_and_delete_even_for_the_admin_role(
+    migrated_database: Engine,
+) -> None:
+    with migrated_database.connect() as connection:
+        transaction = connection.begin()
+        try:
+            row_id = connection.execute(
+                text(
+                    "INSERT INTO audit_log (actor, action, entity_type, payload) "
+                    "VALUES ('tests', 'test.append', 'person', '{}'::jsonb) RETURNING id"
+                )
+            ).scalar_one()
+            with pytest.raises(DBAPIError, match="append-only"):
+                with connection.begin_nested():
+                    connection.execute(
+                        text("UPDATE audit_log SET actor = 'x' WHERE id = :id"), {"id": row_id}
+                    )
+            with pytest.raises(DBAPIError, match="append-only"):
+                with connection.begin_nested():
+                    connection.execute(text("DELETE FROM audit_log WHERE id = :id"), {"id": row_id})
+            assert (
+                connection.execute(
+                    text("SELECT actor FROM audit_log WHERE id = :id"), {"id": row_id}
+                ).scalar_one()
+                == "tests"
+            )
+        finally:
+            transaction.rollback()
 
 
 def test_revision_0003_columns_and_partial_index_predicate(migrated_database: Engine) -> None:
@@ -179,7 +258,15 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # Through 0003 first: its downgrade must leave exactly the 0002 shape.
+    # Through 0004 and 0003 first: each downgrade must leave exactly the prior shape.
+    downgrade(url, "0003")
+    assert current_revision(migrated_database) == "0003"
+    without_audit = _snapshot(migrated_database)
+    assert "audit_log" not in without_audit.tables
+    assert (
+        "uq_er_candidate_pair_version" not in without_audit.indexes["entity_resolution_candidate"]
+    )
+    assert "ix_person_merged_into_person_id" not in without_audit.indexes["person"]
     downgrade(url, "0002")
     assert current_revision(migrated_database) == "0002"
     intermediate = _snapshot(migrated_database)
@@ -295,8 +382,11 @@ def test_ingest_role_has_dml_on_every_case_level_table(migrated_database: Engine
             "pretrial_release",
             "sentence",
             "justice_event",
+            "entity_resolution_candidate",
         ):
             assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= granted.get(table, set()), table
+        # The audit log: the ingest role appends and reads, never changes or removes.
+        assert granted.get("audit_log", set()) == {"SELECT", "INSERT"}
         app_rows = connection.execute(
             text(
                 "SELECT table_name FROM information_schema.role_table_grants "
@@ -307,3 +397,13 @@ def test_ingest_role_has_dml_on_every_case_level_table(migrated_database: Engine
         if app_tables:
             assert "person_identifier" not in app_tables
             assert "correction_request" not in app_tables
+            assert "entity_resolution_candidate" not in app_tables
+            assert "audit_log" not in app_tables
+        admin_rows = connection.execute(
+            text(
+                "SELECT privilege_type FROM information_schema.role_table_grants "
+                "WHERE grantee = 'judgemetrics_admin' AND table_name = 'audit_log'"
+            )
+        ).all()
+        if admin_rows:
+            assert {"SELECT", "INSERT"} <= {row[0] for row in admin_rows}

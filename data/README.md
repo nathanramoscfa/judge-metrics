@@ -46,6 +46,14 @@ not listed. It equals the constants in `judgemetrics.synthetic.vocabulary`
 updates those constants, and is recorded in `docs/DATA_MODEL.md`
 "Vocabularies".
 
+## `data/reference/entity_resolution_thresholds.yaml`
+
+The versioned decision thresholds of the probabilistic entity-resolution
+stage per entity type (`version: 1`; `auto_match` 0.95, `auto_reject`
+0.20): `judgemetrics.entity_resolution.config` loads it with
+`yaml.safe_load` and a unit test asserts it equals the constants. A
+change bumps `version` and is recorded in `docs/ENTITY_RESOLUTION.md`.
+
 ## `data/synthetic/<seed>/`
 
 `uv run judgemetrics synthetic generate --seed <seed> --scale golden|demo|tiny`

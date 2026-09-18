@@ -2,14 +2,17 @@
 """Every canonical entity of the brief, exported so Alembic autogenerate and
 the application see one complete ``Base.metadata``.
 
-Twenty-three tables: jurisdiction, court, judge, judge_service, person,
-person_identifier, court_case, case_party, judge_assignment, charge,
-court_event, decision, pretrial_release, sentence, justice_event, source,
-source_record, ingest_run, entity_resolution_candidate, metric_definition,
-metric_observation, data_quality_issue, correction_request.
+Twenty-four tables: the brief's twenty-three — jurisdiction, court, judge,
+judge_service, person, person_identifier, court_case, case_party,
+judge_assignment, charge, court_event, decision, pretrial_release,
+sentence, justice_event, source, source_record, ingest_run,
+entity_resolution_candidate, metric_definition, metric_observation,
+data_quality_issue, correction_request — and the append-only audit_log
+the brief's security requirements ask for (revision 0004).
 """
 
 from judgemetrics.db.base import Base
+from judgemetrics.db.models.audit import AuditLog
 from judgemetrics.db.models.cases import (
     Case,
     CaseParty,
@@ -62,16 +65,22 @@ CANONICAL_TABLES: tuple[str, ...] = (
     "metric_observation",
     "data_quality_issue",
     "correction_request",
+    "audit_log",
 )
 
-# Tables the public API role must never read (ROADMAP.md §5 data classification).
-RESTRICTED_TABLES: frozenset[str] = frozenset({"person_identifier", "correction_request"})
+# Tables the public API role must never read (ROADMAP.md §5 data classification):
+# hashed identifiers, requester contacts, the resolution candidates that
+# reference them, and the administrative audit trail.
+RESTRICTED_TABLES: frozenset[str] = frozenset(
+    {"person_identifier", "correction_request", "entity_resolution_candidate", "audit_log"}
+)
 
 __all__ = [
     "CANONICAL_TABLES",
     "PG_ENUM_NAMES",
     "RESTRICTED_TABLES",
     "ActorType",
+    "AuditLog",
     "Base",
     "Case",
     "CaseParty",

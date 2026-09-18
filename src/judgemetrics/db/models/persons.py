@@ -15,7 +15,7 @@ persons; ``uq_person_identifier_person_type_hash`` so a rerun never
 duplicates an identifier row of the same person; and the natural key of a
 derived justice event, ``uq_justice_event_natural`` on
 ``(person_id, event_type, event_at, related_case_id)`` with
-``NULLS NOT DISTINCT``.
+``NULLS NOT DISTINCT``. Revision 0004 adds ``person.merged_into_person_id``.
 """
 
 from __future__ import annotations
@@ -42,6 +42,11 @@ class Person(UUIDPrimaryKey, Timestamps, Base):
     # The artifact whose participant row created the person.
     source_record_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("source_record.id", ondelete="RESTRICT"), index=True
+    )
+    # Set when entity resolution merged this person into another (revision
+    # 0004): the row stays as history, every public query filters IS NULL.
+    merged_into_person_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("person.id", ondelete="RESTRICT"), index=True
     )
 
     identifiers: Mapped[list[PersonIdentifier]] = relationship(back_populates="person")

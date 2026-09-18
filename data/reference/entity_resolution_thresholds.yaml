@@ -1,0 +1,25 @@
+# data/reference/entity_resolution_thresholds.yaml
+# Entity-resolution decision thresholds per entity type (docs/ENTITY_RESOLUTION.md).
+# A probabilistic score at or above `auto_match` merges automatically, one
+# below `auto_reject` rejects automatically, and everything between lands in
+# the manual-review queue: deliberately high and deliberately low, per the
+# brief. Thresholds are versioned data: changing a value bumps `version`,
+# updates the constants in judgemetrics.entity_resolution.config (a unit
+# test keeps them equal), and is recorded in docs/ENTITY_RESOLUTION.md.
+# Only `person` is resolved before Phase 7; the other entries hold the same
+# defaults so the probabilistic stage of judges, courts, and cases starts
+# from a recorded posture.
+version: 1
+thresholds:
+  person:
+    auto_match: 0.95
+    auto_reject: 0.20
+  judge:
+    auto_match: 0.95
+    auto_reject: 0.20
+  court:
+    auto_match: 0.95
+    auto_reject: 0.20
+  case:
+    auto_match: 0.95
+    auto_reject: 0.20

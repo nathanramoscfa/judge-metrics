@@ -39,7 +39,10 @@ golden fixture; Step 2 the `synthetic` connector, case-level publishing
 with natural keys (migration `0003`), the versioned case vocabulary,
 peppered person-identifier hashing, the case-level data-quality checks,
 and `uv run poe seed`, which loads the demo dataset (5 courts, 24
-judges, 5,200 cases, 3,225 persons) idempotently. See:
+judges, 5,200 cases, 3,225 persons) idempotently; Step 3 the staged
+person-resolution framework with its review queue, merges, and
+append-only audit log (`judgemetrics er run|review list|review decide`,
+[`docs/ENTITY_RESOLUTION.md`](docs/ENTITY_RESOLUTION.md)). See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -83,7 +86,8 @@ uv run poe dev-web      # http://localhost:3000 (the web app, against the API ab
 uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed
+uv run judgemetrics er run   # recompute person candidates and apply system merges (also: er review list|decide)
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`

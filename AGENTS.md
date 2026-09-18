@@ -142,6 +142,9 @@ uv run judgemetrics synthetic generate --seed 7 --scale golden --out DIR   # det
 uv run judgemetrics synthetic verify DIR                                   # recompute every file hash; exit 1 on a mismatch
 uv run poe seed            # generate data/synthetic/20260916 (demo scale, skipped when current) and ingest it through the synthetic connector
 uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden   # the golden fixture through the runner
+uv run judgemetrics er run [--source synthetic]   # recompute person candidates, apply system merges (idempotent)
+uv run judgemetrics er review list [--json]       # the manual-review queue: public keys, stage, score, feature flags
+uv run judgemetrics er review decide <id> --decision matched|rejected --reviewer <label> --reason <text>
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
@@ -379,6 +382,35 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   there like any synthetic ingest. `charge.disposition_actor` (0003) is a
   documented departure from the brief's field list: the
   judicial-dismissal rule is evaluated per charge.
+- Entity resolution (Phase 2 Step 3, docs/ENTITY_RESOLUTION.md):
+  `entity_resolution/` is the staged framework — deterministic (stable
+  identifier), rules (never a name alone: `same_name_dob` plus a shared
+  case or a `related_case_number` link merges at 0.98; same court only
+  reviews at 0.70; a missing or differing date of birth rejects), the
+  stubbed `Scorer` (Phase 7), and the review queue. Features are
+  computed from hash *equality* and the published case linkage and never
+  carry a hash, name, date, or participant id; blocking is by shared
+  `full_name` or `source_participant_id` hash. The ingest runner calls
+  `pipeline.resolve_persons` at step 10 (find-or-create by stable id)
+  and `pipeline.resolve_candidates` right after step 12, because case
+  linkage is read from the published rows — one feature code path for
+  the hook and `er run`. Candidates are one row per ordered pair per
+  `MODEL_VERSION` (`person-rules-v0`; bump it when a rule, score, or
+  threshold changes and old rows stay as history); a human decision
+  (`decided_by` not starting with `system:`) is never overwritten by a
+  rerun. `merge_persons` re-points every person-bearing row with Core
+  updates, drops colliding justice-event and identifier rows as counted
+  duplicates, and keeps the merged row with `merged_into_person_id` (no
+  unmerge until Phase 6; public queries filter with `merge.unmerged()`).
+  `audit_log` is append-only by trigger for every role; the app role
+  has no privilege on it or on `entity_resolution_candidate`. Thresholds
+  live in `data/reference/entity_resolution_thresholds.yaml` (versioned;
+  equal to `config.THRESHOLDS` by test). `er review decide` is refused
+  in production until Phase 6's admin authentication; the reviewer is a
+  command-line label, never a git identity. Integration tests that purge
+  synthetic persons must null `merged_into_person_id` (self FK,
+  RESTRICT) and delete candidates first; audit rows cannot be deleted,
+  so tests write them inside the rolled-back session only.
 - The two secret scanners reconcile through `.gitleaks.toml`: the
   detect-secrets baseline records each allowlisted false positive as a
   `hashed_secret` sha1 fingerprint, which gitleaks' `generic-api-key`

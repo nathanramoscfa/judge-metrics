@@ -5,8 +5,11 @@ Groups: ``db`` (migrations, run as the admin role), ``serve`` (uvicorn),
 ``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``runs``
 as the read-only role), ``openapi`` (``export`` the API document),
 ``synthetic`` (``generate`` a deterministic synthetic dataset, ``verify``
-one against its manifest), and ``seed`` (generate the demo dataset and
-ingest it through the ``synthetic`` connector as the ingest role).
+one against its manifest), ``seed`` (generate the demo dataset and
+ingest it through the ``synthetic`` connector as the ingest role), and
+``er`` (entity resolution: ``run`` recomputes candidates, ``review list``
+shows the manual-review queue, ``review decide`` records a reviewer's
+decision; all as the ingest role).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -15,6 +18,7 @@ error when it is unset.
 
 from __future__ import annotations
 
+import uuid
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -22,6 +26,7 @@ from typing import Annotated
 import typer
 
 from judgemetrics import __version__
+from judgemetrics.db.models.enums import ResolutionDecision
 
 app = typer.Typer(
     name="judgemetrics",
@@ -35,10 +40,14 @@ openapi_app = typer.Typer(help="The generated OpenAPI document.")
 synthetic_app = typer.Typer(
     help="The deterministic synthetic justice dataset (docs/SYNTHETIC_DATA.md)."
 )
+er_app = typer.Typer(help="Entity resolution: candidates, the review queue, decisions.")
+er_review_app = typer.Typer(help="The manual-review queue.")
+er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(openapi_app, name="openapi")
 app.add_typer(synthetic_app, name="synthetic")
+app.add_typer(er_app, name="er")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -51,6 +60,13 @@ class SyntheticScale(StrEnum):
     golden = "golden"
     demo = "demo"
     tiny = "tiny"
+
+
+class ReviewDecision(StrEnum):
+    """The two decisions a reviewer may record (validated before the database is touched)."""
+
+    matched = "matched"
+    rejected = "rejected"
 
 
 def _version_callback(value: bool) -> None:
@@ -510,6 +526,158 @@ def seed(
     typer.echo(summary)
     if not succeeded:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+# --- er: entity resolution ---------------------------------------------------------------
+
+
+@er_app.command("run")
+def er_run(
+    source: Annotated[
+        str | None,
+        typer.Option("--source", help="Only persons created from this source id (e.g. synthetic)."),
+    ] = None,
+) -> None:
+    """Recompute person candidates under the current model version and apply system merges."""
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.entity_resolution.config import MODEL_VERSION
+    from judgemetrics.entity_resolution.pipeline import rerun
+    from judgemetrics.logging import configure_logging
+
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            stats = rerun(session, source=source)
+            session.commit()
+    finally:
+        engine.dispose()
+    typer.echo(
+        f"model={MODEL_VERSION} pairs={stats.pairs} "
+        f"candidates_created={stats.candidates.created} "
+        f"candidates_updated={stats.candidates.updated} matched={stats.matched} "
+        f"rejected={stats.rejected} review={stats.review} merges={stats.merges}"
+    )
+
+
+@er_review_app.command("list")
+def er_review_list(
+    entity_type: Annotated[
+        str, typer.Option("--entity-type", help="The entity type to list (person).")
+    ] = "person",
+    limit: Annotated[
+        int, typer.Option("--limit", min=1, max=1000, help="At most N items, oldest first.")
+    ] = 50,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of a table.")] = False,
+) -> None:
+    """List undecided review candidates: ids, public person keys, stage, score, feature flags."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.entity_resolution.queue import ReviewError, list_review
+
+    settings = get_settings()
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                items = list_review(session, entity_type=entity_type, limit=limit)
+            except ReviewError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+    finally:
+        engine.dispose()
+    if as_json:
+        typer.echo(json.dumps([item.as_dict() for item in items], indent=2, sort_keys=True))
+        return
+    for line in render_review_items([item.as_dict() for item in items]):
+        typer.echo(line)
+
+
+def render_review_items(items: list[dict[str, object]]) -> list[str]:
+    """The table lines of ``er review list`` (public keys, stage, score, feature flags)."""
+    if not items:
+        return ["no review items"]
+    lines = ["candidate_id\tleft\tright\tstage\tscore\tfeatures\tcreated_at"]
+    for item in items:
+        features = item.get("features")
+        flags = (
+            ",".join(name for name, value in features.items() if value)
+            if isinstance(features, dict)
+            else ""
+        )
+        lines.append(
+            "\t".join(
+                (
+                    str(item.get("candidate_id")),
+                    str(item.get("left_public_key")),
+                    str(item.get("right_public_key")),
+                    str(item.get("stage")),
+                    "" if item.get("score") is None else f"{float(str(item['score'])):.2f}",
+                    flags or "-",
+                    str(item.get("created_at")),
+                )
+            )
+        )
+    return lines
+
+
+@er_review_app.command("decide")
+def er_review_decide(
+    candidate_id: Annotated[
+        uuid.UUID, typer.Argument(help="The candidate id from `er review list`.")
+    ],
+    decision: Annotated[
+        ReviewDecision, typer.Option("--decision", help="matched merges; rejected records only.")
+    ],
+    reviewer: Annotated[
+        str, typer.Option("--reviewer", help="An operator label for the audit log (not an e-mail).")
+    ],
+    reason: Annotated[str, typer.Option("--reason", help="Why, for the audit log.")],
+) -> None:
+    """Record a reviewer's decision on a review candidate (refused in production until Phase 6)."""
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.entity_resolution.queue import ReviewError, decide
+    from judgemetrics.logging import configure_logging
+
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                result = decide(
+                    session,
+                    candidate_id,
+                    decision=ResolutionDecision(decision.value),
+                    reviewer=reviewer,
+                    reason=reason,
+                    settings=settings,
+                )
+            except ReviewError as exc:
+                session.rollback()
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.commit()
+    finally:
+        engine.dispose()
+    summary = f"candidate {candidate_id} decision={result.decision.value} audit={result.audit_id}"
+    if result.merge is not None:
+        summary += (
+            f" merged={result.merge.drop_id} into={result.merge.keep_id} "
+            f"moved={sum(result.merge.moved.values())}"
+        )
+    typer.echo(summary)
 
 
 def main() -> None:
