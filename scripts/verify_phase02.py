@@ -781,7 +781,7 @@ def check_38() -> str | None:
 
 def check_39() -> str | None:
     return _lacks(
-        f"{GOLDEN_DIR}/README.missing",
+        f"{GOLDEN_DIR}/README.md",
         r"judgemetrics synthetic generate --seed 7 --scale golden",
         "the regeneration command",
     )

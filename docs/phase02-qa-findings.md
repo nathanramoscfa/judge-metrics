@@ -94,8 +94,8 @@ the fix"):
 
 | Event | Commit (PR #17) | `phase-verify (02)` | `test` |
 |-------|-----------------|---------------------|--------|
-| Deliberate break (check 39 → `tests/fixtures/golden/README.missing`) | _(recorded on the PR)_ | fail — `[FAIL] 39 … missing tests/fixtures/golden/README.missing` | fail — `python` job: `test_verify_script_fast_exits_zero` |
-| Fix (check 39 restored) | _(recorded on the PR)_ | pass | pass |
+| Deliberate break (check 39 → `tests/fixtures/golden/README.missing`) | `8366820` | fail — `[FAIL] 39 … missing tests/fixtures/golden/README.missing` (run 35412203959) | fail — `python` job: `test_verify_script_fast_exits_zero` (`FAILED: 39`, run 35412203955); every other job green, including `security` over the widened bandit surface |
+| Fix (check 39 restored) | the next commit | pass | pass |
 
 ## Pre-ship items
 
