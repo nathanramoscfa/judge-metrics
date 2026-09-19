@@ -52,7 +52,8 @@ def test_help_lists_provenance_trace() -> None:
     assert "trace" in result.output
     result = CliRunner().invoke(app, ["provenance", "trace", "--help"])
     assert result.exit_code == 0
-    assert "--json" in result.output
+    # CI renders Typer's help with ANSI styling; compare the plain text.
+    assert "--json" in re.sub(r"\[[0-9;]*m", "", result.output)
 
 
 def test_trace_rejects_a_malformed_observation_id_before_touching_the_database() -> None:
