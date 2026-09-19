@@ -351,6 +351,8 @@ def observation_provenance(
     if traced.observation.superseded_at is not None:
         return None
     o = traced.observation
+    # The trace always lists the observation's own source first.
+    own_source = next(s for s in traced.sources if s.source == o.source)
     observation = TracedObservation(
         id=o.id,
         slug=o.slug,
@@ -378,16 +380,9 @@ def observation_provenance(
         suppressed=o.suppressed,
         suppression_threshold=o.suppression_threshold,
         coverage=ObservationCoverage(
-            coverage_start=next(
-                (s.coverage_start for s in traced.sources if s.source == o.source), None
-            ),
-            coverage_end=next(
-                (s.coverage_end for s in traced.sources if s.source == o.source), None
-            ),
-            observable=_observable(
-                o.outcome,
-                next((s.observable_outcomes for s in traced.sources if s.source == o.source), ()),
-            ),
+            coverage_start=own_source.coverage_start,
+            coverage_end=own_source.coverage_end,
+            observable=_observable(o.outcome, own_source.observable_outcomes),
         ),
         methodology_version=o.methodology_version,
         methodology_url=settings.methodology_url_for(o.slug),

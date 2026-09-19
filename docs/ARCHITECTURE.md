@@ -271,7 +271,8 @@ one beneath it:
                   `from_attributes`): Page[T], Provenance, ErrorBody, …
 ```
 
-- **Routes** (`api/routes/{judges,courts,jurisdictions,cases,search,coverage,metrics,corrections}.py`)
+- **Routes** (`api/routes/{judges,courts,jurisdictions,cases,search,
+  coverage,metrics,corrections}.py`)
   declare parameters with validation (`limit` 1–100, `offset` ≥ 0,
   enum statuses, UUID ids, ISO dates, vocabulary values by shape) and a
   `StrictQuery` allow-list per route, so an undeclared query parameter
