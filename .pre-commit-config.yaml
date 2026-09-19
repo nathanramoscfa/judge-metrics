@@ -48,8 +48,8 @@ repos:
         require_serial: true
 
       - id: bandit
-        name: bandit (SAST on src/ and alembic/)
-        entry: uv run bandit -c pyproject.toml -r src alembic -q
+        name: bandit (SAST on src/, alembic/, and scripts/)
+        entry: uv run bandit -c pyproject.toml -r src alembic scripts -q
         language: system
         pass_filenames: false
         types_or: [python, toml]

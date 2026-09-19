@@ -305,7 +305,17 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   the Windows argv limit, because `detect-secrets scan --baseline`
   rewrites the baseline and exits 0. A unit test runs `--fast`, so the
   aggregate `test` check and the `phase-verify` check fail together on
-  a broken deliverable.
+  a broken deliverable. The SAST surface is `src alembic scripts`
+  (pre-commit, the CI `security` job, `--security`); a bandit
+  suppression sits after the ruff one with the justification between
+  them (`# noqa: S603 - fixed argv, no shell  # nosec B603`) because
+  bandit reads every word after `# nosec` as a test id and warns. An
+  earlier phase's OpenAPI check asserts its paths as a subset (Phase 1
+  check 29, Phase 2 check 27) so a later phase's route never fails a
+  required check; `tests/unit/test_openapi.py` pins the exact set.
+  `verify_phase02.py --post` adds the seed idempotency probe (row
+  counts through `uv run python -c … <tables>`, then `judgemetrics
+  seed`, then counts again) against the configured database.
 - Synthetic generator (docs/SYNTHETIC_DATA.md): `judgemetrics.synthetic`
   derives one `random.Random` per named stream (`world`, `persons`,
   `cases`, `events`, `edge_cases`) from `sha256(f"{seed}:{name}")` and

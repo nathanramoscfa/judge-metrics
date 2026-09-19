@@ -10,7 +10,7 @@ Runs identically on Windows and Ubuntu CI.
 from __future__ import annotations
 
 import shutil
-import subprocess
+import subprocess  # argument lists over PATH tools, never a shell  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
@@ -25,7 +25,7 @@ def main() -> int:
         return 2
     with tempfile.TemporaryDirectory() as tmp:
         requirements = Path(tmp) / "requirements-audit.txt"
-        export = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        export = subprocess.run(  # noqa: S603 - fixed argv, no shell  # nosec B603
             [
                 uv,
                 "export",
@@ -42,7 +42,7 @@ def main() -> int:
         if export.returncode != 0:
             print("audit_deps: `uv export` failed; is uv.lock up to date?", file=sys.stderr)
             return export.returncode
-        audit = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        audit = subprocess.run(  # noqa: S603 - fixed argv, no shell  # nosec B603
             [
                 sys.executable,
                 "-m",
