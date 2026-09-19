@@ -3,7 +3,8 @@
 # phase's `scripts/verify_phaseNN.py` in its `--fast` mode (the static
 # deliverable checks, under 30 seconds) and then its `--security` mode
 # (the secret scan against the baseline, bandit, pip-audit over uv.lock,
-# and pnpm audit). The resulting check, `phase-verify (NN)`, is a
+# and pnpm audit). Neither mode needs a database, the identifier pepper,
+# or any other application setting. The resulting check, `phase-verify (NN)`, is a
 # required status check on `main` beside the aggregate `test` check of
 # ci.yml (CONTRIBUTING.md "Repository settings").
 #
@@ -38,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        phase: ["01"]
+        phase: ["01", "02"]
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

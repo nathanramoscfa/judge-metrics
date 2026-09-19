@@ -462,12 +462,17 @@ strategy's property tests and golden dataset.
   sentence, and source citations.
 - Every public surface labels synthetic data; the ingest runner refuses
   a synthetic source in the production environment (test).
-- Property tests and `scripts/verify_phase02.py --fast` are green in
-  CI.
-- **Security:** gate clean; synthetic names come from word lists, never
-  from lists of real people; `person_identifier` is unreachable through
-  any public route (contract test over the OpenAPI document and the
-  database grants).
+- The property and golden suites (`pytest -m property`, `-m golden`)
+  and `scripts/verify_phase02.py --fast` are green in CI;
+  `phase-verify (02)` is a required context on `main` beside `test` and
+  `phase-verify (01)`; `--post` (the V1–V6 matrix, the golden fixture
+  hash verification, and the seed idempotency probe) is green on the
+  maintainer's machine before the tag.
+- **Security:** gate clean (`verify_phase02.py --security`: secret scan,
+  SAST over `src`, `alembic`, and `scripts`, dependency audits);
+  synthetic names come from word lists, never from lists of real
+  people; `person_identifier` is unreachable through any public route
+  (contract test over the OpenAPI document and the database grants).
 
 ---
 

@@ -33,7 +33,7 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # argument lists over PATH tools, never a shell  # nosec B404
 import sys
 import time
 import urllib.error
@@ -181,7 +181,7 @@ def _git_ls_files(*pathspecs: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         raise RuntimeError("git not on PATH")
-    completed = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    completed = subprocess.run(  # noqa: S603 - fixed argv, no shell  # nosec B603
         [git, "ls-files", "-z", "--", *pathspecs],
         cwd=REPO_ROOT,
         capture_output=True,
@@ -683,7 +683,7 @@ def run_command(
         return report(Outcome(item_id, description, "FAIL", f"`{argv[0]}` not on PATH"))
     where = "" if cwd == REPO_ROOT else f" (in {cwd.relative_to(REPO_ROOT).as_posix()}/)"
     print(f"\n$ {' '.join(argv)}{where}", flush=True)
-    completed = subprocess.run(  # noqa: S603 - fixed argv over PATH-resolved tools, no shell
+    completed = subprocess.run(  # noqa: S603 - fixed argv over PATH tools, no shell  # nosec B603
         [executable, *argv[1:]], cwd=cwd, check=False
     )
     sys.stdout.flush()
@@ -762,7 +762,7 @@ def node_suites() -> list[Outcome]:
 def reachable(url: str) -> bool:
     try:
         # The caller has already required an http(s) scheme.
-        with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310 # nosec B310
             return 200 <= int(response.status) < 400
     except (urllib.error.URLError, OSError, ValueError):
         return False
@@ -832,7 +832,7 @@ def secret_scan() -> Outcome:
         f"\n$ uv run detect-secrets-hook --baseline .secrets.baseline <{sum(map(len, batches))} files>"
     )
     for batch in batches:
-        completed = subprocess.run(  # noqa: S603 - fixed argv over PATH-resolved tools, no shell
+        completed = subprocess.run(  # noqa: S603 - fixed argv over PATH tools, no shell  # nosec B603
             [uv, "run", "detect-secrets-hook", "--baseline", ".secrets.baseline", *batch],
             cwd=REPO_ROOT,
             check=False,
@@ -871,13 +871,13 @@ def pr_checks() -> dict[str, str] | None:
     if gh is None:
         print("gh not on PATH; PR checks unavailable", flush=True)
         return None
-    auth = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    auth = subprocess.run(  # noqa: S603 - fixed argv, no shell  # nosec B603
         [gh, "auth", "status"], cwd=REPO_ROOT, capture_output=True, check=False
     )
     if auth.returncode != 0:
         print("gh is not signed in; PR checks unavailable", flush=True)
         return None
-    checks = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    checks = subprocess.run(  # noqa: S603 - fixed argv, no shell  # nosec B603
         [gh, "pr", "checks", "--json", "name,bucket,workflow"],
         cwd=REPO_ROOT,
         capture_output=True,
