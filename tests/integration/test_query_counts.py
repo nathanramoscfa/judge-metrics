@@ -7,9 +7,16 @@ judge detail at most four (judge with its synthetic flag, service records
 with their courts, the case window, provenance), any list at most two
 (the page with its window count, plus the similarity-threshold
 `set_config` when `q` is given), search at most two (`set_config` and
-the union), a judge's cases at most two, coverage at most two, and a
-case detail or timeline at most eight (one statement per case-level
-table plus the provenance rows — a constant, whatever the case holds).
+the union), a judge's cases at most two, coverage at most three (the
+counts, the latest runs, the latest snapshots), a case detail or
+timeline at most eight (one statement per case-level table plus the
+provenance rows — a constant, whatever the case holds), and (Phase 3
+Step 3) a subject's metrics at most two (the subject, the observations),
+compare at most two (the page; the fallback that settles the cohort's
+existence on an empty page), an observation's provenance at most six
+(three today: the observation, the resolved members, the source
+records), and a correction at most two (the target lookup, the insert —
+with no `RETURNING`).
 """
 
 from __future__ import annotations
@@ -18,11 +25,14 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import event
+from sqlalchemy import Engine, delete, event
+from sqlalchemy.orm import Session
 
 from judgemetrics.config import Settings
-from tests.integration.conftest import FjcFixture, GoldenFixture, make_app
+from judgemetrics.db.models import CorrectionRequest
+from tests.integration.conftest import FjcFixture, GoldenFixture, GoldenMetrics, make_app
 
 pytestmark = pytest.mark.integration
 
@@ -161,3 +171,136 @@ def test_coverage_needs_at_most_three_statements(
     _, counter = counted
     assert all("person_identifier" not in statement for statement in counter.statements)
     assert _count(counted, "/api/v1/search", q=GOLDEN_CASE) <= 2
+    # A one-word query costs the same two: the word threshold and the union.
+    assert _count(counted, "/api/v1/search", q="wingnut") <= 2
+    # The setting name is a bound parameter; the union itself names the function and operator.
+    assert any("set_config" in s for s in counter.statements)
+    assert any("word_similarity(" in s and "<%" in s for s in counter.statements)
+    assert _count(counted, "/api/v1/judges", q="wingnut") <= 2
+
+
+# --- Phase 3 Step 3: metrics, compare, provenance, corrections --------------------------
+
+SUBJECT_METRICS_BUDGET = 2
+COMPARE_BUDGET = 2
+PROVENANCE_BUDGET = 6
+CORRECTIONS_BUDGET = 2
+
+
+@pytest.fixture(scope="module")
+def counted_metrics(
+    golden_metrics: GoldenMetrics, test_settings: Settings
+) -> Iterator[tuple[TestClient, StatementCounter]]:
+    """The API over the golden ingest with its observations, with a Fernet key for corrections."""
+    app = make_app(
+        golden_metrics.settings, correction_contact_key=Fernet.generate_key().decode("ascii")
+    )
+    counter = StatementCounter()
+    event.listen(app.state.engine, "before_cursor_execute", counter)
+    with TestClient(app) as client:
+        assert client.get("/api/v1/health").status_code == 200
+        assert client.get("/api/v1/jurisdictions").status_code == 200
+        yield client, counter
+    event.remove(app.state.engine, "before_cursor_execute", counter)
+    app.state.engine.dispose()
+
+
+def test_subject_metrics_need_at_most_two_statements(
+    counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
+) -> None:
+    judge_id = golden_fixture.judge_ids["J-0003"]
+    assert _count(counted_metrics, f"/api/v1/judges/{judge_id}/metrics") <= SUBJECT_METRICS_BUDGET
+    _, counter = counted_metrics
+    assert all("person" not in statement for statement in counter.statements)
+    court_id = golden_fixture.court_ids["C-0003"]
+    assert _count(counted_metrics, f"/api/v1/courts/{court_id}/metrics") <= SUBJECT_METRICS_BUDGET
+    # The registry needs no statement at all.
+    assert _count(counted_metrics, "/api/v1/metrics") == 0
+
+
+def test_compare_needs_at_most_two_statements(
+    counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
+) -> None:
+    court_id = str(golden_fixture.court_ids["C-0003"])
+    jurisdiction_id = str(golden_fixture.jurisdiction_id)
+    assert (
+        _count(
+            counted_metrics, "/api/v1/metrics/compare", metric="eligible_cases", court_id=court_id
+        )
+        <= COMPARE_BUDGET
+    )
+    _, counter = counted_metrics
+    assert len(counter.statements) == 1, "a non-empty page is one statement"
+    assert all("person" not in statement for statement in counter.statements)
+    assert (
+        _count(
+            counted_metrics,
+            "/api/v1/metrics/compare",
+            metric="new_case_rate",
+            window="365",
+            jurisdiction_id=jurisdiction_id,
+            sort="rate",
+            order="asc",
+            limit="100",
+        )
+        <= COMPARE_BUDGET
+    )
+    # An empty page settles the total and the cohort's existence in one more statement.
+    assert (
+        _count(
+            counted_metrics,
+            "/api/v1/metrics/compare",
+            metric="eligible_cases",
+            court_id=court_id,
+            offset="1000",
+        )
+        <= COMPARE_BUDGET
+    )
+
+
+def test_provenance_needs_at_most_six_statements(
+    counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
+) -> None:
+    client, counter = counted_metrics
+    judge_id = golden_fixture.judge_ids["J-0003"]
+    body = client.get(f"/api/v1/judges/{judge_id}/metrics").json()
+    observations = [item for group in body["observations"].values() for item in group]
+    # The observation with the most members costs the same number of statements.
+    for item in sorted(observations, key=lambda o: o["eligible_count"])[-3:]:
+        assert (
+            _count(counted_metrics, f"/api/v1/metrics/{item['id']}/provenance") <= PROVENANCE_BUDGET
+        )
+        assert len(counter.statements) == 3
+        assert all("raw_object_path" not in statement for statement in counter.statements)
+        assert all("person_identifier" not in statement for statement in counter.statements)
+
+
+def test_corrections_need_at_most_two_statements_and_no_returning(
+    counted_metrics: tuple[TestClient, StatementCounter],
+    golden_fixture: GoldenFixture,
+    migrated_database: Engine,
+) -> None:
+    client, counter = counted_metrics
+    counter.reset()
+    response = client.post(
+        "/api/v1/corrections",
+        json={
+            "target_type": "case",
+            "target_id": str(golden_fixture.case_ids[GOLDEN_CASE]),
+            "reason": "The filing date of this case is a month later than the docket shows.",
+            "contact": "requester@example.invalid",
+        },
+    )
+    assert response.status_code == 202, response.text
+    try:
+        assert len(counter.statements) <= CORRECTIONS_BUDGET
+        assert not any("RETURNING" in statement.upper() for statement in counter.statements)
+        assert not any(
+            "SELECT" in s.upper() and "correction_request" in s for s in counter.statements
+        )
+    finally:
+        with Session(migrated_database) as session:
+            session.execute(
+                delete(CorrectionRequest).where(CorrectionRequest.id == response.json()["id"])
+            )
+            session.commit()

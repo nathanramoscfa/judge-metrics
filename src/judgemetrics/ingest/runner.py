@@ -301,7 +301,7 @@ def run_ingest(
     refusal = _refusal_reason(connector, settings, from_fixture)
     if refusal is not None:
         _finish(session, run, IngestRunStatus.REFUSED, reason=refusal)
-        bound.warning("ingest.refused", reason=refusal)
+        bound.warning("ingest.refused", refusal=refusal)
         return run
 
     bound.info(
@@ -323,7 +323,7 @@ def run_ingest(
         session.rollback()
         reason = f"{type(exc).__name__}: {exc}"[:MAX_REASON_LENGTH]
         _finish(session, run, IngestRunStatus.FAILED, reason=reason)
-        bound.error("ingest.failed", error_type=type(exc).__name__, reason=reason, exc_info=True)
+        bound.error("ingest.failed", error_type=type(exc).__name__, failure=reason, exc_info=True)
         return run
 
     run.records_seen = counts.seen
@@ -471,12 +471,12 @@ def recompute_metrics(
 
     impacted = impacted_subjects(session, resolved, published)
     if not impacted:
-        bound.info("ingest.metrics.skipped", reason="no impacted subject")
+        bound.info("ingest.metrics.skipped", because="no impacted subject")
         return RecomputeResult(impacted=(), engine=None)
     if not settings.metrics_recompute_on_ingest:
         bound.info(
             "ingest.metrics.skipped",
-            reason="metrics_recompute_on_ingest is off",
+            because="metrics_recompute_on_ingest is off",
             impacted=len(impacted),
         )
         return RecomputeResult(impacted=impacted, engine=None)

@@ -58,6 +58,14 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "value_hash",
         "date_of_birth",
         "full_name",
+        # the corrections intake (Phase 3 Step 3): the encryption key and the
+        # submitted fields (`contact` also covers `requester_contact`; a
+        # `reason` is the requester's free text, so operational log lines
+        # name their cause `failure`, `refusal`, or `because` instead)
+        "correction_contact_key",
+        "contact",
+        "reason",
+        "supporting_material",
     }
 )
 

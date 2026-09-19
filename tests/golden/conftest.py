@@ -29,16 +29,26 @@ from judgemetrics.db.models import EntityResolutionCandidate, Person, PersonIden
 from judgemetrics.entity_resolution.config import MODEL_VERSION
 from judgemetrics.security.identifiers import KIND_SOURCE_PARTICIPANT_ID, hash_identifier
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.conftest import GOLDEN_FIXTURES, GoldenFixture, golden_fixture, make_app
+from tests.integration.conftest import (
+    GOLDEN_FIXTURES,
+    GoldenFixture,
+    GoldenMetrics,
+    golden_fixture,
+    golden_metrics,
+    make_app,
+)
 
-# ``golden_fixture`` is re-exported so pytest registers it for this package.
+# ``golden_fixture`` and ``golden_metrics`` are re-exported so pytest registers
+# them for this package.
 __all__ = [
     "GOLDEN",
     "GoldenFixture",
+    "GoldenMetrics",
     "candidate_for",
     "canonical",
     "family",
     "golden_fixture",
+    "golden_metrics",
     "person_of",
     "planted_ids",
     "read_rows",

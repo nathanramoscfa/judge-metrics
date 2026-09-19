@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from judgemetrics.db.models import Case, Judge, JudgeAssignment, JudgeService
 from judgemetrics.repositories.common import paginate_rows
 from judgemetrics.repositories.provenance import synthetic_flag, with_source
+from judgemetrics.repositories.search import name_match, name_score
 
 
 def _service_matches(court_id: uuid.UUID | None, active_on: date | None) -> ColumnElement[bool]:
@@ -39,18 +40,20 @@ def list_judges(
     status: str | None,
     limit: int,
     offset: int,
+    word: bool = False,
 ) -> tuple[list[tuple[Judge, bool]], int]:
     """One page of judges, each with its synthetic flag.
 
-    ``normalized_q`` is matched with the trigram ``%`` operator against
-    ``normalized_name`` (GIN index ``ix_judge_normalized_name_trgm``) at the
-    threshold the caller set for the session (``services.search``); matches
-    are ordered by similarity, otherwise by name.
+    ``normalized_q`` is matched against ``normalized_name`` (GIN index
+    ``ix_judge_normalized_name_trgm``) with the trigram ``%`` operator, or
+    ``<%`` (word similarity) when ``word`` is set for a one-token query, at
+    the threshold the caller set for the session (``services.search``);
+    matches are ordered by the matching similarity, otherwise by name.
     """
     stmt = with_source(select(Judge, synthetic_flag()), Judge.source_record_id)
     if normalized_q is not None:
-        similarity = func.similarity(Judge.normalized_name, normalized_q)
-        stmt = stmt.where(Judge.normalized_name.op("%")(normalized_q)).order_by(
+        similarity = name_score(Judge.normalized_name, normalized_q, word=word)
+        stmt = stmt.where(name_match(Judge.normalized_name, normalized_q, word=word)).order_by(
             similarity.desc(), Judge.canonical_name, Judge.id
         )
     else:

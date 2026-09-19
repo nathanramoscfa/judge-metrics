@@ -29,6 +29,8 @@ function coverage(syntheticPresent: boolean): Coverage {
   return {
     sources: [],
     synthetic_present: syntheticPresent,
+    registry_version: 1,
+    methodology_version: "0.1",
     generated_at: "2026-09-18T12:00:00Z",
   };
 }

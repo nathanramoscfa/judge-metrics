@@ -34,11 +34,20 @@ def search_names(
         Query(
             min_length=1,
             max_length=200,
-            description="Name to match; normalized like judge names before matching.",
+            description=(
+                "Name to match, normalized like judge names before matching: a single word "
+                "by word similarity (a surname alone), several words by whole-name similarity."
+            ),
         ),
     ],
     limit: Annotated[
         int, Query(ge=1, le=MAX_LIMIT, description=f"Results to return, at most {MAX_LIMIT}.")
     ] = DEFAULT_LIMIT,
 ) -> SearchResponse:
-    return search(session, q, limit, threshold=settings.search_similarity_threshold)
+    return search(
+        session,
+        q,
+        limit,
+        threshold=settings.search_similarity_threshold,
+        word_threshold=settings.search_word_similarity_threshold,
+    )

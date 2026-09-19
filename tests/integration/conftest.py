@@ -25,6 +25,13 @@ observations of the source (Phase 3 Step 2: their members cascade) are
 purged before the source row, and snapshot rows nothing references any
 more go with them, so the golden metrics suite can commit observations
 and the module teardown still empties the source.
+
+``golden_metrics`` (Phase 3) runs ``metrics compute`` over the module's
+golden ingest through the Python API — ``compute_and_publish`` as the
+ingest role, the snapshot under a temporary directory — and commits, so
+the metrics routes, the provenance trace, and the golden metric
+assertions all read the same current observations; the module teardown's
+purge removes them with the source.
 """
 
 from __future__ import annotations
@@ -67,9 +74,11 @@ from judgemetrics.db.models import (
     Source,
     SourceRecord,
 )
+from judgemetrics.db.session import make_engine
 from judgemetrics.ingest.runner import run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.main import create_app
+from judgemetrics.metrics.engine import EngineResult, compute_and_publish
 
 FJC_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "fjc"
 GOLDEN_FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "golden"
@@ -281,6 +290,32 @@ def golden_fixture(
         )
     finally:
         purge_synthetic(migrated_database)
+
+
+@dataclass(frozen=True)
+class GoldenMetrics:
+    """The committed ``metrics compute`` over the module's golden ingest."""
+
+    settings: Settings
+    result: EngineResult
+    snapshot_dir: Path
+
+
+@pytest.fixture(scope="module")
+def golden_metrics(
+    golden_fixture: GoldenFixture, test_settings: Settings, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[GoldenMetrics]:
+    """``metrics compute`` over the module's golden ingest, committed, as the ingest role."""
+    snapshot_dir = tmp_path_factory.mktemp("snapshots")
+    settings = test_settings.model_copy(update={"env": "test", "snapshot_dir": snapshot_dir})
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            result = compute_and_publish(session, settings, label="golden test")
+            session.commit()
+        yield GoldenMetrics(settings=settings, result=result, snapshot_dir=snapshot_dir)
+    finally:
+        engine.dispose()
 
 
 def make_app(settings: Settings, **overrides: Any) -> FastAPI:

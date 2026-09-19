@@ -149,10 +149,14 @@ uv run judgemetrics methodology render [--out docs/METHODOLOGY.md] [--check]   #
 uv run poe compute-metrics                       # judgemetrics metrics compute: snapshot → every registry metric for every judge and court → observations (ingest role)
 uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
 uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
+uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role); exit 1 when incomplete
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
-random value in the untracked `.env`; the tests set a fixed one).
+random value in the untracked `.env`; the tests set a fixed one). The
+API (`dev-api`, `serve`) needs `JUDGEMETRICS_CORRECTION_CONTACT_KEY` (a
+Fernet key in `.env`) outside the test environment and refuses to start
+without one.
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
 `pnpm e2e`, `pnpm generate:api`. A later step adds `bootstrap`.
@@ -589,6 +593,71 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `TRUTH_VERSION` 2 is the independent oracle (`tests/golden/truth_map.py`
   maps every truth path to its slug for both the unit and the golden
   suite). `duckdb` is a runtime dependency; `pytz` and `pyarrow` are not.
+- Metrics API, provenance trace, and corrections intake (Phase 3 Step 3,
+  docs/API.md "Metrics" and "Corrections", docs/PROVENANCE.md,
+  docs/ARCHITECTURE.md "Public API v1"): suppressed numbers are stripped
+  at the schema layer — `schemas.metrics.SuppressibleFigures` nulls
+  `numerator`, `denominator`, `rate`, `value`, `distribution`, `lower`,
+  `upper` in a validator whenever `suppressed` is true (the eligible
+  count and the threshold stay), so no route can leak a withheld figure;
+  `Observation.numerator` is `observed_count` and `denominator` is
+  `cohort_size`; `interval_method` follows the kind (`wilson` for shares
+  and fixed-window rates, `greenwood` for survival); `methodology_url`
+  is `Settings.methodology_url_for(slug)` (`JUDGEMETRICS_METHODOLOGY_URL`
+  + `#<slug>`, default `/methodology#<slug>`, the web route Step 4
+  anchors). `SubjectMetrics.observations` is a dict keyed by slug (each
+  list ordered by window, dimension, source). `/metrics/compare` cohorts
+  are judges with a `judge_service` record at the court or a court of
+  the jurisdiction (the `/judges?court_id=` linkage) with a current
+  observation of the metric's *current* definition version; the page is
+  one statement with a `LATERAL` subquery for the judge's court within
+  the cohort, `count(*) OVER ()`, the cohort's reference period (the
+  requested one, else the period most rows of the whole cohort share,
+  from window functions), and sort columns that are null when the row is
+  suppressed so the order never leaks a withheld number; `sort` is
+  `rate|numerator|denominator|value|name`; an empty page costs one more
+  statement that settles the cohort's existence (404). The trace
+  (`metrics/provenance.py`) is three statements — the observation with
+  its definition, snapshot, and source; the members outer-joined to
+  their rows for `case_id` and `source_record_id`; the distinct source
+  records over that statement as a subquery (never an `IN` list of
+  ids) — and `complete` is `check_chain` re-checked against the live
+  tables; the CLI prints the chain top-down and exits 1 when incomplete;
+  the endpoint answers 404 for a superseded id and withholds the
+  snapshot's `storage_uri` and any non-`http(s)` artifact URI the way
+  `raw_object_path` is never returned. Migration 0007 grants the app
+  role `INSERT` on `correction_request` and nothing else; the insert is
+  `insert(CorrectionRequest).values(...)` with a client `uuid4()` and no
+  `RETURNING` (PostgreSQL needs `SELECT` on every returned column), the
+  contact is encrypted with `security.crypto.encrypt_contact` and
+  nothing else, the response is `202 {id, status, received_at}`, and the
+  route commits — the only commit in the API. A second token bucket,
+  `app.state.corrections_limiter` (`TokenBucketLimiter(per_hour=…)`,
+  default 5 an hour, burst 5, `None` under `env == test` unless
+  `corrections_rate_limit_enabled`), runs before body validation.
+  `create_app` requires a usable Fernet key outside `env == test`
+  (`require_contact_key`, message names the variable) and
+  `judgemetrics.main.app` is built lazily (PEP 562 `__getattr__`) so
+  importing the module never constructs the process app. The logging
+  denylist gained `correction_contact_key`, `contact`, `reason`, and
+  `supporting_material`; operational log lines name their cause
+  `failure`, `refusal`, or `because` so they survive the `reason` entry.
+  `/search` and the judges `q` filter use word similarity (`<%`,
+  `word_similarity()`, the query on the left as pg_trgm documents,
+  `JUDGEMETRICS_SEARCH_WORD_SIMILARITY_THRESHOLD` default 0.5) for a
+  one-token query and whole-name `%` for several tokens; the mode's
+  threshold is the one `set_config` sets (`services.search.similarity_mode`).
+  `/coverage` v1 adds the per-source coverage window, observable
+  outcomes, latest snapshot, and methodology version (one `DISTINCT ON`
+  over the current observations) plus the registry versions from the
+  file; `/ready` reports the latest snapshot from one statement.
+  `tests/integration/conftest.py` owns the module-scoped
+  `golden_metrics` fixture (compute over the golden ingest, committed;
+  the golden conftest re-exports it) so the metrics API, the provenance
+  suite, and the public-contract test share one compute. The
+  methodology renderer's "Sample size" prose now states that the
+  denominator is withheld with a suppressed number (no version bump: the
+  registry's suppression rule already said so).
 
 ## End-of-session report (from the brief)
 

@@ -112,8 +112,10 @@ class Settings(BaseSettings):
         description="Build SHA; falls back to `git rev-parse HEAD`, else `unknown`.",
     )
     # Application-level key (urlsafe base64, 32 bytes: `Fernet.generate_key()`)
-    # that encrypts `correction_request.requester_contact` at rest. Only the
-    # admin tooling that answers corrections needs it; the API never decrypts.
+    # that encrypts `correction_request.requester_contact` at rest. The API
+    # encrypts every accepted correction with it and refuses to start without
+    # a valid key outside the test environment (`create_app`); only the admin
+    # tooling that answers corrections decrypts.
     correction_contact_key: SecretStr | None = None
     # Per-deployment pepper for the sha256 hashes in `person_identifier`
     # (`judgemetrics.security.identifiers`). Required by every process that
@@ -143,9 +145,22 @@ class Settings(BaseSettings):
     search_rate_limit_per_minute: int = Field(default=60, ge=1)
     search_rate_limit_burst: int = Field(default=10, ge=1)
     search_rate_limit_enabled: bool | None = None
-    # pg_trgm similarity threshold for `/search` and the judges `q` filter,
-    # set per request with `set_config` (never interpolated into SQL).
+    # pg_trgm thresholds for `/search` and the judges `q` filter, set per
+    # request with `set_config` (never interpolated into SQL): whole-name
+    # similarity (`%`) for a multi-word query and word similarity (`<%`) for
+    # a single word, so a misspelt surname alone still finds a long name.
     search_similarity_threshold: float = Field(default=0.3, gt=0.0, le=1.0)
+    search_word_similarity_threshold: float = Field(default=0.5, gt=0.0, le=1.0)
+    # `POST /api/v1/corrections` is rate limited by a second token bucket per
+    # client (default five requests an hour, a burst of five); like the search
+    # limiter it is off under the test environment unless enabled explicitly.
+    corrections_rate_limit_per_hour: int = Field(default=5, ge=1)
+    corrections_rate_limit_burst: int = Field(default=5, ge=1)
+    corrections_rate_limit_enabled: bool | None = None
+    # Where the methodology page lives: every metric response links
+    # `<methodology_url>#<slug>`. The default is the web app's route; a
+    # deployment sets the absolute public URL.
+    methodology_url: str = Field(default="/methodology", min_length=1)
 
     @field_validator(
         "database_url", "admin_database_url", "ingest_database_url", "test_database_url"
@@ -170,6 +185,16 @@ class Settings(BaseSettings):
         if self.search_rate_limit_enabled is not None:
             return self.search_rate_limit_enabled
         return self.env != "test"
+
+    @property
+    def effective_corrections_rate_limit_enabled(self) -> bool:
+        if self.corrections_rate_limit_enabled is not None:
+            return self.corrections_rate_limit_enabled
+        return self.env != "test"
+
+    def methodology_url_for(self, slug: str) -> str:
+        """The methodology page anchored at a metric's slug."""
+        return f"{self.methodology_url.rstrip('#')}#{slug}"
 
     def resolved_git_sha(self) -> str:
         """The configured SHA, else the checkout's HEAD, else ``unknown``."""

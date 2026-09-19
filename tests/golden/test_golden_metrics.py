@@ -2,8 +2,9 @@
 """Every registry metric equals its truth expectation on the golden fixture.
 
 After the module's golden ingest, ``metrics compute`` runs through the
-Python API (``compute_and_publish`` as the ingest role, the snapshot under
-a temporary directory): for every judge and court of ``truth/metrics.json``
+Python API (the shared ``golden_metrics`` fixture: ``compute_and_publish``
+as the ingest role, the snapshot under a temporary directory): for every
+judge and court of ``truth/metrics.json``
 and every registry metric, the current observation's ``observed_count``,
 ``cohort_size``, ``eligible_count``, ``observed_rate`` (six decimals),
 ``value``, ``distribution``, and the Kaplan-Meier bounds equal the truth
@@ -22,9 +23,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
 from decimal import Decimal
-from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -32,11 +31,10 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from judgemetrics.config import Settings
 from judgemetrics.db.models import Base, MetricObservation, MetricObservationMember, MetricSnapshot
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.db.session import make_engine
-from judgemetrics.metrics.engine import EngineResult, compute_and_publish
+from judgemetrics.metrics.engine import compute_and_publish
 from judgemetrics.metrics.registry import load_registry
 from judgemetrics.metrics.snapshot import (
     MEMBER_TABLES,
@@ -45,7 +43,7 @@ from judgemetrics.metrics.snapshot import (
     open_snapshot,
 )
 from judgemetrics.metrics.verify import verify
-from tests.golden.conftest import GOLDEN, GoldenFixture
+from tests.golden.conftest import GOLDEN, GoldenFixture, GoldenMetrics
 from tests.golden.truth_map import (
     COURT_ONLY_SLUGS,
     NOT_OBSERVABLE_SLUGS,
@@ -75,30 +73,6 @@ COLUMNS: dict[str, str] = {
     "lower_confidence_bound": "lower_confidence_bound",
     "upper_confidence_bound": "upper_confidence_bound",
 }
-
-
-@dataclass(frozen=True)
-class GoldenMetrics:
-    settings: Settings
-    result: EngineResult
-    snapshot_dir: Path
-
-
-@pytest.fixture(scope="module")
-def golden_metrics(
-    golden_fixture: GoldenFixture, test_settings: Settings, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[GoldenMetrics]:
-    """``metrics compute`` over the module's golden ingest, committed, as the ingest role."""
-    snapshot_dir = tmp_path_factory.mktemp("snapshots")
-    settings = test_settings.model_copy(update={"env": "test", "snapshot_dir": snapshot_dir})
-    engine = make_engine(settings.effective_ingest_database_url)
-    try:
-        with Session(engine) as session:
-            result = compute_and_publish(session, settings, label="golden test")
-            session.commit()
-        yield GoldenMetrics(settings=settings, result=result, snapshot_dir=snapshot_dir)
-    finally:
-        engine.dispose()
 
 
 @pytest.fixture

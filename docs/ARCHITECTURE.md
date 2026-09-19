@@ -228,7 +228,7 @@ refusal.
 
 | Role                  | Used by                                              | Rights                                            |
 |-----------------------|------------------------------------------------------|---------------------------------------------------|
-| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs` | `SELECT` on public tables; nothing on `person_identifier`, `correction_request`, `entity_resolution_candidate`, `audit_log` |
+| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs`, `provenance trace` | `SELECT` on public tables; `INSERT` only on `correction_request` (revision 0007); nothing on `person_identifier`, `entity_resolution_candidate`, `audit_log` |
 | `judgemetrics_ingest` | `ingest run`, `seed`, `er …` (`JUDGEMETRICS_INGEST_DATABASE_URL`) | `SELECT, INSERT, UPDATE, DELETE` on every table except `audit_log` (`SELECT, INSERT`: append-only); no DDL |
 | `judgemetrics_admin`  | `db upgrade` / `downgrade` (`JUDGEMETRICS_ADMIN_DATABASE_URL`) | full control of the public schema (not a superuser) |
 
@@ -241,9 +241,11 @@ container's owner, which is why the ingest and admin URLs fall back to
 ## Public API v1
 
 The API (`src/judgemetrics/api`, contract in [`API.md`](API.md)) is a
-read-only view over the canonical tables, connected as the
-`judgemetrics_app` role. Requests pass through four layers, each of
-which knows only the one beneath it:
+read-only view over the canonical tables and the published metric
+observations, connected as the `judgemetrics_app` role, with one write
+path — `POST /corrections`, an `INSERT` the role can make and never read
+back. Requests pass through four layers, each of which knows only the
+one beneath it:
 
 ```
    GET /api/v1/judges?q=…            src/judgemetrics/
@@ -269,16 +271,22 @@ which knows only the one beneath it:
                   `from_attributes`): Page[T], Provenance, ErrorBody, …
 ```
 
-- **Routes** (`api/routes/{judges,courts,jurisdictions,cases,search,coverage}.py`)
+- **Routes** (`api/routes/{judges,courts,jurisdictions,cases,search,
+  coverage,metrics,corrections}.py`)
   declare parameters with validation (`limit` 1–100, `offset` ≥ 0,
   enum statuses, UUID ids, ISO dates, vocabulary values by shape) and a
   `StrictQuery` allow-list per route, so an undeclared query parameter
   is a 422 rather than an ignored filter; a unit test checks each
   allow-list against the parameters the OpenAPI document declares.
   `/judges/{id}/cases` rejects `filed_to < filed_from` with a 422 that
-  names the parameter. List and detail routes add
+  names the parameter; `/metrics/compare` rejects a missing or doubled
+  cohort, an inverted period, an unknown metric, and a window the
+  metric lacks the same way. List, detail, and metrics routes add
   `Cache-Control: public, max-age=60` through a router dependency, which
-  a raised error bypasses.
+  a raised error bypasses; `POST /corrections` answers `no-store`.
+  The judge- and court-level observation routes
+  (`/judges/{id}/metrics`, `/courts/{id}/metrics`) live beside their
+  subjects and share one handler in `routes/metrics.py`.
 - **Services** (`services/`) return the schemas. `services.search`
   normalizes the query twice — with `normalize_person_name` for the
   trigram arms and `normalize_case_number` for the exact case-number
@@ -292,9 +300,23 @@ which knows only the one beneath it:
   `repositories.cases.load_case` result: the timeline's entries are the
   same loaded rows re-keyed by time, kind rank, and row id — never a
   second round of queries — each citing its row's artifact.
-  `services.coverage` folds the per-source counts and latest runs into
-  the `Coverage` response and derives `synthetic_present` from rows,
-  not from registered sources.
+  `services.coverage` folds the per-source counts, latest runs, and
+  latest snapshots into the `Coverage` response, derives
+  `synthetic_present` from rows, not from registered sources, and takes
+  the registry versions from the registry file. `services.metrics`
+  builds every `Observation` from one joined repository row
+  (`numerator` ← `observed_count`, `denominator` ← `cohort_size`, the
+  interval method from the kind, the coverage block from the source,
+  the methodology link from `Settings.methodology_url_for`), serves the
+  registry from `load_registry` alone, validates a compare request's
+  metric and window against the registry before any query, computes
+  each compare row's `coverage_warning` against the cohort's reference
+  period, and maps `metrics.provenance.trace` onto
+  `ObservationProvenance` (404 for a superseded id; the snapshot's
+  storage URI and any non-public artifact URI withheld).
+  `services.corrections` checks the target exists, encrypts the contact
+  with `security.crypto.encrypt_contact` and nothing else, inserts, and
+  commits — the only commit in the API.
 - **Repositories** (`repositories/`) take a `Session` and return ORM
   rows plus totals. `paginate_rows` adds `count(*) OVER ()` to the page
   query so a list is one statement (a plain count only when the page
@@ -315,10 +337,28 @@ which knows only the one beneath it:
   when a page is empty, one more statement returns the total together
   with the judge's existence, so the route can answer 404 without a
   separate lookup. `repositories.coverage` is one statement over
-  `source` with a correlated count per canonical table and the filing
-  window, plus one `DISTINCT ON` for the latest completed run per
-  source. `tests/integration/test_query_counts.py` counts statements at
-  the cursor and fails on more.
+  `source` with a correlated count per canonical table, the filing
+  window, and the declared coverage window, plus one `DISTINCT ON` for
+  the latest completed run per source and one for the latest snapshot
+  behind each source's current observations (`latest_snapshot`, the
+  newest of all, is what `/ready` reports). `repositories.metrics`:
+  `subject_observations` is one statement joining the current
+  observations to their definition, source, and snapshot;
+  `compare_page` is one page statement — the judges with a service
+  record at the court or a court of the jurisdiction (a `LATERAL`
+  subquery for the judge's court within the cohort, which also filters
+  the rows), the observation's figures, `count(*) OVER ()`, the cohort's
+  reference period from window functions over the whole cohort, and
+  sort columns that are null whenever the row is suppressed so a page's
+  order cannot leak a withheld number — with the `list_judge_cases`
+  fallback for an empty page. `repositories.corrections` is the target
+  lookup (one statement against the table the type names) and an
+  `insert(CorrectionRequest)` with a client-generated id and no
+  `RETURNING`, because PostgreSQL requires `SELECT` on every column a
+  `RETURNING` clause names and the role has none. The trace's three
+  statements live in `metrics/provenance.py` (docs/PROVENANCE.md).
+  `tests/integration/test_query_counts.py` counts statements at the
+  cursor and fails on more.
 - **Errors** (`api/errors.py`): every non-2xx response is an `ErrorBody`
   (`code`, `message`, `request_id`). Validation errors name the
   parameter; `ApiError` carries its code; a `SQLAlchemyError` is a 503
@@ -327,29 +367,47 @@ which knows only the one beneath it:
 - **Sessions**: `create_app` binds an engine and a session factory to
   the app (`app.state`), and `api.deps.get_session` opens one session
   per request from it, so an app built with explicit settings (tests)
-  never reaches for the process-wide engine.
+  never reaches for the process-wide engine. The module attribute
+  `judgemetrics.main.app` (what uvicorn serves) is built lazily on first
+  access (PEP 562), so importing the module for `create_app` never
+  constructs the process app. Outside the test environment `create_app`
+  requires a usable `JUDGEMETRICS_CORRECTION_CONTACT_KEY`
+  (`security.crypto.require_contact_key`) and fails at startup naming
+  the variable, never its value.
+- **Suppression at the schema layer**: `schemas.metrics.SuppressibleFigures`
+  nulls `numerator`, `denominator`, `rate`, `value`, `distribution`,
+  `lower`, and `upper` in a validator whenever `suppressed` is true, so
+  every shape that carries a number (`Observation`, `CompareRow`, the
+  traced observation) withholds it whatever the caller passed; the
+  stored row keeps its numbers for `metrics verify`.
 - **Identity** (`api/identity.py`, ROADMAP.md §1.4): a request resolves
   to a rate-limit bucket; anonymous keyed by client address is the only
   bucket until Phase 9 issues API keys. The OpenAPI document declares
   the `X-API-Key` scheme as optional.
 
-### The rate limiter
+### The rate limiters
 
 `api/ratelimit.py` is an in-process token bucket per
-`RequestIdentity.rate_limit_key`: `search_rate_limit_burst` tokens
-(default 10) refilled at `search_rate_limit_per_minute` (default 60);
-an empty bucket answers 429 with `Retry-After` and the `rate_limited`
-error body. It is applied to `/search` only, before parameter
-validation, so an over-limit client never reaches the database. The
+`RequestIdentity.rate_limit_key`. The search limiter
+(`app.state.search_limiter`) holds `search_rate_limit_burst` tokens
+(default 10) refilled at `search_rate_limit_per_minute` (default 60)
+and guards `/search`; the corrections limiter
+(`app.state.corrections_limiter`, Phase 3 Step 3) holds
+`corrections_rate_limit_burst` tokens (default 5) refilled at
+`corrections_rate_limit_per_hour` (default 5) and guards
+`POST /corrections`. Each runs before parameter or body validation, so
+an over-limit client never reaches the database; an empty bucket
+answers 429 with `Retry-After` and the `rate_limited` error body. The
 client address is the TCP peer unless `JUDGEMETRICS_TRUST_PROXY=true`,
 in which case it is the rightmost `X-Forwarded-For` entry — the one the
-trusted proxy appended. This is the local layer beneath the Phase 8
+trusted proxy appended. These are the local layer beneath the Phase 8
 edge limits: not shared across workers, forgotten on restart, and off
 under `JUDGEMETRICS_ENV=test` unless
-`JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED=true` (the integration test
-enables it with a held clock). Buckets are pruned once more than 10,000
-keys are tracked; a full bucket carries no state, so dropping it is
-exact.
+`JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED=true` or
+`JUDGEMETRICS_CORRECTIONS_RATE_LIMIT_ENABLED=true` (the integration
+tests enable them with a held clock). Buckets are pruned once more than
+10,000 keys are tracked; a full bucket carries no state, so dropping it
+is exact.
 
 ### The OpenAPI snapshot
 
@@ -371,12 +429,17 @@ because the web client is generated from it ("Web tier" below).
 | `judgemetrics er run [--source ID]`              | ingest | Recompute person candidates under the current model version and apply system merges; prints pairs, candidates created and updated, matched, rejected, review, merges. |
 | `judgemetrics er review list [--entity-type person] [--limit N] [--json]` | ingest | The manual-review queue: candidate ids, public person keys, stage, score, feature booleans. |
 | `judgemetrics er review decide <id> --decision matched\|rejected --reviewer LABEL --reason TEXT` | ingest | Record a reviewer's decision (merge or rejection) with an `er.decide` audit row; refused in production until Phase 6. |
+| `judgemetrics provenance trace <observation id> [--json]` | app | The chain from a published number to the raw artifacts, top-down (docs/PROVENANCE.md); exit 1 when incomplete, 2 for a malformed or unknown id. |
 
 Logs (structlog, scrubbed) carry counts (per table on `ingest.published`
 and `ingest.succeeded`), source identifiers, file hashes, and object keys
 — never a raw row, a participant name, a date of birth, an identifier
 hash, or the pepper (the scrubber's denylist covers `pepper`,
-`value_hash`, `date_of_birth`, and `full_name`).
+`value_hash`, `date_of_birth`, and `full_name`), and never a
+correction's `reason`, `contact`, `supporting_material`, or the
+`correction_contact_key` (denylisted too; operational log lines name
+their cause `failure`, `refusal`, or `because` so they survive the
+`reason` entry).
 
 ## Web tier
 

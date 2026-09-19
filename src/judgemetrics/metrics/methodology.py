@@ -82,8 +82,9 @@ HOW_TO_READ: tuple[tuple[str, str], ...] = (
     (
         "Sample size",
         "the eligible count (the whole cohort before any follow-up "
-        "restriction) and the cohort size (the denominator), published even "
-        "when the number itself is suppressed.",
+        "restriction) and the cohort size (the denominator). The eligible "
+        "count is published even when the number itself is suppressed; the "
+        "denominator is withheld with the number.",
     ),
     (
         "Interval",
@@ -95,8 +96,10 @@ HOW_TO_READ: tuple[tuple[str, str], ...] = (
     (
         "Suppression",
         "a number whose denominator is below the metric's suppression "
-        "threshold is withheld and marked suppressed; the threshold is stated "
-        "per metric below.",
+        "threshold is withheld and marked suppressed — the numerator, "
+        "denominator, value, distribution, and interval leave the API as "
+        "null and the threshold is stated per metric below and beside every "
+        "observation.",
     ),
     (
         "Versions",

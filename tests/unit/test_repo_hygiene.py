@@ -44,6 +44,10 @@ NON_SECRET_CONSTANTS = {
     "data/synthetic/20260916",
     "data/snapshots",
     "true",
+    # Phase 3 Step 3: the corrections limiter, the word threshold, the methodology page.
+    "5",
+    "0.5",
+    "/methodology",
 }
 # Shapes that would indicate a real credential was pasted in.
 SECRET_SHAPES = [

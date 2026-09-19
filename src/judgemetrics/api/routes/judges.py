@@ -1,5 +1,5 @@
 # src/judgemetrics/api/routes/judges.py
-"""``/api/v1/judges``: the list, the detail, the service records, and the judge's cases."""
+"""``/api/v1/judges``: the list, the detail, the service records, the judge's cases, and metrics."""
 
 from __future__ import annotations
 
@@ -18,9 +18,11 @@ from judgemetrics.api.deps import (
     cache_public,
 )
 from judgemetrics.api.errors import ApiError, error_responses
+from judgemetrics.api.routes.metrics import subject_metrics_route
 from judgemetrics.schemas.cases import CaseSummary
 from judgemetrics.schemas.common import Page
 from judgemetrics.schemas.judges import JudgeDetail, JudgeStatus, JudgeSummary, ServiceRecord
+from judgemetrics.schemas.metrics import SubjectMetrics
 from judgemetrics.services.cases import judge_cases_page
 from judgemetrics.services.judges import judge_detail, judge_service, judges_page
 
@@ -47,7 +49,10 @@ def list_judges(
         Query(
             min_length=1,
             max_length=200,
-            description="Name to match by trigram similarity (normalized before matching).",
+            description=(
+                "Name to match by trigram similarity (normalized before matching): a single "
+                "word by word similarity, several words by whole-name similarity."
+            ),
         ),
     ] = None,
     court_id: Annotated[
@@ -68,6 +73,7 @@ def list_judges(
         limit=page.limit,
         offset=page.offset,
         threshold=settings.search_similarity_threshold,
+        word_threshold=settings.search_word_similarity_threshold,
     )
 
 
@@ -97,6 +103,19 @@ def get_judge_service(judge_id: uuid.UUID, session: SessionDep) -> list[ServiceR
     if service is None:
         raise _not_found(judge_id)
     return service
+
+
+@router.get(
+    "/{judge_id}/metrics",
+    response_model=SubjectMetrics,
+    responses=error_responses(404, 422),
+    summary="Every current metric observation of a judge, grouped by metric",
+    dependencies=[Depends(StrictQuery())],
+)
+def get_judge_metrics(
+    judge_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+) -> SubjectMetrics:
+    return subject_metrics_route(session, settings, "judge", judge_id)
 
 
 VOCABULARY_VALUE = r"^[a-z][a-z0-9_]*$"
