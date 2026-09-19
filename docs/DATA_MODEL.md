@@ -19,11 +19,21 @@ created by the Alembic revisions under `alembic/versions/`:
   `reason`, and `ingest_run_id` on `entity_resolution_candidate` with the
   pair-per-version unique index and the ordered-pair check,
   `person.merged_into_person_id`, and the append-only `audit_log` with
-  its trigger (`docs/ENTITY_RESOLUTION.md`).
+  its trigger (`docs/ENTITY_RESOLUTION.md`);
+- `0005_metric_registry_and_snapshots` — the registry columns on
+  `metric_definition`, the `metric_snapshot` table, the snapshot, source,
+  window, dimension, eligible-count, value, distribution, version, and
+  `superseded_at` columns on `metric_observation` with its unique key and
+  the current-observation index, the `metric_observation_member` table,
+  and `source.coverage_start`, `coverage_end`, `observable_outcomes`
+  (`docs/METHODOLOGY.md`, `docs/ARCHITECTURE.md` "Metrics engine").
 
 `uv run alembic check` must report no drift between the models and the
 head. Every table has a UUID `id` (`gen_random_uuid()` server default)
-and server-set `created_at` / `updated_at` (timezone-aware).
+and server-set `created_at` / `updated_at` (timezone-aware), except
+`metric_observation_member`, whose `id` is a bigint identity and which
+carries no timestamps (a member row is immutable and lives with its
+observation).
 
 ## Tables
 
@@ -44,20 +54,26 @@ and server-set `created_at` / `updated_at` (timezone-aware).
 | `pretrial_release`             | The release terms of a pretrial decision (one per decision).                         | via `decision`                |
 | `sentence`                     | A sentence: incarceration, probation, fine, components; `source_row_id`.              | `source_record_id`            |
 | `justice_event`                | A documented later justice-system event for a person (new case, reconviction, FTA, revocation, …), derived by the connector. | `source_record_id` |
-| `source`                       | A data source from `docs/DATA_SOURCES.md`: owner, type, access method, terms.        | —                             |
+| `source`                       | A data source from `docs/DATA_SOURCES.md`: owner, type, access method, terms; `coverage_start`, `coverage_end` (the window the metrics engine right-censors at) and `observable_outcomes` (the `justice_event_type` values the source can document; 0005). | — |
 | `source_record`                | One retrieved artifact: immutable object path, sha256, retrieval and effective time, parser version, run, `metadata`. | `ingest_run_id` |
 | `ingest_run`                   | One pipeline run: status, counts, `code_version`, `parser_version`, `checkpoint`, `failure_reason`. | —                  |
 | `entity_resolution_candidate`  | One ordered pair per model version: features (booleans, counts, the stage trace), score, decision, `stage`, `decided_at`/`decided_by` (`system:<model version>` or a reviewer label), `reason`, `ingest_run_id` (0004). **Restricted.** | `ingest_run_id` |
-| `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions.         | —                             |
-| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version. | — |
+| `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions, and (0005) the registry columns `kind`, `subject_types`, `attribution`, `index_event`, `outcome`, `windows_days`, `dimension`, `suppression_threshold`, `unit`, `registry_version`, `methodology_version`, mirrored from `data/reference/metric_registry.yaml` by `sync_definitions`. | — |
+| `metric_snapshot`              | One hashed export of the canonical tables that observations are computed from (0005): `content_hash` (unique), `label`, `exported_at`, `code_version`, `registry_version`, `methodology_version`, `row_counts`, `coverage` (per source id: `coverage_start`, `coverage_end`), `storage_uri`. | — |
+| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians in days, survival estimates), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). | via `metric_snapshot` and its members |
+| `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
 | `correction_request`           | A public correction request with an encrypted requester contact. **Restricted.**     | —                             |
 | `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
 
 The `Source of provenance` column shows how every fact row traces to raw
 bytes: `source_record` → `ingest_run` → the immutable object in the raw
-lake (`raw_object_path`, `raw_sha256`). Metric tables trace through the
-events they count (Phase 3).
+lake (`raw_object_path`, `raw_sha256`). A metric observation traces
+through its member rows — the decisions, charges, cases, sentences, court
+events, and justice events that formed its denominator and numerator —
+to their source records, and through its snapshot to the exact bytes it
+was computed from (Phase 3 Step 2 writes both; Step 3's
+`judgemetrics provenance trace` walks the chain).
 
 ## Natural keys and unique constraints
 
@@ -79,6 +95,8 @@ events they count (Phase 3).
 | `source`           | `name`                                                                                          | `uq_source_name`                             |
 | `source_record`    | `(source_id, external_record_id, raw_sha256)`, `NULLS NOT DISTINCT`                             | `uq_source_record_source_external_sha256`    |
 | `metric_definition`| `(slug, version)`                                                                               | `metric_definition_slug_version`             |
+| `metric_snapshot`  | `content_hash`                                                                                  | `uq_metric_snapshot_content_hash`            |
+| `metric_observation` | `(metric_definition_id, subject_type, subject_id, source_id, period_start, period_end, window_days, dimension_value, snapshot_id)`, `NULLS NOT DISTINCT` | `uq_metric_observation_key` |
 
 The ingest runner upserts on these keys (`INSERT … ON CONFLICT`) and
 deduplicates drafts by the same keys within a run. Judge resolution is
@@ -125,6 +143,11 @@ every hash.
 - `metric_observation (metric_definition_id, subject_type, subject_id,
   period_start)` and `entity_resolution_candidate (entity_type,
   left_record_id, right_record_id)`.
+- Metrics (0005): `metric_observation (subject_type, subject_id)` where
+  `superseded_at IS NULL` (`ix_metric_observation_current`, the rows the
+  API serves), `metric_observation.snapshot_id`, `.source_id`;
+  `metric_observation_member (observation_id)` and
+  `(member_kind, member_id)` (an entity's observations, for the trace).
 
 ## Enumerations
 
@@ -175,6 +198,34 @@ extend it silently: adding, renaming, or removing a value bumps
 | `sentence.sentence_components` keys     | `sentence_component`                  |
 | `justice_event.event_type`              | `justice_event_type`                  |
 | `judge_service.position_type` (synthetic) | `position`                          |
+| `source.observable_outcomes` entries    | `justice_event_type`                  |
+
+### Metric registry
+
+`data/reference/metric_registry.yaml` (`version: 1`,
+`methodology_version: "0.1"`) is the second versioned reference file:
+the contract every published number is computed against
+(`docs/METHODOLOGY.md` is rendered from it; `docs/ARCHITECTURE.md`
+"Metrics engine"). `judgemetrics.metrics.registry.load_registry` loads it
+once with `yaml.safe_load` and validates every entry against the case
+vocabulary (`attribution.decision_type` → `decision_type`,
+`attribution.actor_types` → `actor_type`, `attribution.discretion` →
+`judicial_discretion_classification`, `outcome` → `justice_event_type`,
+`counted.disposition` → `charge_disposition`, `counted.disposition_actor`
+→ `actor_type`) and the fixed enumerations (`kind`: `count`, `share`,
+`windowed_rate`, `survival`, `distribution`, `median`; `subject_types`:
+`judge`, `court`; `assignment_gate`: `deciding_judge`, `assigned_at_time`,
+`assigned_ever`, `sentencing_judge`, `court_of_case`; `index_event`:
+`pretrial_release`, `disposition`, `sentence`; `dimension`:
+`disposition`, `offense_category`; `unit`: `count`, `share`, `days`;
+`windows_days`: the brief's 30, 90, 180, 365, 730, 1095). `sync_definitions`
+mirrors every entry into `metric_definition` on `(slug, version)`; the
+row carries the published fields, while `population`, `counted`, and
+`measure` steer the compute functions and live in the file only. Adding
+or changing a metric bumps the entry's `version` and the registry
+`version` (old rows stay as the history of the observations that cite
+them); a change of semantics bumps `methodology_version` and adds a
+changelog entry.
 
 ## JSONB columns
 
@@ -192,6 +243,10 @@ extend it silently: adding, renaming, or removing a value bumps
 | `pretrial_release.conditions` | `{"<release_condition>": true, …}` — one key per condition, containment-queryable.        |
 | `sentence.sentence_components` | `{"<sentence_component>": true, …}`.                                                     |
 | `source.terms_metadata`    | Terms and redistribution answers copied from the connector's `source_info`.                   |
+| `source.observable_outcomes` | `["new_case", "failure_to_appear", …]`: the `justice_event_type` values the source can document (default `[]`). |
+| `metric_definition.subject_types`, `.attribution`, `.windows_days` | `["judge", "court"]`; `{"decision_type": …, "actor_types": […], "discretion": […], "assignment_gate": …}`; `[30, 90, 180, 365, 730, 1095]` or null. |
+| `metric_snapshot.row_counts`, `.coverage` | `{"<table>": <rows>}`; `{"<source id>": {"coverage_start": …, "coverage_end": …}}`. |
+| `metric_observation.distribution` | `{"<dimension value>": <count>, …}` for a distribution observation; null otherwise. |
 
 Restricted attributes never appear in any of these columns.
 
@@ -199,8 +254,8 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier`, `correction_request` | Every other table                       |
 |-----------------------|--------------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `SELECT`              |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
 | `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all      |
 
 `ALTER DEFAULT PRIVILEGES` in `infra/docker/postgres/02-roles.sql`
@@ -229,4 +284,17 @@ Revision 0004 adds `entity_resolution_candidate.stage`, `.decided_at`,
 `.decided_by`, `.reason`, `.ingest_run_id` (the brief's auditability
 clause asks for the stage, timestamp, and reviewer),
 `person.merged_into_person_id`, and the `audit_log` table the brief's
-security requirement "log administrative changes" needs.
+security requirement "log administrative changes" needs. Revision 0005
+adds, for Phase 3 Step 1, the registry columns on `metric_definition`
+(the brief names numerator, denominator, eligibility, and version; the
+attribution rule, kind, subject types, index event, outcome, windows,
+dimension, threshold, and unit make the definition computable and
+publishable), the `metric_snapshot` table (reproducibility: every
+observation names the exact bytes it was computed from), the
+`metric_observation` columns that key an observation by snapshot,
+source, window, and dimension and keep superseded rows as history, the
+`metric_observation_member` table (the brief's provenance chain from a
+published number to eligible events, as rows), and
+`source.coverage_start`, `coverage_end`, `observable_outcomes` (the
+window follow-up is censored at and the outcomes a source can document,
+which every connector must declare from Phase 5).

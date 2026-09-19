@@ -9,7 +9,9 @@ one against its manifest), ``seed`` (generate the demo dataset and
 ingest it through the ``synthetic`` connector as the ingest role), and
 ``er`` (entity resolution: ``run`` recomputes candidates, ``review list``
 shows the manual-review queue, ``review decide`` records a reviewer's
-decision; all as the ingest role).
+decision; all as the ingest role), and ``methodology`` (``render`` writes
+``docs/METHODOLOGY.md`` from the metric registry; ``--check`` exits 1 when
+the committed file differs).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -42,12 +44,16 @@ synthetic_app = typer.Typer(
 )
 er_app = typer.Typer(help="Entity resolution: candidates, the review queue, decisions.")
 er_review_app = typer.Typer(help="The manual-review queue.")
+methodology_app = typer.Typer(
+    help="The methodology document rendered from the metric registry (docs/METHODOLOGY.md)."
+)
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(openapi_app, name="openapi")
 app.add_typer(synthetic_app, name="synthetic")
 app.add_typer(er_app, name="er")
+app.add_typer(methodology_app, name="methodology")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -678,6 +684,59 @@ def er_review_decide(
             f"moved={sum(result.merge.moved.values())}"
         )
     typer.echo(summary)
+
+
+# --- methodology: the registry-rendered document ----------------------------------------
+
+# How many diff lines `--check` prints before truncating.
+METHODOLOGY_DIFF_LINES = 60
+
+
+@methodology_app.command("render")
+def methodology_render(
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Where to write (a relative path is under the repository root).",
+            dir_okay=False,
+        ),
+    ] = Path("docs") / "METHODOLOGY.md",
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Compare with the file instead of writing; exit 1 on a diff."),
+    ] = False,
+) -> None:
+    """Render docs/METHODOLOGY.md from data/reference/metric_registry.yaml.
+
+    The committed document must equal this output (the unit test and
+    ``--check`` compare them), so re-render after any registry change.
+    """
+    from judgemetrics.metrics.methodology import (
+        check_methodology,
+        resolve_output,
+        write_methodology,
+    )
+    from judgemetrics.metrics.registry import RegistryError
+
+    target = resolve_output(out)
+    try:
+        if check:
+            diff = check_methodology(target)
+            if diff:
+                typer.echo(f"{target} differs from the registry render:", err=True)
+                for line in diff[:METHODOLOGY_DIFF_LINES]:
+                    typer.echo(line, err=True)
+                if len(diff) > METHODOLOGY_DIFF_LINES:
+                    typer.echo(f"... {len(diff) - METHODOLOGY_DIFF_LINES} more lines", err=True)
+                raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+            typer.echo(f"{target} is up to date")
+            return
+        write_methodology(target)
+    except RegistryError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    typer.echo(f"wrote {target}")
 
 
 def main() -> None:

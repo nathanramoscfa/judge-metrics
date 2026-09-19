@@ -503,3 +503,138 @@ no third-party script, and reads exactly one variable,
   app, and runs Chromium; locally the operator runs `uv run poe dev-api`
   and `pnpm dev` (or `pnpm build && pnpm start`) over a database that
   holds the FJC fixture (or live ingest) and `uv run poe seed` first.
+
+## Metrics engine
+
+The metrics engine (`src/judgemetrics/metrics/`, Phase 3) computes every
+published number from a versioned registry over a typed analytic frame.
+Step 1 lands the contract and the pure functions below; Step 2 adds the
+snapshot export, the compute dispatch, suppression, publishing, and
+verification on top of them.
+
+```
+   data/reference/metric_registry.yaml        docs/METHODOLOGY.md
+   version · methodology_version ·            (rendered from the registry:
+   known_limitations · suppression · metrics   judgemetrics methodology
+          │ load_registry (yaml.safe_load,      render [--check])
+          │  validated against the vocabulary)
+          ├──▶ metric_definition  (sync_definitions: upsert on slug + version)
+          ▼
+   Frame  cases · assignments · charges · decisions · sentences · events ·
+          justice_events · persons · coverage window · observable outcomes
+          ◀── tests/property/support.frame_from_world   (in-memory world)
+          ◀── metrics/snapshot.py                        (Step 2: Parquet)
+          ▼
+   attribution ─▶ index_events ─▶ exposure ─▶ windows ─▶ censoring
+   (the gate)     (the cohort)    (time at    (first      (followed members,
+                                   risk)       outcome)    Kaplan-Meier)
+                                                          └─▶ intervals
+                                                              (Wilson, Greenwood)
+```
+
+- **The registry is the contract.** `data/reference/metric_registry.yaml`
+  carries `version`, `methodology_version`, the brief's eight statistical
+  warnings verbatim as `known_limitations`, the suppression rule and its
+  rationale, and one entry per metric (`slug`, `name`, `kind`,
+  `subject_types`, `population`, the prose `description`, `numerator`,
+  `denominator`, and `eligibility`, the structured `attribution` block,
+  optional `counted` conditions and a median's `measure`, `index_event`,
+  `outcome`, `windows_days`, `dimension`, `suppression_threshold`,
+  `unit`, `version`). `metrics.registry.load_registry` reads it once with
+  `yaml.safe_load` and validates every value on load — slugs unique and
+  snake_case, kinds, subject types, gates, units, populations, and
+  dimensions in their fixed enumerations, every actor, discretion,
+  decision type, outcome, and counted value in the case vocabulary, every
+  windowed rate and survival estimate carrying an index event, an outcome,
+  and the brief's six windows — and raises `RegistryError` naming the slug
+  and the field otherwise. `sync_definitions(session)` mirrors the entries
+  into `metric_definition` on `(slug, version)` with `IS DISTINCT FROM`
+  guards: new versions insert, changed rows update, unchanged rows are not
+  written, nothing is deleted. A data-semantics finding edits the entry,
+  bumps its `version` (and the registry `version`), and re-renders the
+  methodology; `docs/METHODOLOGY.md` is a committed snapshot that the
+  unit test and `methodology render --check` compare with the render.
+- **The frame.** `metrics.frame.Frame` is a frozen bundle of Polars
+  DataFrames with documented schemas (`cases`, `assignments`, `charges`,
+  `decisions` with their pretrial-release columns, `sentences`, `events`,
+  `justice_events`, `persons`) plus the source's `coverage_start`,
+  `coverage_end` (`coverage_end_exclusive_at` is the day after at 00:00
+  UTC), and `observable_outcomes`. Every timestamp is a UTC `Datetime`;
+  every id column shares one dtype per frame (`String` for the synthetic
+  world's ids and for UUIDs rendered as text; Polars has no UUID type),
+  and the functions only compare, join, group, and sort ids. `persons.id`
+  is the resolved person after merges and the frame's only person column.
+  Loaders: `tests/property/support.frame_from_world` builds one from an
+  in-memory synthetic world (true person ids), and Step 2's
+  `snapshot.py` from a Parquet snapshot of one source's rows.
+- **Attribution gates** (`metrics.attribution`). A registry rule filters
+  rows (`decision_type`, `actor_types`, `discretion`) and ties them to a
+  subject through its gate: `deciding_judge` (the decision's judge),
+  `assigned_at_time` (the event time falls in one of the judge's
+  assignment intervals on the case, `start_at <= t < end_at`, a null end
+  open), `assigned_ever` (any assignment of the judge on the case: the
+  eligibility gate), `sentencing_judge` (the sentence's judge), and
+  `court_of_case` (the court's cases, which is what a court subject always
+  gets). A judge never receives a statutory release or a decision with an
+  unknown actor or discretion, whatever a rule admits; the court-level
+  `statutory_release_count` and `unknown_actor_pretrial_count` count them
+  explicitly.
+- **Index events** (`metrics.index_events`). `(person, case, kind,
+  index_at)`, identified by the canonical row it comes from
+  (`member_kind`, `member_id`): `pretrial_release` (an attributed pretrial
+  decision with `detained_flag = false` and a release time; the decision),
+  `disposition` (a disposed case at the latest `disposed_at` of its
+  disposed charges, attributed at that time, one per person with a
+  disposed charge; the case), `sentence` (an attributed sentence at
+  `sentence_at`; the sentence).
+- **Exposure** (`metrics.exposure`). Time at risk starts at the index
+  time; for the `disposition` and `sentence` kinds a sentence with a
+  positive `incarceration_days` defers it to `sentence_at +
+  incarceration_days` (the member sentence, or the latest term of the same
+  case and person). Only the index case's sentence defers exposure; other
+  terms the person serves are not modelled — a documented limitation.
+- **Windows and censoring** (`metrics.windows`, `metrics.censoring`). An
+  outcome counts for window `w` when an event of the type occurs in
+  `(exposure_start, exposure_start + w days]`; `new_case`, `new_charge`,
+  and `reconviction` count only in another case of the person
+  (`related_case_id`), the rest in any case. `first_outcomes` computes
+  each member's first qualifying outcome once; `outcome_flags`,
+  `followed_flags`, and `member_windows` evaluate the six windows from it
+  (the member rows Step 2 publishes: `has_outcome`, `followed`,
+  `counted`). A member is followed for `w` when `exposure_start + w days
+  < coverage_end_exclusive_at`; `fixed_window_rates` divides the followed
+  members with an outcome by the followed members and reports `eligible`
+  (the whole cohort) beside them. `kaplan_meier` runs the product-limit
+  estimator over the whole cohort with censoring at the coverage end,
+  events before censorings at the same time, and publishes `1 - S(w)` with
+  the Greenwood standard error; when every member is followed for `w` it
+  equals the fixed-window rate. A metric whose outcome is not among the
+  source's observable outcomes yields `NotObservable`, never a zero.
+- **Intervals** (`metrics.intervals`). `wilson(numerator, denominator)`
+  for shares and fixed-window rates, `normal_interval(estimate,
+  standard_error)` clipped to `[0, 1]` for Kaplan-Meier; a zero
+  denominator yields nulls; everything is rounded to six decimals at the
+  boundary only.
+- **Tests.** `tests/unit/test_metric_registry.py` (the file loads, a
+  tampered copy fails naming the slug and field, the warnings equal the
+  brief's XML, the pretrial and dismissal prose equals the golden truth's
+  definitions or states the difference), `test_attribution.py` (each gate
+  over a hand-built frame, the two exclusions), `test_methodology_render.py`
+  (the committed document equals the render, 80 columns, verbatim
+  warnings, the CLI's `--check`), `tests/property/test_frame_invariants.py`
+  (Hypothesis over in-memory `TINY` worlds: no outcome before its exposure
+  start, `numerator <= followed <= eligible`, monotone numerators, bounded
+  monotone survival equal to the rate when fully followed, exposure
+  deferral, the statutory exclusion, and equality with `synthetic/truth.py`
+  for the pretrial-release cohorts, followed counts, and numerators),
+  `tests/integration/test_metric_registry_sync.py`, and the migration
+  round trip through `0005`.
+- **What Step 2 adds.** `snapshot.py` (PostgreSQL → Parquet under a
+  content hash, DuckDB views, `Frame` per source), `compute.py` (one
+  function per registry kind over the frame and these helpers),
+  `suppression.py`, `publish.py` (`metric_snapshot`, `metric_observation`
+  keyed by snapshot with `superseded_at` history, and
+  `metric_observation_member` rows of entity ids), `verify.py`,
+  `judgemetrics metrics compute|verify`, pipeline step 13, and the truth
+  generator's `TRUTH_VERSION` 2 implementing exactly the semantics stated
+  in `docs/METHODOLOGY.md`.

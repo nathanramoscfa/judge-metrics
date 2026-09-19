@@ -54,6 +54,24 @@ stage per entity type (`version: 1`; `auto_match` 0.95, `auto_reject`
 `yaml.safe_load` and a unit test asserts it equals the constants. A
 change bumps `version` and is recorded in `docs/ENTITY_RESOLUTION.md`.
 
+## `data/reference/metric_registry.yaml`
+
+The versioned metric registry (`version: 1`, `methodology_version:
+"0.1"`): the contract every published number is computed against —
+the brief's eight statistical warnings verbatim as `known_limitations`,
+the suppression rule, and one entry per metric with its slug, kind,
+subject types, population, prose definitions, structured attribution
+rule, index event, outcome, windows, dimension, suppression threshold,
+unit, and version. `judgemetrics.metrics.registry` loads it with
+`yaml.safe_load` and validates every value against the case vocabulary
+and the fixed enumerations; `sync_definitions` mirrors it into
+`metric_definition`; `judgemetrics methodology render` writes
+`docs/METHODOLOGY.md` from it (`--check` exits 1 when the committed
+document is stale). A data-semantics finding edits the entry and bumps
+its `version` and the registry `version`; a change of semantics bumps
+`methodology_version` and adds a changelog entry
+(`docs/DATA_MODEL.md` "Metric registry").
+
 ## `data/synthetic/<seed>/`
 
 `uv run judgemetrics synthetic generate --seed <seed> --scale golden|demo|tiny`

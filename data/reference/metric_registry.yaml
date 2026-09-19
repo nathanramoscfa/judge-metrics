@@ -1,0 +1,1102 @@
+# data/reference/metric_registry.yaml
+# The versioned metric registry: the contract every published number is
+# computed against (docs/METHODOLOGY.md is rendered from this file by
+# `judgemetrics methodology render`; `judgemetrics.metrics.registry` loads
+# it with yaml.safe_load and validates every value against the case
+# vocabulary and the fixed enumerations; `sync_definitions` mirrors every
+# entry into `metric_definition` on (slug, version)).
+#
+# Versioning: `version` is bumped whenever an entry is added, removed, or
+# changed in a way that changes a published number; a changed entry also
+# bumps its own `version` (old definition rows stay as history);
+# `methodology_version` is bumped when the semantics stated in the
+# methodology change (0.1 is the first registry; 1.0 is Phase 4's).
+#
+# Fields per metric: slug (snake_case, unique), name, kind (count, share,
+# windowed_rate, survival, distribution, median), subject_types (judge,
+# court), population (which rows the metric reads: cases, defendants,
+# pretrial_decisions, disposed_charges, disposed_cases, sentences,
+# index_events), description, numerator, denominator, eligibility (prose
+# the methodology publishes), attribution (decision_type, actor_types,
+# discretion, assignment_gate: deciding_judge, assigned_at_time,
+# assigned_ever, sentencing_judge, court_of_case - the gate applies to a
+# judge subject; a court subject always takes the court's cases),
+# counted (optional column conditions a row must meet to enter the
+# numerator or the count), measure (medians: the quantity), index_event
+# (pretrial_release, disposition, sentence, or null), outcome (a
+# justice_event_type value or null), windows_days (the brief's six or
+# null), dimension (disposition, offense_category, or null),
+# suppression_threshold, unit (count, share, days), version, and an
+# optional truth_note stating how the prose differs from the golden
+# fixture's truth/metrics.json definitions.
+#
+# Suppression rationale: the brief asks that judge-level measures over
+# too small a sample be suppressed or flagged and the thresholds
+# documented publicly. Every share, windowed rate, survival estimate, and
+# median is suppressed below a denominator of 10 (a single event moves a
+# rate by ten points or more; a median of fewer than ten values is one or
+# two cases). Counts and distributions carry threshold 0: they are the
+# sample sizes the presentation rules require beside every rate, and a
+# count is not an unstable estimate of anything.
+version: 1
+methodology_version: "0.1"
+
+known_limitations:
+  - >-
+    A judge who handles a disproportionately high-risk docket may exhibit
+    higher raw subsequent-event rates even if decision-making has no causal
+    effect. Raw rates must therefore be accompanied by case-mix context.
+  - >-
+    Selection effects can occur when defendants are not randomly assigned to
+    judges.
+  - >-
+    Changes in prosecutors, policing, statutes, bail law, crime conditions,
+    court procedures, and reporting systems can create apparent changes in
+    outcomes.
+  - >-
+    Rearrest measures are partly functions of law-enforcement activity and do
+    not equal proven offending.
+  - >-
+    Missing subsequent events outside the covered jurisdiction can bias
+    longitudinal measures downward.
+  - >-
+    Entity-resolution mistakes can severely distort repeat-event calculations.
+  - >-
+    Small samples create extreme but unstable observed rates.
+  - >-
+    Never conceal these limitations merely because a simplified number is
+    easier to market.
+
+suppression:
+  default_threshold: 10
+  rule: >-
+    An observation whose denominator is below the metric's
+    suppression_threshold is stored with suppressed_flag = true; every public
+    surface then shows that the cohort was too small and withholds the
+    numerator, denominator, value, and interval. The stored row keeps its
+    numbers so `metrics verify` can reproduce it.
+  rationale: >-
+    Shares, windowed rates, survival estimates, and medians are suppressed
+    below a denominator of 10: with fewer than ten followed members a single
+    event moves a rate by ten percentage points or more, and a median of fewer
+    than ten values describes one or two cases. Counts and distributions carry
+    a threshold of 0 because they are the sample sizes the presentation rules
+    require beside every rate, and a count is not an unstable estimate.
+
+metrics:
+  # --- eligibility -------------------------------------------------------------
+  - slug: eligible_cases
+    name: Eligible cases
+    kind: count
+    subject_types: [judge, court]
+    population: cases
+    description: The number of cases the subject is measured over.
+    numerator: >-
+      Distinct cases with at least one assignment of the judge (court: cases
+      filed in the court).
+    denominator: "Not applicable: a count."
+    eligibility: >-
+      Judge: cases with at least one assignment of the judge. Court: cases
+      filed in the court. Duplicate source records count once.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_ever
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: eligible_defendants
+    name: Eligible defendants
+    kind: count
+    subject_types: [judge, court]
+    population: defendants
+    description: >-
+      The number of distinct persons among the eligible cases: resolved
+      persons after entity resolution, which is what the truth's true persons
+      are once the planted split persons have merged.
+    numerator: Distinct resolved persons among the eligible cases.
+    denominator: "Not applicable: a count."
+    eligibility: Distinct true persons among the eligible cases.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_ever
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  # --- pretrial ----------------------------------------------------------------
+  - slug: pretrial_decisions
+    name: Pretrial decisions
+    kind: count
+    subject_types: [judge, court]
+    population: pretrial_decisions
+    description: The number of discretionary judicial pretrial-release decisions.
+    numerator: Attributed pretrial decisions.
+    denominator: "Not applicable: a count."
+    eligibility: >-
+      Pretrial decisions attributed to the subject under the attribution gate:
+      decision_type pretrial_release, actor judge, discretion discretionary
+      (judge: the deciding judge; court: decided in the court). Statutory
+      releases (legislature_or_mandatory_rule, mandatory) and decisions with an
+      unknown actor are excluded.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: pretrial_released
+    name: Pretrial releases
+    kind: count
+    subject_types: [judge, court]
+    population: pretrial_decisions
+    description: The number of attributed pretrial decisions that released the defendant.
+    numerator: Attributed pretrial decisions with detained = false.
+    denominator: "Not applicable: a count."
+    eligibility: Attributed pretrial decisions with detained = false.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    counted:
+      detained_flag: false
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: pretrial_detained
+    name: Pretrial detentions
+    kind: count
+    subject_types: [judge, court]
+    population: pretrial_decisions
+    description: The number of attributed pretrial decisions that detained the defendant.
+    numerator: Attributed pretrial decisions with detained = true.
+    denominator: "Not applicable: a count."
+    eligibility: Attributed pretrial decisions with detained = true.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    counted:
+      detained_flag: true
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: pretrial_release_share
+    name: Pretrial release share
+    kind: share
+    subject_types: [judge, court]
+    population: pretrial_decisions
+    description: The share of attributed pretrial decisions that released the defendant.
+    numerator: Attributed pretrial decisions with detained = false (pretrial_released).
+    denominator: >-
+      Attributed pretrial decisions: released plus detained (pretrial_released
+      + pretrial_detained).
+    eligibility: >-
+      The attributed pretrial decisions of pretrial_decisions; every decision
+      carries a detained flag, so the denominator is the whole set.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    counted:
+      detained_flag: false
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+    truth_note: >-
+      truth/metrics.json states the formula released_count / (released_count
+      + detained_count); the registry states the numerator and denominator
+      separately.
+
+  - slug: statutory_release_count
+    name: Statutory releases
+    kind: count
+    subject_types: [court]
+    population: pretrial_decisions
+    description: >-
+      The number of pretrial releases required by statute or mandatory rule,
+      which are never attributed to a judge.
+    numerator: >-
+      Pretrial decisions with actor legislature_or_mandatory_rule and
+      discretion mandatory.
+    denominator: "Not applicable: a count."
+    eligibility: >-
+      Court only: pretrial decisions with actor legislature_or_mandatory_rule
+      and discretion mandatory (never attributed to a judge).
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [legislature_or_mandatory_rule]
+      discretion: [mandatory]
+      assignment_gate: court_of_case
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: unknown_actor_pretrial_count
+    name: Pretrial decisions with an unknown actor
+    kind: count
+    subject_types: [court]
+    population: pretrial_decisions
+    description: >-
+      The number of pretrial decisions whose actor the source does not
+      identify; they enter no judge-level metric.
+    numerator: Pretrial decisions with actor unknown.
+    denominator: "Not applicable: a count."
+    eligibility: >-
+      Court only: pretrial decisions with actor unknown (the planted
+      missing-judge examples).
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [unknown]
+      discretion: null
+      assignment_gate: court_of_case
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  # --- windowed rates after pretrial release -----------------------------------
+  - slug: failure_to_appear_rate
+    name: Failure-to-appear rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a documented
+      failure to appear within the window.
+    numerator: >-
+      Followed cohort members with at least one failure_to_appear event in
+      (exposure start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: failure_to_appear
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+    truth_note: >-
+      truth/metrics.json states the window rule once under pretrial.windows;
+      the registry states the cohort here and the window rule in the
+      methodology.
+
+  - slug: new_case_rate
+    name: New-case rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a new case
+      filed within the window.
+    numerator: >-
+      Followed cohort members with at least one new_case event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+    truth_note: >-
+      truth/metrics.json states the window rule once under pretrial.windows;
+      the registry states the cohort here and the window rule in the
+      methodology.
+
+  - slug: new_charge_rate
+    name: New-charge rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a new charge
+      filed within the window.
+    numerator: >-
+      Followed cohort members with at least one new_charge event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: new_charge
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: reconviction_rate
+    name: Reconviction rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members convicted in
+      another case within the window.
+    numerator: >-
+      Followed cohort members with at least one reconviction event in
+      (exposure start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: reconviction
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+    truth_note: >-
+      truth/metrics.json states the window rule once under pretrial.windows;
+      the registry states the cohort here and the window rule in the
+      methodology.
+
+  - slug: release_violation_rate
+    name: Release-condition violation rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a documented
+      violation of release conditions within the window.
+    numerator: >-
+      Followed cohort members with at least one release_violation event in
+      (exposure start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time. Published only for a
+      source whose observable outcomes include release_violation.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: release_violation
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: revocation_rate
+    name: Revocation rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a documented
+      probation, parole, or release revocation within the window.
+    numerator: >-
+      Followed cohort members with at least one revocation event in (exposure
+      start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: revocation
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: rearrest_rate
+    name: Rearrest rate after pretrial release
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed pretrial-release cohort members with a separately
+      sourced arrest within the window; a rearrest is never proof of a new
+      offense.
+    numerator: >-
+      Followed cohort members with at least one rearrest event in (exposure
+      start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time. Published only for a
+      source whose observable outcomes include rearrest (a separate arrest
+      source).
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: rearrest
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  # --- survival (Kaplan-Meier) after pretrial release --------------------------
+  - slug: failure_to_appear_survival
+    name: Failure-to-appear cumulative incidence after pretrial release
+    kind: survival
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The Kaplan-Meier cumulative incidence of a documented failure to appear
+      by each window, over the whole pretrial-release cohort with censoring at
+      the coverage end.
+    numerator: >-
+      1 - S(w), the product-limit survival evaluated at w days, with the
+      Greenwood standard error and a symmetric 95% interval clipped to [0, 1].
+    denominator: >-
+      The whole cohort: every member contributes time at risk from its
+      exposure start until its first failure_to_appear event or the coverage
+      end, whichever comes first.
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: failure_to_appear
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: new_case_survival
+    name: New-case cumulative incidence after pretrial release
+    kind: survival
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The Kaplan-Meier cumulative incidence of a new case by each window, over
+      the whole pretrial-release cohort with censoring at the coverage end.
+    numerator: >-
+      1 - S(w), the product-limit survival evaluated at w days, with the
+      Greenwood standard error and a symmetric 95% interval clipped to [0, 1].
+    denominator: >-
+      The whole cohort: every member contributes time at risk from its
+      exposure start until its first new_case event in another case of the
+      person or the coverage end, whichever comes first.
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: reconviction_survival
+    name: Reconviction cumulative incidence after pretrial release
+    kind: survival
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The Kaplan-Meier cumulative incidence of a conviction in another case by
+      each window, over the whole pretrial-release cohort with censoring at
+      the coverage end.
+    numerator: >-
+      1 - S(w), the product-limit survival evaluated at w days, with the
+      Greenwood standard error and a symmetric 95% interval clipped to [0, 1].
+    denominator: >-
+      The whole cohort: every member contributes time at risk from its
+      exposure start until its first reconviction event in another case of the
+      person or the coverage end, whichever comes first.
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time and the exposure start are the release time.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: reconviction
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  # --- windowed rates after disposition ----------------------------------------
+  - slug: new_case_rate_after_disposition
+    name: New-case rate after disposition
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed disposition cohort members with a new case filed
+      within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one new_case event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The disposition cohort: one index event per defendant of every disposed
+      case attributed to the judge assigned at the case disposition time
+      (court: the court's disposed cases); the index time is the case
+      disposition time and the exposure start is deferred to sentence_at +
+      incarceration_days when the case's sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    index_event: disposition
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: new_charge_rate_after_disposition
+    name: New-charge rate after disposition
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed disposition cohort members with a new charge filed
+      within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one new_charge event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The disposition cohort: one index event per defendant of every disposed
+      case attributed to the judge assigned at the case disposition time
+      (court: the court's disposed cases); the index time is the case
+      disposition time and the exposure start is deferred to sentence_at +
+      incarceration_days when the case's sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    index_event: disposition
+    outcome: new_charge
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: reconviction_rate_after_disposition
+    name: Reconviction rate after disposition
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed disposition cohort members convicted in another
+      case within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one reconviction event in
+      (exposure start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The disposition cohort: one index event per defendant of every disposed
+      case attributed to the judge assigned at the case disposition time
+      (court: the court's disposed cases); the index time is the case
+      disposition time and the exposure start is deferred to sentence_at +
+      incarceration_days when the case's sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    index_event: disposition
+    outcome: reconviction
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: revocation_rate_after_disposition
+    name: Revocation rate after disposition
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed disposition cohort members with a documented
+      revocation within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one revocation event in (exposure
+      start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The disposition cohort: one index event per defendant of every disposed
+      case attributed to the judge assigned at the case disposition time
+      (court: the court's disposed cases); the index time is the case
+      disposition time and the exposure start is deferred to sentence_at +
+      incarceration_days when the case's sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    index_event: disposition
+    outcome: revocation
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  # --- windowed rates after sentence -------------------------------------------
+  - slug: new_case_rate_after_sentence
+    name: New-case rate after sentence
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed sentence cohort members with a new case filed
+      within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one new_case event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The sentence cohort: one index event per sentence attributed to the
+      sentencing judge (court: the court's cases); the index time is
+      sentence_at and the exposure start is deferred to sentence_at +
+      incarceration_days when the sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    index_event: sentence
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: new_charge_rate_after_sentence
+    name: New-charge rate after sentence
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed sentence cohort members with a new charge filed
+      within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one new_charge event in (exposure
+      start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The sentence cohort: one index event per sentence attributed to the
+      sentencing judge (court: the court's cases); the index time is
+      sentence_at and the exposure start is deferred to sentence_at +
+      incarceration_days when the sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    index_event: sentence
+    outcome: new_charge
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: reconviction_rate_after_sentence
+    name: Reconviction rate after sentence
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed sentence cohort members convicted in another case
+      within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one reconviction event in
+      (exposure start, exposure start + w days] in another case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The sentence cohort: one index event per sentence attributed to the
+      sentencing judge (court: the court's cases); the index time is
+      sentence_at and the exposure start is deferred to sentence_at +
+      incarceration_days when the sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    index_event: sentence
+    outcome: reconviction
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: revocation_rate_after_sentence
+    name: Revocation rate after sentence
+    kind: windowed_rate
+    subject_types: [judge, court]
+    population: index_events
+    description: >-
+      The share of followed sentence cohort members with a documented
+      revocation within the window after their time at risk began.
+    numerator: >-
+      Followed cohort members with at least one revocation event in (exposure
+      start, exposure start + w days], in any case of the person.
+    denominator: >-
+      Cohort members followed for the window (exposure start + w days strictly
+      before the coverage end).
+    eligibility: >-
+      The sentence cohort: one index event per sentence attributed to the
+      sentencing judge (court: the court's cases); the index time is
+      sentence_at and the exposure start is deferred to sentence_at +
+      incarceration_days when the sentence carries a positive
+      incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    index_event: sentence
+    outcome: revocation
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  # --- dispositions ------------------------------------------------------------
+  - slug: disposition_distribution
+    name: Disposition distribution
+    kind: distribution
+    subject_types: [judge, court]
+    population: disposed_charges
+    description: The attributed disposed charges counted by disposition value.
+    numerator: Attributed disposed charges with the dimension's disposition value.
+    denominator: "Not applicable: a distribution of counts."
+    eligibility: >-
+      Counts of the judicial_dismissal_rate denominator charges by disposition
+      value.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: disposition
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+
+  - slug: judicial_dismissal_rate
+    name: Judicial dismissal rate
+    kind: share
+    subject_types: [judge, court]
+    population: disposed_charges
+    description: >-
+      The share of attributed disposed charges that a judge dismissed; a
+      prosecutor's dismissal is not a judicial dismissal.
+    numerator: Attributed charges disposed as dismissed with disposition_actor judge.
+    denominator: >-
+      Attributed charges with a disposition other than pending or missing.
+    eligibility: >-
+      numerator = charges disposed as dismissed with disposition_actor judge;
+      denominator = charges with a disposition other than pending or missing.
+      Judge: charges whose disposed_at falls inside one of the judge's
+      assignment intervals on that case (start_at <= disposed_at < end_at).
+      Court: charges of the court's cases.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    counted:
+      disposition: dismissed
+      disposition_actor: judge
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 10
+    unit: share
+    version: "1"
+
+  - slug: median_days_to_disposition
+    name: Median days to disposition
+    kind: median
+    subject_types: [judge, court]
+    population: disposed_cases
+    description: The median number of whole days from filing to the case disposition.
+    numerator: >-
+      The median of (case disposition date - filed date) in whole days over
+      the attributed disposed cases.
+    denominator: The number of attributed disposed cases (the sample size).
+    eligibility: >-
+      Median over disposed cases of (case disposition date - filed_date) in
+      whole days, where the case disposition is the latest disposed_at among
+      its disposed charges. Judge: cases where the judge was assigned at the
+      case disposition time. Court: the court's disposed cases.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: assigned_at_time
+    measure: days_to_disposition
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 10
+    unit: days
+    version: "1"
+
+  # --- sentences ---------------------------------------------------------------
+  - slug: sentence_count
+    name: Sentences
+    kind: count
+    subject_types: [judge, court]
+    population: sentences
+    description: The number of sentences the subject imposed.
+    numerator: Attributed sentence rows.
+    denominator: "Not applicable: a count."
+    eligibility: >-
+      Sentence rows of the subject (judge: the sentencing judge; court: the
+      court's cases).
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 0
+    unit: count
+    version: "1"
+    truth_note: >-
+      truth/metrics.json describes every sentence metric in one sentences
+      entry; the registry splits it into sentence_count,
+      incarceration_days_median, probation_days_median, and
+      incarceration_days_median_by_offense_category.
+
+  - slug: incarceration_days_median
+    name: Median incarceration days
+    kind: median
+    subject_types: [judge, court]
+    population: sentences
+    description: The median incarceration term, in days, over sentences that incarcerate.
+    numerator: The median of incarceration_days over the attributed sentences with a value.
+    denominator: The number of attributed sentences with a non-empty incarceration_days.
+    eligibility: >-
+      Sentence rows of the subject (judge: the sentencing judge; court: the
+      court's cases) with a non-empty incarceration_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    measure: incarceration_days
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 10
+    unit: days
+    version: "1"
+
+  - slug: probation_days_median
+    name: Median probation days
+    kind: median
+    subject_types: [judge, court]
+    population: sentences
+    description: The median probation term, in days, over sentences with probation.
+    numerator: The median of probation_days over the attributed sentences with a value.
+    denominator: The number of attributed sentences with a non-empty probation_days.
+    eligibility: >-
+      Sentence rows of the subject (judge: the sentencing judge; court: the
+      court's cases) with a non-empty probation_days.
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    measure: probation_days
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 10
+    unit: days
+    version: "1"
+
+  - slug: incarceration_days_median_by_offense_category
+    name: Median incarceration days by offense category
+    kind: median
+    subject_types: [judge, court]
+    population: sentences
+    description: >-
+      The median incarceration term, in days, by the offense category of the
+      case's lead convicted charge.
+    numerator: >-
+      The median of incarceration_days over the attributed sentences with a
+      value, per offense category.
+    denominator: >-
+      The number of attributed sentences with a non-empty incarceration_days
+      in the category.
+    eligibility: >-
+      Sentence rows of the subject (judge: the sentencing judge; court: the
+      court's cases) with a non-empty incarceration_days, grouped by the
+      offense_category of the case's lead convicted charge (most severe by
+      severity rank, ties broken by charge id).
+    attribution:
+      decision_type: null
+      actor_types: null
+      discretion: null
+      assignment_gate: sentencing_judge
+    measure: incarceration_days
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: offense_category
+    suppression_threshold: 10
+    unit: days
+    version: "1"
