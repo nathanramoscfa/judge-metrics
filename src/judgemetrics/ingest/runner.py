@@ -25,7 +25,10 @@ Brief step → function here:
                                   write only rows whose substantive columns changed —
                                   reference tables here, case-level tables in
                                   ``judgemetrics.ingest.publish``, in dependency order
-13. recompute affected metrics    ``recompute_metrics`` (no-op until Phase 3)
+13. recompute affected metrics    ``recompute_metrics``: the subjects the run touched
+                                  (``impacted_subjects``) exported, computed, and
+                                  published inside the same transaction when
+                                  ``Settings.metrics_recompute_on_ingest`` is on
 14. record lineage and run stats  issues linked to source records and entities;
                                   ``ingest_run`` counts, versions, status
 
@@ -119,6 +122,7 @@ from judgemetrics.ingest.base import (
     SourceConnector,
     SupportsCheckpoint,
     SupportsContext,
+    SupportsCoverage,
     TaggedRecord,
     describe_key,
     sha256_hex,
@@ -141,6 +145,8 @@ from judgemetrics.ingest.publish import (
 from judgemetrics.ingest.registry import get_connector
 from judgemetrics.ingest.store import RawObjectStore, object_key
 from judgemetrics.logging import get_logger
+from judgemetrics.metrics.attribution import Subject
+from judgemetrics.metrics.engine import EngineResult
 from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplication_checks
 
 log = get_logger(__name__)
@@ -159,8 +165,11 @@ __all__ = [
     "IngestFailed",
     "PersonResolution",
     "PublishedIds",
+    "RecomputeResult",
     "RunCounts",
     "TableCounts",
+    "impacted_subjects",
+    "recompute_metrics",
     "run_ingest",
 ]
 
@@ -305,6 +314,7 @@ def run_ingest(
             run,
             session=session,
             store=store,
+            settings=settings,
             from_fixture=from_fixture,
             force=force,
             bound=bound,
@@ -333,9 +343,151 @@ def run_ingest(
     return run
 
 
-def recompute_metrics(session: Session, run: IngestRun) -> None:
-    """Step 13 hook. Phase 3 recomputes the observations affected by ``run`` here."""
-    del session, run
+@dataclass(frozen=True, slots=True)
+class RecomputeResult:
+    """What step 13 did: the impacted subjects and, when it ran, the engine's counts."""
+
+    impacted: tuple[Subject, ...]
+    engine: EngineResult | None
+
+    @property
+    def ran(self) -> bool:
+        return self.engine is not None
+
+
+def impacted_subjects(
+    session: Session, resolved: _Resolved, published: PublishedIds
+) -> tuple[Subject, ...]:
+    """The judges and courts whose observations the run's published rows can change.
+
+    The touched cases are those of every published case-level draft
+    (cases, parties, assignments, charges, events, decisions, sentences)
+    and the related cases of published justice events, widened to every
+    case of the persons those rows name — an outcome is the person's, so a
+    changed charge or event in one case moves the cohorts of the person's
+    other cases. The judges are those the published assignment, decision,
+    and sentence drafts name plus every judge with an assignment, decision,
+    or sentence on a touched case; the courts are those of the published
+    case drafts plus the courts of every touched case. A reference-only
+    run (FJC) touches nothing.
+    """
+    case_ids: set[uuid.UUID] = set()
+    person_ids: set[uuid.UUID] = set()
+    judge_ids: set[uuid.UUID] = set()
+    court_ids: set[uuid.UUID] = set()
+    for item in resolved.cases:
+        draft = _record_as(CaseDraft, item)
+        court_id = published.get("court", draft.court_key)
+        case_id = published.get("case", draft.natural_key)
+        if court_id is not None:
+            court_ids.add(court_id)
+        if case_id is not None:
+            case_ids.add(case_id)
+    children = [
+        *resolved.parties,
+        *resolved.assignments,
+        *resolved.charges,
+        *resolved.events,
+        *resolved.decisions,
+        *resolved.sentences,
+    ]
+    for item in children:
+        record = item.record
+        case_id = published.get("case", _case_key_of(record))
+        if case_id is not None:
+            case_ids.add(case_id)
+        person_id = published.get("person", _person_key_of(record))
+        if person_id is not None:
+            person_ids.add(person_id)
+        judge_id = published.get("judge", _judge_key_of(record))
+        if judge_id is not None and isinstance(
+            record, JudgeAssignmentDraft | DecisionDraft | SentenceDraft
+        ):
+            judge_ids.add(judge_id)
+    for item in resolved.justice_events:
+        event = _record_as(JusticeEventDraft, item)
+        person_id = published.get("person", event.person_key)
+        if person_id is not None:
+            person_ids.add(person_id)
+        related = published.get("case", event.related_case_key)
+        if related is not None:
+            case_ids.add(related)
+    if not case_ids and not person_ids and not judge_ids and not court_ids:
+        return ()
+    charge = Base.metadata.tables["charge"]
+    if case_ids:
+        person_ids.update(
+            session.scalars(
+                select(charge.c.person_id).where(charge.c.case_id.in_(case_ids)).distinct()
+            )
+        )
+    if person_ids:
+        case_ids.update(
+            session.scalars(
+                select(charge.c.case_id).where(charge.c.person_id.in_(person_ids)).distinct()
+            )
+        )
+    if case_ids:
+        court_case = Base.metadata.tables["court_case"]
+        court_ids.update(
+            session.scalars(
+                select(court_case.c.court_id).where(court_case.c.id.in_(case_ids)).distinct()
+            )
+        )
+        for table_name in ("judge_assignment", "decision", "sentence"):
+            table = Base.metadata.tables[table_name]
+            judge_ids.update(
+                session.scalars(
+                    select(table.c.judge_id)
+                    .where(table.c.case_id.in_(case_ids), table.c.judge_id.is_not(None))
+                    .distinct()
+                )
+            )
+    return (
+        *(Subject("judge", str(judge_id)) for judge_id in sorted(judge_ids, key=str)),
+        *(Subject("court", str(court_id)) for court_id in sorted(court_ids, key=str)),
+    )
+
+
+def recompute_metrics(
+    session: Session,
+    run: IngestRun,
+    published: PublishedIds,
+    *,
+    resolved: _Resolved,
+    settings: Settings,
+    bound: Any,
+) -> RecomputeResult:
+    """Step 13: recompute the impacted subjects' observations inside the ingest transaction.
+
+    When ``settings.metrics_recompute_on_ingest`` is on and the impacted set
+    is non-empty, a snapshot is exported through the same session (so the
+    run's rows are in it), the impacted subjects are computed and
+    published — unchanged subjects are left in place, changed ones are
+    superseded and re-inserted, every other subject is untouched — and the
+    snapshot is recorded in ``ingest_run.metrics_snapshot_id``.
+    """
+    from judgemetrics.metrics.engine import compute_and_publish
+
+    impacted = impacted_subjects(session, resolved, published)
+    if not impacted:
+        bound.info("ingest.metrics.skipped", reason="no impacted subject")
+        return RecomputeResult(impacted=(), engine=None)
+    if not settings.metrics_recompute_on_ingest:
+        bound.info(
+            "ingest.metrics.skipped",
+            reason="metrics_recompute_on_ingest is off",
+            impacted=len(impacted),
+        )
+        return RecomputeResult(impacted=impacted, engine=None)
+    engine = compute_and_publish(
+        session, settings, subjects=list(impacted), label=f"ingest run {run.id}"
+    )
+    run.metrics_snapshot_id = engine.published.snapshot_id
+    session.add(run)
+    session.flush()
+    bound.info("ingest.metrics.recomputed", impacted=len(impacted), **engine.published.as_log())
+    return RecomputeResult(impacted=impacted, engine=engine)
 
 
 # --- run bookkeeping -----------------------------------------------------------
@@ -382,8 +534,36 @@ def _upsert_source(session: Session, connector: SourceConnector) -> Source:
         source.access_method = info.access_method
         if source.terms_metadata != dict(info.terms_metadata):
             source.terms_metadata = dict(info.terms_metadata)
+    # Written only when it differs (the IS DISTINCT FROM rule for ORM rows).
+    if list(source.observable_outcomes or []) != list(info.observable_outcomes):
+        source.observable_outcomes = list(info.observable_outcomes)
     session.flush()
     return source
+
+
+def _record_coverage(
+    session: Session, source: Source, connector: SourceConnector, bound: Any
+) -> None:
+    """Write ``source.coverage_start``/``coverage_end`` from a ``SupportsCoverage`` connector.
+
+    Called after ``load_context`` so a connector may read the window from
+    the export itself; ``None`` leaves the columns as they are, and equal
+    dates write nothing.
+    """
+    if not isinstance(connector, SupportsCoverage):
+        return
+    window = connector.coverage_window()
+    if window is None:
+        return
+    start, end = window
+    if end < start:
+        msg = f"the connector reported an inverted coverage window {start}..{end}"
+        raise IngestFailed(msg)
+    if source.coverage_start != start or source.coverage_end != end:
+        source.coverage_start = start
+        source.coverage_end = end
+        session.flush()
+        bound.info("ingest.coverage", coverage_start=str(start), coverage_end=str(end))
 
 
 def _last_checkpoint(session: Session, source_id: uuid.UUID) -> Checkpoint | None:
@@ -410,6 +590,7 @@ def _execute(
     *,
     session: Session,
     store: RawObjectStore,
+    settings: Settings,
     from_fixture: Path | None,
     force: bool,
     bound: Any,
@@ -438,6 +619,7 @@ def _execute(
 
     if isinstance(connector, SupportsContext):
         connector.load_context([_materialized(state, store) for state in states])
+    _record_coverage(session, source, connector, bound)
 
     counts = RunCounts()
     tagged: list[TaggedRecord] = []
@@ -490,7 +672,9 @@ def _execute(
     if stats.merged:
         published.follow_merges(stats.merged)
     bound.info("ingest.persons_resolved", **stats.as_log())
-    recompute_metrics(session, run)  # step 13
+    recompute_metrics(  # step 13
+        session, run, published, resolved=resolved, settings=settings, bound=bound
+    )
     _persist_issues(session, issues, published, bound)  # step 14 (lineage)
     checkpoint = connector.checkpoint() if isinstance(connector, SupportsCheckpoint) else None
     return counts, checkpoint

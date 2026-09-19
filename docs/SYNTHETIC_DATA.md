@@ -302,7 +302,11 @@ lists.
 
 `truth/` documents the simulation. It is written beside `source/`, it is
 never read by any connector (Step 2 discovers `source/` only), and it
-never enters the database. `TRUTH_VERSION` is `1`.
+never enters the database. `TRUTH_VERSION` is `2` (Phase 3 Step 2: the
+windowed cohorts of every index kind, below); `GENERATOR_VERSION` is `2`
+(the manifest carries `corpus.start` and `corpus.end`, the first and last
+day a case can be filed, which the synthetic connector reports as the
+source's coverage window; `source/` is byte-identical to version `1`).
 
 | File                          | Columns / contents |
 |-------------------------------|--------------------|
@@ -310,7 +314,7 @@ never enters the database. `TRUTH_VERSION` is `1`.
 | `subsequent_events.csv`       | `true_person_id`, `index_case_number`, `index_event_type` (`pretrial_release` with `index_at` = the release time of a released pretrial decision, `disposition`, `sentence`), `index_at`, `outcome_type` (`new_case`, `new_charge`, `reconviction` — in another case of the person; `failure_to_appear`, `revocation` — any case), `outcome_at`, `days_after`. One row per distinct (index event, outcome type, outcome time), strictly after the index; `days_after` is the smallest whole number of days *d* with `outcome_at <= index_at + d days`, so an outcome is inside window *w* exactly when `days_after <= w`, and it is always at least 1. |
 | `resolution_expectations.csv` | `left_participant_id`, `right_participant_id` (ordered), `expected_decision` (`matched` / `rejected` / `review`), `reason`. |
 | `planted.csv`                 | `kind`, `ids`, `expected_behaviour` (above). |
-| `metrics.json`                | `truth_version`, `generator_version`, `seed`, `scale`, `corpus` (`start`, `end`, `end_exclusive_at`), `windows_days`, `definitions` (every metric's definition string), and the metric set under `judges.<judge_code>` and `courts.<court_code>`. |
+| `metrics.json`                | `truth_version`, `generator_version`, `seed`, `scale`, `corpus` (`start`, `end`, `end_exclusive_at`), `windows_days`, `index_kinds`, `observable_outcomes`, `not_observable` (`outcome`, `reason`), `definitions` (every metric's definition string), and the metric set under `judges.<judge_code>` and `courts.<court_code>`. |
 | `README.md`                   | How to read the files; the count of planted items per kind; for scales with at most 100 planted items (golden, tiny) the full hand-checkable list; the metric definitions. |
 
 ### The metric set (`metrics.json`)
@@ -329,12 +333,34 @@ carries the same text):
   decisions are excluded), `released_count` (`detained = false`),
   `detained_count`, `release_share` (numerator, denominator, value), and
   for courts `statutory_release_count` and `unknown_actor_count`.
-  `windows.<30|90|180|365|730|1095>`: `cohort` (attributed released
-  decisions, `index_at = release_at`), `followed` (cohort members with
-  `release_at + w days` strictly before `corpus.end_exclusive_at`), and
-  `failure_to_appear_rate`, `new_case_rate`, `reconviction_rate` — each
-  the followed members with at least one outcome of that type in
-  `(index_at, index_at + w days]` over the followed cohort.
+  `windows` is the same object as `index_events.pretrial_release.windows`
+  below, kept for continuity with `TRUTH_VERSION` `1`.
+- `index_events.<pretrial_release|disposition|sentence>.windows.<30|90|180|365|730|1095>`
+  (`TRUTH_VERSION` `2`) — the windowed cohort of each index kind exactly
+  as `docs/METHODOLOGY.md` states: `pretrial_release` members are the
+  attributed released decisions (`index_at = release_at`, never
+  deferred); `disposition` members are the disposed cases at the case
+  disposition time, attributed to the judge assigned at that time
+  (court: the court's disposed cases), one per defendant; `sentence`
+  members are the attributed sentences at `sentence_at`. Exposure starts
+  at the index time and is deferred to `sentence_at + incarceration_days`
+  for the `disposition` and `sentence` kinds when the index case's
+  sentence carries a positive `incarceration_days`. Per window `w`:
+  `cohort`, `followed` (`exposure_start + w days` strictly before
+  `corpus.end_exclusive_at`), `<outcome>_rate` (`numerator`,
+  `denominator` = followed, `value`) and `<outcome>_survival` (`value` =
+  `1 - S(w)` at six decimals from the Kaplan–Meier product-limit survival
+  over the whole cohort, events counted before censorings at a tie,
+  `S = 0` once every member at risk fails; `events` at or before `w`,
+  `censored` strictly before `w`, `at_risk` the rest,
+  `standard_error` (Greenwood), `lower`, `upper` (symmetric 95%,
+  clipped)) for every outcome in `observable_outcomes`:
+  `failure_to_appear`, `new_case`, `new_charge`, `reconviction`,
+  `revocation`. `new_case`, `new_charge`, and `reconviction` count only
+  in another case of the person; the other two in any case.
+  `release_violation` and `rearrest` are listed under `not_observable`
+  ("the synthetic source records no such event") and no rate is
+  computed for them.
 - `judicial_dismissal_rate` — charges dismissed with
   `disposition_actor = judge` over charges with a disposition other
   than `pending` or missing; judge: charges whose `disposed_at` falls in
@@ -352,11 +378,14 @@ carries the same text):
 
 Every rate carries `numerator`, `denominator`, and `value` (`null` when
 the denominator is zero); a unit test asserts no numerator exceeds its
-denominator and recounts the simplest metrics from the source files.
-Phase 3's registry must reproduce these values exactly on the golden
-fixture; disposition- and sentence-indexed windowed rates are derivable
-from `subsequent_events.csv` and will join `metrics.json` under a new
-`TRUTH_VERSION` when the registry defines them.
+denominator, that every survival estimate is bounded and nested across
+windows and equals the fixed-window rate when every member is followed,
+and recounts the simplest metrics from the source files. The metrics
+engine reproduces every value exactly: `tests/unit/test_metrics_compute.py`
+over the in-memory golden world and `tests/golden/test_golden_metrics.py`
+over the golden fixture in the database, both through the truth-path
+table in `tests/golden/truth_map.py`. The truth arithmetic imports
+nothing from `judgemetrics.metrics`: it is the independent oracle.
 
 Each truth entry maps to a registry slug
 (`data/reference/metric_registry.yaml`, Phase 3 Step 1;
@@ -372,7 +401,10 @@ entry states the difference in a `truth_note`:
 | `pretrial.release_share`                      | `pretrial_release_share`                                               |
 | `pretrial.statutory_release_count`            | `statutory_release_count` (court only)                                 |
 | `pretrial.unknown_actor_count`                | `unknown_actor_pretrial_count` (court only)                            |
-| `pretrial.windows.<w>.failure_to_appear_rate`, `.new_case_rate`, `.reconviction_rate` | `failure_to_appear_rate`, `new_case_rate`, `reconviction_rate` (`window_days` = `w`; `cohort` is the observation's `eligible_count`, `followed` its `cohort_size`) |
+| `index_events.pretrial_release.windows.<w>.<outcome>_rate` (= `pretrial.windows`) | `failure_to_appear_rate`, `new_case_rate`, `new_charge_rate`, `reconviction_rate`, `revocation_rate` (`window_days` = `w`; `cohort` is the observation's `eligible_count`, `followed` its `cohort_size`, `numerator` its `observed_count`, `value` its `observed_rate`) |
+| `index_events.pretrial_release.windows.<w>.<outcome>_survival` | `failure_to_appear_survival`, `new_case_survival`, `reconviction_survival` (`value` is `observed_rate`, `events` is `observed_count`, `cohort` is both `cohort_size` and `eligible_count`, `lower`/`upper` the bounds) |
+| `index_events.disposition.windows.<w>.<outcome>_rate` | `new_case_rate_after_disposition`, `new_charge_rate_after_disposition`, `reconviction_rate_after_disposition`, `revocation_rate_after_disposition` |
+| `index_events.sentence.windows.<w>.<outcome>_rate` | `new_case_rate_after_sentence`, `new_charge_rate_after_sentence`, `reconviction_rate_after_sentence`, `revocation_rate_after_sentence` |
 | `judicial_dismissal_rate`                     | `judicial_dismissal_rate`                                              |
 | `disposition_distribution`                    | `disposition_distribution` (one observation per `disposition` value)   |
 | `median_days_to_disposition`                  | `median_days_to_disposition` (`n` is the `cohort_size`)                |
@@ -380,15 +412,13 @@ entry states the difference in a `truth_note`:
 | `sentences.incarceration_days_median`, `.probation_days_median` | `incarceration_days_median`, `probation_days_median` |
 | `sentences.incarceration_days_median_by_offense_category` | `incarceration_days_median_by_offense_category` (one observation per `offense_category`) |
 
-The registry's `new_charge_rate`, `release_violation_rate`,
-`revocation_rate`, `rearrest_rate`, the three `*_survival` estimates, and
-the `*_after_disposition` and `*_after_sentence` rates have no truth
-entry under `TRUTH_VERSION` `1`; Step 2 adds them under `TRUTH_VERSION`
-`2` with the semantics `docs/METHODOLOGY.md` states (`release_violation`
-and `rearrest` are not observable for the synthetic source). The frame's
-property tests (`tests/property/test_frame_invariants.py`) already prove
-the pretrial-release cohorts, followed counts, and numerators equal
-`truth.py` on the same in-memory world.
+The registry's `release_violation_rate` and `rearrest_rate` have no
+truth entry: their outcomes are under `not_observable`, the engine
+publishes no observation for them on the synthetic source, and the
+golden suite asserts exactly that. The frame's property tests
+(`tests/property/test_frame_invariants.py`) prove the pretrial-release
+cohorts, followed counts, and numerators equal `truth.py` on every
+in-memory `TINY` world the profile draws.
 
 ## Property invariants (`tests/property/`)
 
@@ -478,11 +508,14 @@ counts it lists changed, and record the bump in `docs/ROADMAP.md`.
 - A revocation is recorded after its case closed (the case does not
   reopen); a bench warrant may be absent when the corpus ends within
   ten days of the failure to appear.
-- Windowed outcome rates in `metrics.json` are computed on the
-  pretrial-release index only; the `subsequent_events.csv` rows for
-  `disposition` and `sentence` index events carry what Phase 3 needs to
-  extend them. Time at risk after a sentence (incarceration deferral) is
-  not modelled in `truth/`.
+- Time at risk is deferred by the index case's own incarceration term
+  only (`index_events.disposition` and `.sentence`); an earlier sentence
+  still running, or a term in another case, is not modelled — the same
+  documented limitation as the metrics engine's, so the two agree.
+- `new_case` is the case's `filed_at`, a business-hour instant the
+  source publishes only through its charges (`cases.csv` carries the
+  date); the engine derives it as the earliest charge filing of the case,
+  which equals `filed_at` because every charge is filed with the case.
 - The `missing_description` share is a package constant rather than a
   `ScaleSpec` field.
 - Synthetic judges never link to FJC judges, and the synthetic world is

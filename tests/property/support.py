@@ -263,6 +263,7 @@ def frame_from_world(world: World, spec: ScaleSpec) -> Frame:
                     "disposition_actor": charge.disposition_actor,
                     "offense_category": charge.offense.offense_category,
                     "severity": charge.offense.severity,
+                    "source_row_id": charge.charge_id,
                 }
             )
         for decision in case.decisions:

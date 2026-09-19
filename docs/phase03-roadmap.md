@@ -2479,7 +2479,14 @@ Conversation is New per phase-boundary hygiene.
       Create `metrics/compute.py`:
       `compute_all(snapshot,
       registry, subjects=None) ->
-      list[ObservationDraft]`
+      ComputeResult` (`drafts`,
+      `not_observable`,
+      `sources_skipped`, `subjects`;
+      shipped so that the
+      not-observable records and the
+      sources without a coverage
+      window are counted rather than
+      lost — spec rot fixed in-step)
       iterating sources with case
       data, subjects (every judge
       with an attributed row in the
@@ -2677,10 +2684,20 @@ Conversation is New per phase-boundary hygiene.
       judge and court; a second
       identical ingest supersedes
       nothing and writes no
-      observation; a run that
-      changes one judge's assignment
-      supersedes only that judge's
-      and its court's observations.
+      observation; a run that moves
+      one assignment from one judge
+      to another supersedes exactly
+      those two judges' observations
+      (spec rot fixed in-step: a
+      court's metrics take the
+      court's cases whatever the
+      gate, so an assignment change
+      cannot move a court's numbers;
+      the court is in the impacted
+      set and recomputed, and the
+      unchanged rule leaves its rows
+      in place, which the test
+      asserts).
     </requirement>
 
     <requirement>
@@ -3132,6 +3149,63 @@ phase-boundary hygiene.
       source; `verify` proves
       reproduction; `publish`
       refuses an incomplete chain.
+      Column layout per kind (Step 2,
+      `docs/DATA_MODEL.md`): a count
+      keeps `observed_count`
+      (`cohort_size` and
+      `eligible_count` are the
+      population); a share and a
+      fixed-window rate keep
+      `observed_count`/`cohort_size`,
+      `observed_rate` (six decimals),
+      and the Wilson bounds, the
+      rate's `eligible_count` being
+      the whole cohort; a survival
+      estimate keeps the events by the
+      window in `observed_count`, the
+      whole cohort in `cohort_size`,
+      `1 - S(w)` in `observed_rate`,
+      and the Greenwood bounds
+      (`value` is null); a
+      distribution has one row per
+      vocabulary value (zero counts
+      included) with the whole map in
+      `distribution`; a median keeps
+      `n` in `cohort_size` and the
+      median in `value`. The
+      `interval_method` is therefore
+      `wilson` for shares and rates,
+      `greenwood` for survival, none
+      otherwise. Members: a
+      `court_case` id may repeat
+      inside one observation (one
+      cohort member per defendant of
+      a disposition-indexed case);
+      `eligible_defendants`'s members
+      are its cases. Helpers to reuse:
+      `metrics.publish.load_observations`
+      (current rows with normalized
+      columns and members),
+      `publish.VERIFIED_COLUMNS`,
+      `metrics.engine.compute_and_publish`,
+      `metrics.snapshot.open_snapshot`
+      (`Snapshot.member_ids(kind)`);
+      `ingest_run.metrics_snapshot_id`
+      (0006) names the snapshot a run's
+      step 13 published from;
+      `metric_snapshot.coverage` is
+      `{source id: {name,
+      coverage_start, coverage_end}}`.
+      The test suite runs with
+      `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST=false`
+      (root conftest); the golden
+      metrics suite computes through
+      `compute_and_publish` as the
+      ingest role with a temporary
+      `snapshot_dir`, and
+      `purge_source` deletes a
+      source's observations before the
+      source row.
     - API v1 conventions:
       `api/routes/*.py` with
       `StrictQuery` allow-lists,

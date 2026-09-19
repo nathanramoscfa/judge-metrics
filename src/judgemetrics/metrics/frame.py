@@ -14,7 +14,10 @@ Schemas (id columns are marked ``*``; ``?`` marks a nullable column):
 - ``cases``: id*, court_id*, filed_at, closed_at?, status, case_type
 - ``assignments``: case_id*, judge_id*, start_at, end_at?
 - ``charges``: id*, case_id*, person_id*, filed_at, disposed_at?,
-  disposition?, disposition_actor?, offense_category, severity
+  disposition?, disposition_actor?, offense_category, severity,
+  source_row_id? (the source's own charge identifier: the deterministic
+  tie-break for a case's lead convicted charge, stable across re-ingests
+  where the canonical id is not)
 - ``decisions``: id*, case_id*, person_id*, judge_id*?, decision_type,
   decision_at, actor_type, discretion, release_at?, detained_flag?,
   release_type? (the release columns come from the decision's pretrial
@@ -93,6 +96,7 @@ SCHEMAS: Mapping[str, Mapping[str, ColumnSpec]] = MappingProxyType(
                 "disposition_actor": pl.String(),
                 "offense_category": pl.String(),
                 "severity": pl.String(),
+                "source_row_id": pl.String(),
             }
         ),
         "decisions": MappingProxyType(

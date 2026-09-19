@@ -58,7 +58,15 @@ from judgemetrics.synthetic.edge_cases import (
     configured_counts,
 )
 from judgemetrics.synthetic.rng import STREAM_NAMES, Streams, derive_stream
-from judgemetrics.synthetic.truth import TRUTH_FILES, TRUTH_VERSION, WINDOWS_DAYS, days_between
+from judgemetrics.synthetic.truth import (
+    INDEX_KINDS,
+    NOT_OBSERVABLE,
+    TRUTH_FILES,
+    TRUTH_VERSION,
+    WINDOWED_OUTCOMES,
+    WINDOWS_DAYS,
+    days_between,
+)
 from judgemetrics.synthetic.vocabulary import (
     ACTOR_TYPES,
     CHARGE_DISPOSITIONS,
@@ -740,6 +748,73 @@ def test_metric_numerators_never_exceed_denominators(dataset: Dataset) -> None:
         )
     for key in ("eligible_cases", "pretrial.windows", "judicial_dismissal_rate", "sentences"):
         assert key in metrics["definitions"]
+
+
+def test_index_event_windows_are_consistent_and_pretrial_is_kept(dataset: Dataset) -> None:
+    """TRUTH_VERSION 2: every index kind carries the windowed cohorts, rates, and survival."""
+    metrics = dataset.metrics
+    assert metrics["index_kinds"] == list(INDEX_KINDS)
+    assert metrics["observable_outcomes"] == list(WINDOWED_OUTCOMES)
+    assert [item["outcome"] for item in metrics["not_observable"]] == list(NOT_OBSERVABLE)
+    assert all("records no such event" in item["reason"] for item in metrics["not_observable"])
+    assert not set(WINDOWED_OUTCOMES) & set(NOT_OBSERVABLE)
+    for subject in (*metrics["judges"].values(), *metrics["courts"].values()):
+        index_events = subject["index_events"]
+        assert set(index_events) == set(INDEX_KINDS)
+        assert subject["pretrial"]["windows"] == index_events["pretrial_release"]["windows"]
+        for kind in INDEX_KINDS:
+            windows = index_events[kind]["windows"]
+            assert set(windows) == {str(w) for w in WINDOWS_DAYS}
+            cohorts = {entry["cohort"] for entry in windows.values()}
+            assert len(cohorts) == 1  # the cohort does not depend on the window
+            followed = [windows[str(w)]["followed"] for w in WINDOWS_DAYS]
+            assert followed == sorted(followed, reverse=True)  # longer windows follow fewer
+            for window in WINDOWS_DAYS:
+                entry = windows[str(window)]
+                assert entry["followed"] <= entry["cohort"]
+                for outcome in WINDOWED_OUTCOMES:
+                    rate = entry[f"{outcome}_rate"]
+                    assert rate["denominator"] == entry["followed"]
+                    survival = entry[f"{outcome}_survival"]
+                    assert (
+                        survival["events"] + survival["censored"] + survival["at_risk"]
+                        == entry["cohort"]
+                    )
+                    if entry["cohort"] == 0:
+                        assert survival["value"] is None
+                        continue
+                    assert 0.0 <= survival["value"] <= 1.0
+                    assert survival["lower"] <= survival["value"] <= survival["upper"]
+                    assert survival["events"] >= rate["numerator"]
+                    if entry["followed"] == entry["cohort"]:
+                        # Fully followed: the Kaplan-Meier incidence is the fixed-window rate.
+                        assert survival["value"] == rate["value"]
+                        assert survival["events"] == rate["numerator"]
+            # Windows are nested: a longer window never loses an outcome.
+            for outcome in WINDOWED_OUTCOMES:
+                values = [windows[str(w)][f"{outcome}_survival"]["value"] for w in WINDOWS_DAYS]
+                present = [v for v in values if v is not None]
+                assert present == sorted(present)
+        released = subject["pretrial"]["released_count"]
+        assert index_events["pretrial_release"]["windows"]["30"]["cohort"] == released
+        assert index_events["sentence"]["windows"]["30"]["cohort"] == subject["sentences"]["count"]
+        assert (
+            index_events["disposition"]["windows"]["30"]["cohort"]
+            == subject["median_days_to_disposition"]["n"]
+        )
+
+
+def test_the_manifest_carries_the_corpus_window(dataset: Dataset) -> None:
+    manifest = dataset.manifest
+    assert manifest.corpus_start == dataset.spec.corpus_start
+    assert manifest.corpus_end == dataset.spec.corpus_end
+    payload = json.loads((dataset.root / "manifest.json").read_text(encoding="utf-8"))
+    assert payload["corpus"] == {
+        "start": dataset.spec.corpus_start.isoformat(),
+        "end": dataset.spec.corpus_end.isoformat(),
+    }
+    assert payload["corpus"]["start"] == dataset.metrics["corpus"]["start"]
+    assert payload["corpus"]["end"] == dataset.metrics["corpus"]["end"]
 
 
 def test_metrics_agree_with_the_source_files(dataset: Dataset) -> None:

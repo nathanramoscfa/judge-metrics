@@ -220,6 +220,47 @@ def test_manifest_validation_checks_generator_version_and_listed_files() -> None
     assert not result.ok and "unreadable manifest" in result.errors[0]
 
 
+def test_manifest_validation_requires_the_corpus_window() -> None:
+    connector = _connector()
+    manifest = json.loads((GOLDEN / MANIFEST_FILE).read_text(encoding="utf-8"))
+    without = {k: v for k, v in manifest.items() if k != "corpus"}
+    result = connector.validate_raw(_raw_for(MANIFEST_FILE, json.dumps(without).encode()))
+    assert not result.ok and "no `corpus`" in result.errors[0]
+    inverted = dict(manifest, corpus={"start": "2021-12-31", "end": "2019-01-01"})
+    result = connector.validate_raw(_raw_for(MANIFEST_FILE, json.dumps(inverted).encode()))
+    assert not result.ok and "inverted" in result.errors[0]
+    garbled = dict(manifest, corpus={"start": "yesterday", "end": "2021-12-31"})
+    result = connector.validate_raw(_raw_for(MANIFEST_FILE, json.dumps(garbled).encode()))
+    assert not result.ok and "not ISO dates" in result.errors[0]
+
+
+def test_coverage_window_comes_from_the_manifest_corpus_after_load_context() -> None:
+    from datetime import date
+
+    from judgemetrics.ingest.base import SupportsCoverage
+
+    connector = _connector()
+    assert isinstance(connector, SupportsCoverage)
+    assert connector.coverage_window() is None  # not known before load_context
+    connector.load_context(_raws(connector))
+    assert connector.coverage_window() == (date(2019, 1, 1), date(2021, 12, 31))
+    manifest = json.loads((GOLDEN / MANIFEST_FILE).read_text(encoding="utf-8"))
+    assert manifest["corpus"] == {"start": "2019-01-01", "end": "2021-12-31"}
+
+
+def test_source_info_declares_the_observable_outcomes() -> None:
+    from judgemetrics.ingest.fjc.connector import FjcConnector
+    from judgemetrics.ingest.synthetic.sources import OBSERVABLE_OUTCOMES
+    from judgemetrics.normalization import vocabulary
+    from judgemetrics.synthetic.truth import NOT_OBSERVABLE, WINDOWED_OUTCOMES
+
+    assert SyntheticConnector.source_info.observable_outcomes == OBSERVABLE_OUTCOMES
+    assert set(OBSERVABLE_OUTCOMES) == set(WINDOWED_OUTCOMES)
+    assert all(vocabulary.is_known("justice_event_type", o) for o in OBSERVABLE_OUTCOMES)
+    assert not set(OBSERVABLE_OUTCOMES) & set(NOT_OBSERVABLE)
+    assert FjcConnector.source_info.observable_outcomes == ()
+
+
 def test_load_context_fails_on_manifest_drift(tmp_path: Path) -> None:
     connector = _connector()
     raws = _raws(connector)

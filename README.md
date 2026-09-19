@@ -45,7 +45,15 @@ append-only audit log (`judgemetrics er run|review list|review decide`,
 [`docs/ENTITY_RESOLUTION.md`](docs/ENTITY_RESOLUTION.md)); Step 4 the
 case, timeline, judge-cases, and coverage endpoints with a `synthetic`
 flag on every response, the case page, the judge cases panel and list,
-the coverage page, and the site-wide demo-data banner. See:
+the coverage page, and the site-wide demo-data banner. Phase 3 (the
+metrics engine and the complete local demo) is in progress: Step 1
+shipped the versioned metric registry, the analytic frame, and the
+generated methodology ([`docs/METHODOLOGY.md`](docs/METHODOLOGY.md));
+Step 2 the computation engine — `uv run poe compute-metrics` exports a
+hashed Parquet snapshot, computes every registry metric for every judge
+and court with its members, and publishes observations that
+`uv run judgemetrics metrics verify` reproduces exactly, with pipeline
+step 13 recomputing the subjects an ingest touched. See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -91,7 +99,9 @@ uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
 uv run judgemetrics er run   # recompute person candidates and apply system merges (also: er review list|decide)
 uv run judgemetrics methodology render --check   # docs/METHODOLOGY.md equals the metric registry render (omit --check to rewrite it)
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render
+uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
+uv run judgemetrics metrics verify   # recompute every current observation from its snapshot; exit 1 on any mismatch
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render, metrics compute|verify
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`

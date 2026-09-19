@@ -146,14 +146,16 @@ uv run judgemetrics er run [--source synthetic]   # recompute person candidates,
 uv run judgemetrics er review list [--json]       # the manual-review queue: public keys, stage, score, feature flags
 uv run judgemetrics er review decide <id> --decision matched|rejected --reviewer <label> --reason <text>
 uv run judgemetrics methodology render [--out docs/METHODOLOGY.md] [--check]   # docs/METHODOLOGY.md from the metric registry; --check exits 1 on drift
+uv run poe compute-metrics                       # judgemetrics metrics compute: snapshot → every registry metric for every judge and court → observations (ingest role)
+uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
+uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
 random value in the untracked `.env`; the tests set a fixed one).
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
-`pnpm e2e`, `pnpm generate:api`. Later steps add `compute-metrics`
-(`judgemetrics metrics compute|verify`) and `bootstrap`.
+`pnpm e2e`, `pnpm generate:api`. A later step adds `bootstrap`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -536,6 +538,57 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   person ids) in about a millisecond per example, check the window
   invariants in one pass per cohort because cohort building dominates,
   and derandomize the truth-equality test.
+- Computation engine (Phase 3 Step 2, docs/ARCHITECTURE.md "Metrics
+  engine"): `metrics/snapshot.py` exports the eleven tables a metric
+  reads through SQLAlchemy Core into Polars and writes Parquet under
+  `<snapshot_dir>/<content_hash>/` (`JUDGEMETRICS_SNAPSHOT_DIR`, default
+  `data/snapshots`, git-ignored; the hash is the sha256 over the sorted
+  `table:sha256` lines; rows ordered by id and Polars writes
+  deterministically, so equal data reuses the existing directory — never
+  overwritten, `mkdir(exist_ok=False)`); DuckDB is read-only over those
+  files (in-memory database, views through the relation API, parameterized
+  queries, a hash validated as 64 hex characters before it becomes a
+  path, no extension installed or loaded — the bundled Parquet reader is
+  in the wheel) and Polars does the arithmetic; timestamps are stored as
+  naive UTC because DuckDB returns aware values only through `pytz`. The
+  frame's `charges` carries `source_row_id` because the lead convicted
+  charge breaks severity ties by the source's charge id (UUIDs would make
+  a re-ingest choose differently; the demo world has 51 such ties). The
+  frame's `justice_events` are the stored any-case rows plus `new_case`,
+  `new_charge`, and `reconviction` derived at load time from the merged
+  person's charges (the connector derives per participant id before
+  merges); stored other-case rows are not read. `compute.py` dispatches
+  on registry `kind`; shares, rates, and Kaplan-Meier estimates live in
+  `observed_rate` (six decimals) with the bounds, medians in `value`,
+  distributions in `distribution` (one observation per vocabulary value,
+  zero counts included); `eligible_defendants`'s members are the cases
+  (never a person id); a not-observable outcome yields no observation.
+  `publish.py` refuses the whole publish (`ProvenanceError`, before any
+  write) when a member id is not in the snapshot's tables, supersedes
+  instead of deleting (`superseded_at`), skips a subject whose drafts
+  equal its current observations column for column and member for
+  member, revives a superseded row the same snapshot and definition
+  produce again (the unique key spans superseded rows), and batches 500
+  rows per statement; `code_version` is `<package version>+<short sha>`.
+  `verify.py` compares `VERIFIED_COLUMNS` and the member multiset,
+  reports an observation `unverifiable` when the current registry does
+  not carry its version, and the CLI exits 1 on any problem. Pipeline
+  step 13 (`Settings.metrics_recompute_on_ingest`, default true; the
+  root conftest sets `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST=false`
+  for the suite) computes the impacted subjects — the closure over the
+  touched cases and their persons' other cases, so a changed charge or
+  event moves every cohort it enters — inside the ingest transaction and
+  records the snapshot in `ingest_run.metrics_snapshot_id` (migration
+  0006: a column, not a `checkpoint` key, because the runner hands the
+  whole checkpoint back to a checkpointing connector). Test fixtures
+  that purge a source delete its observations first (RESTRICT FK) and
+  the snapshot rows nothing cites. `SourceInfo.observable_outcomes` and
+  the `SupportsCoverage` protocol fill `source.observable_outcomes` and
+  `coverage_*` (written only when they differ); the synthetic manifest
+  carries `corpus` from `GENERATOR_VERSION` 2 and the truth's
+  `TRUTH_VERSION` 2 is the independent oracle (`tests/golden/truth_map.py`
+  maps every truth path to its slug for both the unit and the golden
+  suite). `duckdb` is a runtime dependency; `pytz` and `pyarrow` are not.
 
 ## End-of-session report (from the brief)
 

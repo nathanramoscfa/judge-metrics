@@ -10,6 +10,16 @@ dismissals keep their actor, the planted data-quality issues exist, no
 log line carries a participant attribute, and the real connector is
 refused in production. The ``seed`` CLI tests commit nothing: in
 production the run is refused before anything is generated.
+
+Phase 3 Step 2: the run writes the source's coverage window and
+observable outcomes (and an FJC run leaves them null and empty), and
+pipeline step 13 — enabled per test through
+``Settings(metrics_recompute_on_ingest=True)`` with a temporary snapshot
+directory — publishes observations for every golden judge and court on
+the first run, supersedes nothing and writes nothing on an identical
+rerun, and after a run that moves one assignment from one judge to
+another supersedes exactly those two judges' observations while every
+other subject's rows stay in place; an FJC run computes nothing.
 """
 
 from __future__ import annotations
@@ -23,6 +33,7 @@ import re
 import shutil
 from collections import Counter
 from collections.abc import Iterator
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +57,9 @@ from judgemetrics.db.models import (
     IngestRun,
     IngestRunStatus,
     IssueSeverity,
+    Judge,
     JusticeEvent,
+    MetricObservation,
     Person,
     PersonIdentifier,
     PretrialRelease,
@@ -54,7 +67,7 @@ from judgemetrics.db.models import (
     Source,
     SourceRecord,
 )
-from judgemetrics.db.models.enums import ActorType
+from judgemetrics.db.models.enums import ActorType, SubjectType
 from judgemetrics.ingest.runner import run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.ingest.synthetic.connector import SyntheticConnector
@@ -62,7 +75,7 @@ from judgemetrics.ingest.synthetic.schema import SOURCE_FILES
 from judgemetrics.logging import configure_logging
 from judgemetrics.security.identifiers import hash_identifier, name_dob_value
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.conftest import purge_source
+from tests.integration.conftest import FJC_FIXTURES, purge_source
 
 pytestmark = pytest.mark.integration
 
@@ -132,8 +145,8 @@ def store(tmp_path: Path) -> FilesystemRawObjectStore:
     return FilesystemRawObjectStore(tmp_path / "lake")
 
 
-def _settings(env: str = "test") -> Settings:
-    return Settings(env=env, identifier_pepper=PEPPER)
+def _settings(env: str = "test", **overrides: Any) -> Settings:
+    return Settings(env=env, identifier_pepper=PEPPER, **overrides)
 
 
 def _run(
@@ -143,12 +156,13 @@ def _run(
     fixture: Path = GOLDEN,
     force: bool = False,
     env: str = "test",
+    settings: Settings | None = None,
 ) -> IngestRun:
     return run_ingest(
         SOURCE_ID,
         session=session,
         store=store,
-        settings=_settings(env),
+        settings=settings if settings is not None else _settings(env),
         from_fixture=fixture,
         force=force,
     )
@@ -612,6 +626,157 @@ def test_planted_items_produce_exactly_the_predicted_issues(
         assert not HEX64.search(issue.description)
         for participant in _rows("participants.csv"):
             assert participant["full_name"].strip() not in issue.description
+
+
+# --- coverage and pipeline step 13 -------------------------------------------------------
+
+
+def test_the_run_writes_the_coverage_window_and_observable_outcomes(
+    clean_session: Session, store: FilesystemRawObjectStore
+) -> None:
+    session = clean_session
+    assert _run(session, store).status is IngestRunStatus.SUCCEEDED
+    source = session.scalar(select(Source).where(Source.name == SOURCE_ID))
+    assert source is not None
+    assert (source.coverage_start, source.coverage_end) == (date(2019, 1, 1), date(2021, 12, 31))
+    assert source.observable_outcomes == [
+        "new_case",
+        "new_charge",
+        "reconviction",
+        "failure_to_appear",
+        "revocation",
+    ]
+    # An unchanged rerun rewrites neither column.
+    updated_at = source.updated_at
+    assert _run(session, store).status is IngestRunStatus.SUCCEEDED
+    session.expire_all()
+    source = session.scalar(select(Source).where(Source.name == SOURCE_ID))
+    assert source is not None and source.updated_at == updated_at
+
+
+def test_an_fjc_run_leaves_coverage_null_and_computes_nothing(
+    clean_session: Session, store: FilesystemRawObjectStore, tmp_path: Path
+) -> None:
+    session = clean_session
+    settings = _settings(metrics_recompute_on_ingest=True, snapshot_dir=tmp_path / "snapshots")
+    run = run_ingest(
+        "fjc", session=session, store=store, settings=settings, from_fixture=FJC_FIXTURES
+    )
+    assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
+    source = session.scalar(select(Source).where(Source.name == "fjc"))
+    assert source is not None
+    assert source.coverage_start is None and source.coverage_end is None
+    assert source.observable_outcomes == []
+    assert run.metrics_snapshot_id is None
+    assert _count(session, "metric_observation") == 0
+    assert not (tmp_path / "snapshots").exists()
+
+
+def _current_by_subject(session: Session) -> dict[tuple[str, Any], set[Any]]:
+    """Current observation ids per (subject type, subject id)."""
+    grouped: dict[tuple[str, Any], set[Any]] = {}
+    for row in session.execute(
+        select(
+            MetricObservation.subject_type, MetricObservation.subject_id, MetricObservation.id
+        ).where(MetricObservation.superseded_at.is_(None))
+    ).all():
+        grouped.setdefault((row[0].value, row[1]), set()).add(row[2])
+    return grouped
+
+
+def _judge_id(session: Session, code: str) -> Any:
+    judge_id = session.scalar(
+        select(Judge.id).where(Judge.external_ids["synthetic_judge_code"].astext == code)
+    )
+    assert judge_id is not None, code
+    return judge_id
+
+
+def test_step_13_recomputes_only_the_subjects_a_run_changed(
+    clean_session: Session,
+    store: FilesystemRawObjectStore,
+    tmp_path: Path,
+    captured_logs: io.StringIO,
+) -> None:
+    session = clean_session
+    settings = _settings(metrics_recompute_on_ingest=True, snapshot_dir=tmp_path / "snapshots")
+    # 1. The golden ingest publishes observations for every golden judge and court.
+    first = _run(session, store, settings=settings)
+    assert first.status is IngestRunStatus.SUCCEEDED, first.failure_reason
+    assert first.metrics_snapshot_id is not None
+    before = _current_by_subject(session)
+    judges = {row["judge_code"] for row in _rows("judges.csv")}
+    courts = {row["court_code"] for row in _rows("courts.csv")}
+    assert {key for key in before if key[0] == SubjectType.JUDGE.value} == {
+        (SubjectType.JUDGE.value, _judge_id(session, code)) for code in judges
+    }
+    assert sum(1 for key in before if key[0] == SubjectType.COURT.value) == len(courts)
+    assert all(ids for ids in before.values())
+    assert _count(session, "metric_observation") == sum(len(ids) for ids in before.values())
+    assert (tmp_path / "snapshots").is_dir()
+
+    # 2. An identical rerun touches no subject: nothing is superseded or written.
+    second = _run(session, store, settings=settings)
+    assert second.status is IngestRunStatus.SUCCEEDED, second.failure_reason
+    assert second.metrics_snapshot_id is None
+    session.expire_all()
+    assert _current_by_subject(session) == before
+    assert _count(session, "metric_observation") == sum(len(ids) for ids in before.values())
+
+    # 3. Moving one assignment from J-0001 to J-0002 supersedes exactly those two
+    #    judges' observations; every other subject (the courts included) stays.
+    edited = tmp_path / "edited"
+    shutil.copytree(GOLDEN, edited)
+    assignments = edited / "source" / "assignments.csv"
+    with assignments.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    header = rows[0]
+    judge_column = header.index("judge_code")
+    target = next(row for row in rows[1:] if row[judge_column] == "J-0001")
+    case_number = target[header.index("case_number")]
+    assert all(
+        row[judge_column] != "J-0002"
+        for row in rows[1:]
+        if row[header.index("case_number")] == case_number
+    )
+    target[judge_column] = "J-0002"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+    assignments.write_text(out.getvalue(), encoding="utf-8")
+    manifest = json.loads((edited / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"]["source/assignments.csv"] = hashlib.sha256(
+        assignments.read_bytes()
+    ).hexdigest()
+    (edited / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    third = _run(session, store, fixture=edited, settings=settings)
+    assert third.status is IngestRunStatus.SUCCEEDED, third.failure_reason
+    assert third.metrics_snapshot_id is not None
+    assert third.metrics_snapshot_id != first.metrics_snapshot_id
+    session.expire_all()
+    after = _current_by_subject(session)
+    changed = {key for key in before if before[key] != after.get(key)}
+    assert changed == {
+        (SubjectType.JUDGE.value, _judge_id(session, "J-0001")),
+        (SubjectType.JUDGE.value, _judge_id(session, "J-0002")),
+    }
+    superseded = {
+        row[0]
+        for row in session.execute(
+            select(MetricObservation.id).where(MetricObservation.superseded_at.is_not(None))
+        ).all()
+    }
+    assert superseded == set().union(*(before[key] for key in changed))
+    # Every touched case's subjects were recomputed (the impacted set is the
+    # whole golden world here: every assignment row was re-parsed); only the
+    # two judges' numbers changed.
+    lines = [
+        json.loads(line)
+        for line in captured_logs.getvalue().splitlines()
+        if '"ingest.metrics.recomputed"' in line
+    ]
+    assert [entry["impacted"] for entry in lines] == [len(judges) + len(courts)] * 2
+    assert lines[-1]["subjects_published"] == 2
+    assert lines[-1]["subjects_unchanged"] == len(judges) + len(courts) - 2
 
 
 # --- refusals ---------------------------------------------------------------------------

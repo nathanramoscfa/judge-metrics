@@ -4,8 +4,9 @@
 ``generate_dataset(seed, scale, out)`` builds the world, simulates the
 cases, assigns identifiers, plants the edge cases, and writes ``source/``,
 ``truth/``, and ``manifest.json`` (seed, scale, generator and truth
-versions, row counts per CSV, and the sha256 of every source and truth
-file). It refuses a directory that already holds a manifest or generated
+versions, the corpus window — the first and last day of the corpus, which
+the synthetic connector reports as the source's coverage window — row
+counts per CSV, and the sha256 of every source and truth file). It refuses a directory that already holds a manifest or generated
 files unless ``force`` is set, and it never deletes anything.
 ``verify_dataset(out)`` recomputes the hashes and reports every mismatch,
 missing file, and unlisted file under ``source/`` and ``truth/``.
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -45,9 +47,13 @@ class Manifest:
     counts: dict[str, int]
     files: dict[str, str]
     path: Path = field(compare=False)
+    # The corpus window (GENERATOR_VERSION 2): the first and last day a case
+    # can be filed, inclusive; ``None`` only when reading a version-1 manifest.
+    corpus_start: date | None = None
+    corpus_end: date | None = None
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "seed": self.seed,
             "scale": self.scale,
             "generator_version": self.generator_version,
@@ -55,10 +61,21 @@ class Manifest:
             "counts": dict(sorted(self.counts.items())),
             "files": dict(sorted(self.files.items())),
         }
+        if self.corpus_start is not None and self.corpus_end is not None:
+            payload["corpus"] = {
+                "start": self.corpus_start.isoformat(),
+                "end": self.corpus_end.isoformat(),
+            }
+        return payload
 
     @classmethod
     def load(cls, path: Path) -> Manifest:
         payload = json.loads(path.read_text(encoding="utf-8"))
+        corpus = payload.get("corpus")
+        start = end = None
+        if isinstance(corpus, dict):
+            start = date.fromisoformat(str(corpus["start"]))
+            end = date.fromisoformat(str(corpus["end"]))
         return cls(
             seed=int(payload["seed"]),
             scale=str(payload["scale"]),
@@ -67,6 +84,8 @@ class Manifest:
             counts={str(k): int(v) for k, v in payload["counts"].items()},
             files={str(k): str(v) for k, v in payload["files"].items()},
             path=path,
+            corpus_start=start,
+            corpus_end=end,
         )
 
 
@@ -119,6 +138,8 @@ def generate_dataset(seed: int, scale: str, out: Path, *, force: bool = False) -
         counts=counts,
         files=files,
         path=manifest_path,
+        corpus_start=spec.corpus_start,
+        corpus_end=spec.corpus_end,
     )
     write_json(manifest_path, manifest.to_json())
     return manifest

@@ -25,6 +25,13 @@ warns once, naming the variable.
 Hypothesis profiles: ``ci`` (50 examples, no deadline) and ``dev`` (20
 examples, no deadline: generating a dataset takes longer than the default
 200 ms deadline), selected by ``HYPOTHESIS_PROFILE`` (CI sets ``ci``).
+
+Pipeline step 13 (Phase 3 Step 2) is off for the whole suite:
+``JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST=false`` is set in the process
+environment before any ``Settings`` is built, so the fixture ingests do
+not export snapshots or publish observations; the step-13 tests enable it
+per test with ``Settings(metrics_recompute_on_ingest=True)`` and point
+``snapshot_dir`` at a temporary directory.
 """
 
 from __future__ import annotations
@@ -66,18 +73,26 @@ class ScratchDatabaseUnsetWarning(UserWarning):
     """The suite fell back to the configured database (see the module docstring)."""
 
 
+RECOMPUTE_VARIABLE = "JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST"
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _test_identifier_pepper() -> Iterator[None]:
-    """Every settings object in the suite sees the fixed test pepper."""
-    previous = os.environ.get("JUDGEMETRICS_IDENTIFIER_PEPPER")
+    """Every settings object in the suite sees the fixed test pepper and step 13 off."""
+    previous = {
+        name: os.environ.get(name)
+        for name in ("JUDGEMETRICS_IDENTIFIER_PEPPER", RECOMPUTE_VARIABLE)
+    }
     os.environ["JUDGEMETRICS_IDENTIFIER_PEPPER"] = TEST_IDENTIFIER_PEPPER
+    os.environ[RECOMPUTE_VARIABLE] = "false"
     try:
         yield
     finally:
-        if previous is None:
-            os.environ.pop("JUDGEMETRICS_IDENTIFIER_PEPPER", None)
-        else:
-            os.environ["JUDGEMETRICS_IDENTIFIER_PEPPER"] = previous
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 @pytest.fixture(autouse=True)

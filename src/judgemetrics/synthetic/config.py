@@ -3,8 +3,10 @@
 
 ``GENERATOR_VERSION`` is written to every manifest and must be bumped
 whenever the output for a fixed seed changes (a new draw, a new column, a
-changed constant); the golden fixture under ``tests/fixtures/golden/`` is
-then regenerated, never hand-edited (docs/SYNTHETIC_DATA.md).
+changed constant, a manifest schema change); the golden fixture under
+``tests/fixtures/golden/`` is then regenerated, never hand-edited
+(docs/SYNTHETIC_DATA.md). Version ``2`` (Phase 3 Step 2) adds the corpus
+dates to the manifest; ``source/`` is byte-identical to version ``1``.
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-GENERATOR_VERSION = "1"
+GENERATOR_VERSION = "2"
 
 # The brief's synthetic demo dataset minimums (<synthetic_demo_dataset>).
 BRIEF_MINIMUM_COURTS = 5

@@ -1,4 +1,8 @@
 {
+  "corpus": {
+    "end": "2021-12-31",
+    "start": "2019-01-01"
+  },
   "counts": {
     "source/assignments.csv": 81,
     "source/cases.csv": 63,
@@ -24,15 +28,15 @@
     "source/judges.csv": "3374e5e528cbd3cc52cd419f9a23d79826eef15fd858e854519b980c1d445062",
     "source/participants.csv": "44680fc41077c50b3b8a0e8321fcd37ded748bab9567b46c278ba60ee771bb23",
     "source/sentences.csv": "9717d01d3d6e4630c8880653df32c6cc35c52fd26119335eb1fbde189c7ef484",
-    "truth/README.md": "f446d76983e7095ce54b43a11941f1e1a550aba8ac143ee2dd82384c8f177f16",
-    "truth/metrics.json": "122f155d4eb4a8f9fb406bc7b82a737b0e20cef6d06f34dff4b0d4a990f13914",
+    "truth/README.md": "2f399c53a53060405e423b5ef5b225fb78028b35f6a2460f6bd92a3b20a8aca1",
+    "truth/metrics.json": "d48281822eeffee7a01193e7c6654fa2f48449759ec69fd9c5ceb8e7c1a62302",
     "truth/persons.csv": "ef27fc6e3db81316c2e756ffeba596ab3328d593e9d206ec6f5ecaf5539dc06a",
     "truth/planted.csv": "a7000b60b963c9ab2a7f2fc6742536ec76de973e44e96453923c99b585dd0d57",
     "truth/resolution_expectations.csv": "8c2697da23e8b768d9f512595eb28da127c830f97a5594086dd845e02d13c09f",
     "truth/subsequent_events.csv": "220268d7fde84583f4d94d77afbd7bf931231d1868e509361023c6aa80d77a90"
   },
-  "generator_version": "1",
+  "generator_version": "2",
   "scale": "golden",
   "seed": 7,
-  "truth_version": "1"
+  "truth_version": "2"
 }

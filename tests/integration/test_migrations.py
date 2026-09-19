@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0004): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0006): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -149,7 +149,8 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
     assert "uq_metric_snapshot_content_hash" in uniques["metric_snapshot"]
-    assert current_revision(migrated_database) == head_revision() == "0005"
+    assert "ix_ingest_run_metrics_snapshot_id" in indexes["ingest_run"]
+    assert current_revision(migrated_database) == head_revision() == "0006"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -197,6 +198,15 @@ def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -
         assert columns[("source", "coverage_start")] == ("date", True)
         assert columns[("source", "coverage_end")] == ("date", True)
         assert columns[("source", "observable_outcomes")] == ("jsonb", False)
+        # Revision 0006: the snapshot a run's step 13 published from (nullable, RESTRICT).
+        assert columns[("ingest_run", "metrics_snapshot_id")] == ("uuid", True)
+        rule = connection.execute(
+            text(
+                "SELECT rc.delete_rule FROM information_schema.referential_constraints rc "
+                "WHERE rc.constraint_name = 'fk_ingest_run_metrics_snapshot_id_metric_snapshot'"
+            )
+        ).scalar()
+        assert rule == "RESTRICT"
         key = connection.execute(
             text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_metric_observation_key'")
         ).scalar()

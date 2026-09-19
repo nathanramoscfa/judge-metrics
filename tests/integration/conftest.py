@@ -20,7 +20,11 @@ fixture first purges every row of the ``synthetic`` source — on the
 fallback database that is the demo seed, which ``uv run poe seed``
 restores in seconds — and purges the source again at teardown. The
 merges the ingest performs write ``audit_log`` rows that are append-only
-by trigger and therefore stay; they carry ids and counts only.
+by trigger and therefore stay; they carry ids and counts only. Metric
+observations of the source (Phase 3 Step 2: their members cascade) are
+purged before the source row, and snapshot rows nothing references any
+more go with them, so the golden metrics suite can commit observations
+and the module teardown still empties the source.
 """
 
 from __future__ import annotations
@@ -54,6 +58,8 @@ from judgemetrics.db.models import (
     JudgeService,
     Jurisdiction,
     JusticeEvent,
+    MetricObservation,
+    MetricSnapshot,
     Person,
     PersonIdentifier,
     PretrialRelease,
@@ -165,6 +171,22 @@ def purge_source(session: Session, name: str) -> None:
     if source_id is None:
         return
     records = select(SourceRecord.id).where(SourceRecord.source_id == source_id)
+    # Metrics first: observations (members cascade) reference the source and
+    # runs reference snapshots; a snapshot nothing cites any more is dropped.
+    session.execute(delete(MetricObservation).where(MetricObservation.source_id == source_id))
+    session.execute(
+        update(IngestRun).where(IngestRun.source_id == source_id).values(metrics_snapshot_id=None)
+    )
+    session.execute(
+        delete(MetricSnapshot).where(
+            ~MetricSnapshot.id.in_(select(MetricObservation.snapshot_id)),
+            ~MetricSnapshot.id.in_(
+                select(IngestRun.metrics_snapshot_id).where(
+                    IngestRun.metrics_snapshot_id.is_not(None)
+                )
+            ),
+        )
+    )
     session.execute(delete(DataQualityIssue).where(DataQualityIssue.source_record_id.in_(records)))
     session.execute(delete(JusticeEvent).where(JusticeEvent.source_record_id.in_(records)))
     decisions = select(Decision.id).where(Decision.source_record_id.in_(records))

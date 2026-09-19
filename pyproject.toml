@@ -22,6 +22,7 @@ dependencies = [
     "alembic>=1.20.0",
     "boto3>=1.43.95",
     "cryptography>=50.0.1",
+    "duckdb>=1.5.5",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "polars>=1.44.2",
@@ -116,7 +117,7 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later steps add: compute-metrics, bootstrap.
+# Later steps add: bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
@@ -153,3 +154,7 @@ ingest-fjc = "judgemetrics ingest run fjc"
 # skipped when its manifest is current) and ingest it through the synthetic
 # connector as the ingest role; refused in production.
 seed = "judgemetrics seed"
+# Metrics: export a snapshot under JUDGEMETRICS_SNAPSHOT_DIR, compute every
+# registry metric for every judge and court, and publish the observations
+# as the ingest role (`judgemetrics metrics verify` recomputes them).
+compute-metrics = "judgemetrics metrics compute"

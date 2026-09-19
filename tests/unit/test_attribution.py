@@ -140,6 +140,7 @@ def frame() -> Frame:
                 "disposition_actor": actor,
                 "offense_category": "drug",
                 "severity": "felony_3",
+                "source_row_id": charge_id,
             }
             for charge_id, case_id, disposed_at, disposition, actor in (
                 ("H1", "C1", _at(9), "dismissed", "judge"),  # inside J1's interval

@@ -9,6 +9,7 @@ What lives here, and what never enters the repository.
 | `data/fixtures/`   | yes     | Reserved for shared data fixtures that are not test-only. Today every fixture is test-only and lives under `tests/fixtures/` (the FJC excerpt in `tests/fixtures/fjc/`). |
 | `data/lake/`       | no      | The default local raw object lake (`JUDGEMETRICS_RAW_STORE_URL=file://./data/lake`): immutable, content-addressed source artifacts written by `judgemetrics ingest run`. With the Compose services the lake is the MinIO bucket instead (`s3://judgemetrics-raw`). |
 | `data/synthetic/`  | no      | Generated synthetic justice datasets (`judgemetrics synthetic generate`), one directory per seed, reproducible from the seed; the golden fixture is tracked under `tests/fixtures/golden/`. |
+| `data/snapshots/`  | no      | The metrics engine's snapshots (`JUDGEMETRICS_SNAPSHOT_DIR`): one directory per content hash holding the Parquet export every observation is computed from (`<hash>/<table>.parquet` for the eleven exported tables plus `manifest.json`), written by `judgemetrics metrics compute` and pipeline step 13, never overwritten, and reused when the same data is exported again; `judgemetrics metrics verify` recomputes every observation from them. No restricted table is ever exported. |
 
 `data/lake/`, `data/raw/`, `data/snapshots/`, and `data/synthetic/` are
 ignored by `.gitignore`. A raw artifact is never edited or deleted by
