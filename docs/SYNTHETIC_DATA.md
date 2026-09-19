@@ -358,6 +358,38 @@ fixture; disposition- and sentence-indexed windowed rates are derivable
 from `subsequent_events.csv` and will join `metrics.json` under a new
 `TRUTH_VERSION` when the registry defines them.
 
+Each truth entry maps to a registry slug
+(`data/reference/metric_registry.yaml`, Phase 3 Step 1;
+`docs/METHODOLOGY.md`), and a unit test holds the prose of the pretrial
+and dismissal entries equal to the truth's `definitions` text unless the
+entry states the difference in a `truth_note`:
+
+| Truth entry                                   | Registry slug                                                          |
+|-----------------------------------------------|------------------------------------------------------------------------|
+| `eligible_cases`, `eligible_defendants`       | `eligible_cases`, `eligible_defendants`                                |
+| `pretrial.decisions`                          | `pretrial_decisions`                                                   |
+| `pretrial.released_count`, `.detained_count`  | `pretrial_released`, `pretrial_detained`                               |
+| `pretrial.release_share`                      | `pretrial_release_share`                                               |
+| `pretrial.statutory_release_count`            | `statutory_release_count` (court only)                                 |
+| `pretrial.unknown_actor_count`                | `unknown_actor_pretrial_count` (court only)                            |
+| `pretrial.windows.<w>.failure_to_appear_rate`, `.new_case_rate`, `.reconviction_rate` | `failure_to_appear_rate`, `new_case_rate`, `reconviction_rate` (`window_days` = `w`; `cohort` is the observation's `eligible_count`, `followed` its `cohort_size`) |
+| `judicial_dismissal_rate`                     | `judicial_dismissal_rate`                                              |
+| `disposition_distribution`                    | `disposition_distribution` (one observation per `disposition` value)   |
+| `median_days_to_disposition`                  | `median_days_to_disposition` (`n` is the `cohort_size`)                |
+| `sentences.count`                             | `sentence_count`                                                       |
+| `sentences.incarceration_days_median`, `.probation_days_median` | `incarceration_days_median`, `probation_days_median` |
+| `sentences.incarceration_days_median_by_offense_category` | `incarceration_days_median_by_offense_category` (one observation per `offense_category`) |
+
+The registry's `new_charge_rate`, `release_violation_rate`,
+`revocation_rate`, `rearrest_rate`, the three `*_survival` estimates, and
+the `*_after_disposition` and `*_after_sentence` rates have no truth
+entry under `TRUTH_VERSION` `1`; Step 2 adds them under `TRUTH_VERSION`
+`2` with the semantics `docs/METHODOLOGY.md` states (`release_violation`
+and `rearrest` are not observable for the synthetic source). The frame's
+property tests (`tests/property/test_frame_invariants.py`) already prove
+the pretrial-release cohorts, followed counts, and numerators equal
+`truth.py` on the same in-memory world.
+
 ## Property invariants (`tests/property/`)
 
 The brief's property tests (`<testing_strategy>`) run with Hypothesis

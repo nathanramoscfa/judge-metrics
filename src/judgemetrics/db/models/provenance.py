@@ -16,10 +16,10 @@ record and is not parsed again.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,6 +46,16 @@ class Source(UUIDPrimaryKey, Timestamps, Base):
     access_method: Mapped[str] = mapped_column(String(64), nullable=False)
     terms_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONBDict, nullable=False, default=dict, server_default="{}"
+    )
+    # Revision 0005: the window the source's records cover (the metrics
+    # engine right-censors follow-up at the day after `coverage_end`) and
+    # the `justice_event_type` values the source can document; a metric
+    # whose outcome the source cannot observe is not published for it
+    # (docs/METHODOLOGY.md). Step 2's connectors fill them.
+    coverage_start: Mapped[date | None] = mapped_column(Date)
+    coverage_end: Mapped[date | None] = mapped_column(Date)
+    observable_outcomes: Mapped[list[str]] = mapped_column(
+        JSONBDict, nullable=False, default=list, server_default="[]"
     )
 
     records: Mapped[list[SourceRecord]] = relationship(back_populates="source")

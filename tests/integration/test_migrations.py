@@ -76,7 +76,9 @@ def _url(engine: Engine) -> str:
 def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database: Engine) -> None:
     snapshot = _snapshot(migrated_database)
     assert set(CANONICAL_TABLES) <= set(snapshot.tables)
-    assert len(CANONICAL_TABLES) == 24  # the brief's twenty-three plus audit_log (0004)
+    # The brief's twenty-three, audit_log (0004), metric_snapshot and
+    # metric_observation_member (0005).
+    assert len(CANONICAL_TABLES) == 26
     assert EXPECTED_ENUMS <= set(snapshot.enums)
     assert "pg_trgm" in snapshot.extensions
     indexes = snapshot.indexes
@@ -136,10 +138,92 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "ix_person_merged_into_person_id" in indexes["person"]
     assert "ix_audit_log_entity" in indexes["audit_log"]
     assert "ix_audit_log_occurred_at" in indexes["audit_log"]
+    # Revision 0005: the observation key, the current-observation index, members.
+    assert "uq_metric_observation_key" in indexes["metric_observation"]
+    assert "ix_metric_observation_current" in indexes["metric_observation"]
+    assert "ix_metric_observation_snapshot_id" in indexes["metric_observation"]
+    assert "ix_metric_observation_source_id" in indexes["metric_observation"]
+    assert "ix_metric_observation_member_observation_id" in indexes["metric_observation_member"]
+    assert "ix_metric_observation_member_member" in indexes["metric_observation_member"]
     uniques = snapshot.uniques
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
-    assert current_revision(migrated_database) == head_revision() == "0004"
+    assert "uq_metric_snapshot_content_hash" in uniques["metric_snapshot"]
+    assert current_revision(migrated_database) == head_revision() == "0005"
+
+
+def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
+    with migrated_database.connect() as connection:
+        columns = {
+            (table, column): (data_type, nullable == "YES")
+            for table, column, data_type, nullable in connection.execute(
+                text(
+                    "SELECT table_name, column_name, data_type, is_nullable "
+                    "FROM information_schema.columns WHERE table_schema = 'public'"
+                )
+            )
+        }
+        definition = "metric_definition"
+        assert columns[(definition, "kind")] == ("text", False)
+        assert columns[(definition, "subject_types")] == ("jsonb", False)
+        assert columns[(definition, "attribution")] == ("jsonb", False)
+        assert columns[(definition, "index_event")] == ("text", True)
+        assert columns[(definition, "windows_days")] == ("jsonb", True)
+        assert columns[(definition, "suppression_threshold")] == ("integer", False)
+        assert columns[(definition, "registry_version")] == ("integer", False)
+        assert columns[(definition, "methodology_version")] == ("text", False)
+        snapshot = "metric_snapshot"
+        assert columns[(snapshot, "content_hash")] == ("character", False)
+        assert columns[(snapshot, "exported_at")] == ("timestamp with time zone", False)
+        assert columns[(snapshot, "coverage")] == ("jsonb", False)
+        assert columns[(snapshot, "storage_uri")] == ("text", False)
+        observation = "metric_observation"
+        assert columns[(observation, "snapshot_id")] == ("uuid", False)
+        assert columns[(observation, "source_id")] == ("uuid", False)
+        assert columns[(observation, "window_days")] == ("integer", True)
+        assert columns[(observation, "dimension_value")] == ("text", True)
+        assert columns[(observation, "eligible_count")] == ("integer", False)
+        assert columns[(observation, "value")] == ("numeric", True)
+        assert columns[(observation, "distribution")] == ("jsonb", True)
+        assert columns[(observation, "superseded_at")] == ("timestamp with time zone", True)
+        member = "metric_observation_member"
+        assert columns[(member, "id")] == ("bigint", False)
+        assert columns[(member, "member_kind")] == ("text", False)
+        assert columns[(member, "member_id")] == ("uuid", False)
+        assert columns[(member, "counted")] == ("boolean", False)
+        assert columns[(member, "followed")] == ("boolean", False)
+        # The member table carries entity ids only: no person column at all.
+        assert not any(table == member and "person" in column for table, column in columns)
+        assert columns[("source", "coverage_start")] == ("date", True)
+        assert columns[("source", "coverage_end")] == ("date", True)
+        assert columns[("source", "observable_outcomes")] == ("jsonb", False)
+        key = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_metric_observation_key'")
+        ).scalar()
+        assert key is not None and "UNIQUE" in key and "NULLS NOT DISTINCT" in key
+        current = connection.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_metric_observation_current'"
+            )
+        ).scalar()
+        assert current is not None and "WHERE (superseded_at IS NULL)" in current
+        checks = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE contype = 'c' AND conrelid = 'metric_observation_member'::regclass"
+                )
+            )
+        }
+        assert "member_kind" in checks["ck_metric_observation_member_member_kind"]
+        default = connection.execute(
+            text(
+                "SELECT column_default FROM information_schema.columns "
+                "WHERE table_name = 'source' AND column_name = 'observable_outcomes'"
+            )
+        ).scalar()
+        assert default is not None and "[]" in default
 
 
 def test_revision_0004_columns_check_and_trigger(migrated_database: Engine) -> None:

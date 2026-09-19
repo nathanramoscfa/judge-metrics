@@ -145,14 +145,15 @@ uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden   
 uv run judgemetrics er run [--source synthetic]   # recompute person candidates, apply system merges (idempotent)
 uv run judgemetrics er review list [--json]       # the manual-review queue: public keys, stage, score, feature flags
 uv run judgemetrics er review decide <id> --decision matched|rejected --reviewer <label> --reason <text>
+uv run judgemetrics methodology render [--out docs/METHODOLOGY.md] [--check]   # docs/METHODOLOGY.md from the metric registry; --check exits 1 on drift
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
 random value in the untracked `.env`; the tests set a fixed one).
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
-`pnpm e2e`, `pnpm generate:api`. Later steps add `seed`,
-`compute-metrics`, and `bootstrap`.
+`pnpm e2e`, `pnpm generate:api`. Later steps add `compute-metrics`
+(`judgemetrics metrics compute|verify`) and `bootstrap`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -486,6 +487,55 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   The config extends the default rules and allowlists
   `.secrets.baseline` only; gitleaks (CLI and action) auto-detects it at
   the repository root.
+- Metrics engine (Phase 3 Step 1, docs/ARCHITECTURE.md "Metrics engine",
+  docs/METHODOLOGY.md, docs/DATA_MODEL.md "Metric registry"): the
+  registry `data/reference/metric_registry.yaml` is the contract
+  (`version` 1, `methodology_version` 0.1, the brief's eight warnings
+  verbatim as `known_limitations`, thirty-three metrics); a
+  data-semantics finding edits the entry, bumps its `version` and the
+  registry `version` (old `metric_definition` rows stay as history —
+  `sync_definitions` never deletes), and re-renders
+  `docs/METHODOLOGY.md`, a committed snapshot that the unit test and
+  `methodology render --check` compare with the render (the
+  `docs/openapi.json` pattern; a relative `--out` resolves under the
+  repository root). The registry carries `population`, `counted`, and
+  `measure` for the compute functions beyond the fields the task named,
+  and a fifth assignment gate `assigned_ever` (cases with any assignment
+  of the judge), because `eligible_cases` cannot be expressed with a
+  time-gated rule; a court subject always takes `court_of_case`. The
+  frame (`metrics/frame.py`) is generic over the id dtype (`String` for
+  the synthetic world and for UUIDs as text; Polars has no UUID type),
+  every timestamp is a UTC `Datetime`, `filed_at`/`closed_at` sit at the
+  start and end of their day like the case timeline, and `persons.id` is
+  the only person column; no module under `metrics/` names a restricted
+  attribute (the Step 6 verify script greps for it). Semantics fixed
+  here and to be implemented identically by Step 2's `TRUTH_VERSION` 2:
+  index events per kind, exposure deferred by the index case's own
+  incarceration term only (other terms of the person are a documented
+  limitation), outcomes in `(exposure_start, exposure_start + w]` with
+  `new_case`/`new_charge`/`reconviction` in another case only (a null
+  `related_case_id` never counts), followed = `exposure_start + w <
+  coverage_end_exclusive_at`, Kaplan-Meier over the whole cohort with
+  events before censorings at ties and `se = 0` when every member at
+  risk fails, Wilson and Greenwood intervals rounded to six decimals at
+  the boundary. A metric whose outcome the source cannot document is
+  `NotObservable` (no observation, never a zero). Observations are keyed
+  by snapshot (`uq_metric_observation_key`, `NULLS NOT DISTINCT`) with
+  `superseded_at` history and `metric_observation_member` rows of entity
+  ids (never a person id) as the provenance chain; `source.coverage_*`
+  and `observable_outcomes` are the fields every connector declares from
+  Step 2. The synthetic connector derives `new_case` and `reconviction`
+  per participant id before merges and never derives `new_charge`, so
+  the golden fixture's split persons lack two truth `new_case` events in
+  `justice_event` (P-000029's `SYN-2020-000013`, P-000004's
+  `SYN-2021-000021`): Step 2's snapshot loader must derive the
+  other-case outcomes from the merged person's cases (or re-derive
+  justice events after merges) for golden equality on the database path.
+  Property tests (`tests/property/test_frame_invariants.py`) build the
+  frame from an in-memory `TINY` world (`support.frame_from_world`, true
+  person ids) in about a millisecond per example, check the window
+  invariants in one pass per cohort because cohort building dominates,
+  and derandomize the truth-equality test.
 
 ## End-of-session report (from the brief)
 

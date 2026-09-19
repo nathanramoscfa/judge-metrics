@@ -90,7 +90,8 @@ uv run poe check        # lint, format check, type check, tests
 uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
 uv run judgemetrics er run   # recompute person candidates and apply system merges (also: er review list|decide)
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review
+uv run judgemetrics methodology render --check   # docs/METHODOLOGY.md equals the metric registry render (omit --check to rewrite it)
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
@@ -205,18 +206,19 @@ judge-metrics/
 │   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles, API layering
 │   ├── API.md              the API contract: pagination, filters, errors, rate limits, provenance
 │   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export); the web client is generated from it
-│   ├── DATA_MODEL.md       the twenty-three tables, natural keys, indexes, grants
+│   ├── DATA_MODEL.md       the twenty-six tables, natural keys, indexes, grants
+│   ├── METHODOLOGY.md      rendered from the metric registry (judgemetrics methodology render); the semantics behind every number
 │   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
-│   ├── phase01-roadmap.md  executable Phase 1 plan
+│   ├── phaseNN-roadmap.md  executable per-phase plans
 │   └── brief/              the product specification, verbatim
-├── alembic/                migration environment and versions (0001, 0002)
-├── data/                   reference tables (tracked); raw lake and synthetic data (untracked)
+├── alembic/                migration environment and versions (0001–0005)
+├── data/                   reference tables (tracked: us_states, synthetic_offenses, case_vocabulary, entity_resolution_thresholds, metric_registry); raw lake and synthetic data (untracked)
 ├── alembic.ini             Alembic config (the URL comes from settings, never the ini)
 ├── infra/docker/           api.Dockerfile, web.Dockerfile, and postgres/ init scripts (extensions, roles)
 ├── planning/               roadmodel planning kit (selector, catalog, templates)
 ├── scripts/                cross-platform helper and verify scripts
-├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/, synthetic/
-├── tests/unit/, tests/integration/, tests/fixtures/
+├── src/judgemetrics/       config, logging, main (FastAPI), cli, api/, schemas/, services/, repositories/, db/, ingest/, quality/, normalization/, synthetic/, entity_resolution/, metrics/
+├── tests/unit/, tests/integration/, tests/property/, tests/golden/, tests/fixtures/
 ├── web/                    Next.js app: app/ (pages), components/, lib/api/ (generated client), tests/unit, tests/e2e
 ├── .node-version           Node 22 for web/
 ├── pyproject.toml          uv project; dev and planning groups; poe tasks

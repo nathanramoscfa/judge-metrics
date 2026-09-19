@@ -2,13 +2,14 @@
 """Every canonical entity of the brief, exported so Alembic autogenerate and
 the application see one complete ``Base.metadata``.
 
-Twenty-four tables: the brief's twenty-three — jurisdiction, court, judge,
+Twenty-six tables: the brief's twenty-three — jurisdiction, court, judge,
 judge_service, person, person_identifier, court_case, case_party,
 judge_assignment, charge, court_event, decision, pretrial_release,
 sentence, justice_event, source, source_record, ingest_run,
 entity_resolution_candidate, metric_definition, metric_observation,
-data_quality_issue, correction_request — and the append-only audit_log
-the brief's security requirements ask for (revision 0004).
+data_quality_issue, correction_request — the append-only audit_log the
+brief's security requirements ask for (revision 0004), and the metrics
+engine's metric_snapshot and metric_observation_member (revision 0005).
 """
 
 from judgemetrics.db.base import Base
@@ -35,7 +36,13 @@ from judgemetrics.db.models.enums import (
     ResolutionDecision,
     SubjectType,
 )
-from judgemetrics.db.models.metrics import MetricDefinition, MetricObservation
+from judgemetrics.db.models.metrics import (
+    MEMBER_KINDS,
+    MetricDefinition,
+    MetricObservation,
+    MetricObservationMember,
+    MetricSnapshot,
+)
 from judgemetrics.db.models.persons import JusticeEvent, Person, PersonIdentifier
 from judgemetrics.db.models.provenance import (
     SYNTHETIC_SOURCE_TYPE,
@@ -69,6 +76,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     "entity_resolution_candidate",
     "metric_definition",
     "metric_observation",
+    "metric_snapshot",
+    "metric_observation_member",
     "data_quality_issue",
     "correction_request",
     "audit_log",
@@ -83,6 +92,7 @@ RESTRICTED_TABLES: frozenset[str] = frozenset(
 
 __all__ = [
     "CANONICAL_TABLES",
+    "MEMBER_KINDS",
     "PG_ENUM_NAMES",
     "RESTRICTED_TABLES",
     "SYNTHETIC_SOURCE_TYPE",
@@ -111,6 +121,8 @@ __all__ = [
     "JusticeEvent",
     "MetricDefinition",
     "MetricObservation",
+    "MetricObservationMember",
+    "MetricSnapshot",
     "Person",
     "PersonIdentifier",
     "PretrialRelease",
