@@ -9,9 +9,13 @@ one against its manifest), ``seed`` (generate the demo dataset and
 ingest it through the ``synthetic`` connector as the ingest role), and
 ``er`` (entity resolution: ``run`` recomputes candidates, ``review list``
 shows the manual-review queue, ``review decide`` records a reviewer's
-decision; all as the ingest role), and ``methodology`` (``render`` writes
+decision; all as the ingest role), ``methodology`` (``render`` writes
 ``docs/METHODOLOGY.md`` from the metric registry; ``--check`` exits 1 when
-the committed file differs).
+the committed file differs), and ``metrics`` (``compute`` exports a
+snapshot, computes every registry metric for every subject — or the
+``--subject`` ones — and publishes the observations; ``verify``
+recomputes every current observation from its snapshot and exits 1 on
+any mismatch; both as the ingest role).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -47,6 +51,7 @@ er_review_app = typer.Typer(help="The manual-review queue.")
 methodology_app = typer.Typer(
     help="The methodology document rendered from the metric registry (docs/METHODOLOGY.md)."
 )
+metrics_app = typer.Typer(help="The metrics engine: compute and verify observations.")
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
@@ -54,6 +59,7 @@ app.add_typer(openapi_app, name="openapi")
 app.add_typer(synthetic_app, name="synthetic")
 app.add_typer(er_app, name="er")
 app.add_typer(methodology_app, name="methodology")
+app.add_typer(metrics_app, name="metrics")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -737,6 +743,147 @@ def methodology_render(
         typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(EXIT_USAGE) from exc
     typer.echo(f"wrote {target}")
+
+
+# --- metrics: compute and verify ---------------------------------------------------------
+
+# How many verification problems the text output prints before truncating.
+VERIFY_REPORT_LINES = 40
+
+
+@metrics_app.command("compute")
+def metrics_compute(
+    label: Annotated[
+        str | None, typer.Option("--label", help="A label recorded on the snapshot row.")
+    ] = None,
+    subject: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--subject",
+            help="Only these subjects (judge:<uuid> or court:<uuid>; repeatable).",
+        ),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Export a snapshot, compute every registry metric, and publish the observations.
+
+    Runs as the ingest role in one transaction; a subject whose numbers did
+    not change is left in place, so a second run over unchanged data
+    publishes nothing. Refuses to publish, and rolls back, when an
+    observation's members are not all in the snapshot.
+    """
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.compute import ComputeError, parse_subject
+    from judgemetrics.metrics.engine import compute_and_publish
+    from judgemetrics.metrics.publish import PublishError
+    from judgemetrics.metrics.registry import RegistryError
+    from judgemetrics.metrics.snapshot import SnapshotError
+
+    settings = get_settings()
+    configure_logging(settings)
+    try:
+        subjects = None if not subject else [parse_subject(text) for text in subject]
+    except ComputeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                result = compute_and_publish(session, settings, subjects=subjects, label=label)
+            except (PublishError, SnapshotError, ComputeError, RegistryError) as exc:
+                session.rollback()
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc
+            session.commit()
+    finally:
+        engine.dispose()
+    summary = {
+        "snapshot": result.snapshot.content_hash,
+        "snapshot_reused": result.snapshot.reused,
+        "subjects": len(result.computed.subjects),
+        "sources_skipped": list(result.computed.sources_skipped),
+        **{k: v for k, v in result.published.as_log().items() if k != "snapshot"},
+    }
+    if as_json:
+        typer.echo(json.dumps(summary, indent=2, sort_keys=True))
+        return
+    typer.echo(f"snapshot {summary['snapshot']}" + (" (reused)" if result.snapshot.reused else ""))
+    typer.echo(
+        f"subjects={summary['subjects']} observations={summary['observations']} "
+        f"suppressed={summary['suppressed']} not_observable={summary['not_observable']} "
+        f"superseded={summary['superseded']} members={summary['members']} "
+        f"subjects_published={summary['subjects_published']} "
+        f"subjects_unchanged={summary['subjects_unchanged']}"
+    )
+    if summary["sources_skipped"]:
+        typer.echo(f"sources skipped (no coverage window): {len(summary['sources_skipped'])}")
+
+
+@metrics_app.command("verify")
+def metrics_verify(
+    snapshot: Annotated[
+        str | None, typer.Option("--snapshot", help="Only the observations of this snapshot hash.")
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Recompute every current observation from its snapshot; exit 1 on any mismatch."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.registry import RegistryError
+    from judgemetrics.metrics.snapshot import SnapshotError
+    from judgemetrics.metrics.verify import verify
+
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                result = verify(session, settings, snapshot=snapshot)
+            except (SnapshotError, RegistryError) as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.rollback()
+    finally:
+        engine.dispose()
+    if as_json:
+        typer.echo(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    else:
+        typer.echo(
+            f"snapshots={len(result.snapshots)} observations={result.observations} "
+            f"verified={result.verified} mismatches={len(result.mismatches)} "
+            f"unverifiable={len(result.unverifiable)}"
+        )
+        lines = [
+            f"mismatch: {m.slug} {m.subject_type}:{m.subject_id}"
+            + ("" if m.window_days is None else f"@{m.window_days}")
+            + ("" if m.dimension_value is None else f"[{m.dimension_value}]")
+            + f" column={m.column} stored={m.as_dict()['stored']} "
+            f"recomputed={m.as_dict()['recomputed']} observation={m.observation_id}"
+            for m in result.mismatches
+        ] + [
+            f"unverifiable: {u.slug} observation={u.observation_id} snapshot={u.snapshot}: "
+            f"{u.reason}"
+            for u in result.unverifiable
+        ]
+        for line in lines[:VERIFY_REPORT_LINES]:
+            typer.echo(line, err=True)
+        if len(lines) > VERIFY_REPORT_LINES:
+            typer.echo(f"... {len(lines) - VERIFY_REPORT_LINES} more", err=True)
+    if not result.ok:
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 
 def main() -> None:

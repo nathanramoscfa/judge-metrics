@@ -87,6 +87,12 @@ class IngestRun(UUIDPrimaryKey, Timestamps, Base):
     checkpoint: Mapped[dict[str, Any] | None] = mapped_column(JSONBDict)
     # Why a run ended `failed` or `refused` (never a raw row or a secret).
     failure_reason: Mapped[str | None] = mapped_column(Text)
+    # Revision 0006: the metric_snapshot pipeline step 13 exported and
+    # published the impacted subjects' observations from; null when the run
+    # touched no metric subject or the recompute setting was off.
+    metrics_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("metric_snapshot.id", ondelete="RESTRICT"), index=True
+    )
 
     source: Mapped[Source] = relationship(back_populates="runs")
     records: Mapped[list[SourceRecord]] = relationship(back_populates="ingest_run")

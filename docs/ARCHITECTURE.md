@@ -27,7 +27,7 @@ roles, the public API (Step 4), and the web tier (Step 5).
                        │  9 dedupe · 10 resolve (+ resolve_persons hook)      │
                        │ 11 quality checks · 12 publish (upserts: runner for  │
                        │    reference tables, ingest/publish.py for cases)    │
-                       │ 13 recompute metrics (no-op) · 14 lineage + stats    │
+                       │ 13 recompute impacted metric subjects · 14 lineage   │
                        └──────┬─────────────────────────────┬─────────────────┘
                               │ immutable bytes             │ one transaction
                               ▼                             ▼
@@ -95,8 +95,8 @@ without the person hash.
 | 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through `entity_resolution.pipeline.resolve_persons(session, drafts, run)` — the deterministic stage: a draft whose `source_participant_id` hash already sits in `person_identifier` is that person, otherwise a new person and its identifier rows are written here. The rule, probabilistic, and review stages (`pipeline.resolve_candidates`) run right after step 12, because case linkage is a feature they read from the published rows: the run's persons are blocked against every person they share a name or identifier hash with, candidates are stored, system merges applied, and the run's published person ids follow the merges (`docs/ENTITY_RESOLUTION.md`). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. |
 | 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts (the reference checks of Phase 1 and the case-level checks: `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`) |
 | 12 | Publish canonical rows        | `_publish`: `INSERT … ON CONFLICT DO UPDATE` per entity type, in dependency order — jurisdiction → court → judge → judge_service in the runner, then persons (+ identifier rows) → cases → parties → assignments → charges → court events → decisions (+ pretrial release) → sentences → justice events in `ingest/publish.py`, batched 500 rows per statement |
-| 13 | Recompute affected metrics    | `recompute_metrics` — a no-op hook until the Phase 3 metrics engine |
-| 14 | Record lineage and statistics | issues persisted with their source record and entity id; `ingest_run` counts, `code_version` (git SHA), `parser_version`, status, checkpoint |
+| 13 | Recompute affected metrics    | `recompute_metrics`: the judges and courts the run's published rows can change (`impacted_subjects`, "Metrics engine" below) are exported, computed, and published inside the same transaction when `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST` is on; the snapshot is recorded in `ingest_run.metrics_snapshot_id` |
+| 14 | Record lineage and statistics | issues persisted with their source record and entity id; `ingest_run` counts, `code_version` (git SHA), `parser_version`, status, checkpoint, `metrics_snapshot_id` |
 
 ### The raw lake
 
@@ -508,9 +508,9 @@ no third-party script, and reads exactly one variable,
 
 The metrics engine (`src/judgemetrics/metrics/`, Phase 3) computes every
 published number from a versioned registry over a typed analytic frame.
-Step 1 lands the contract and the pure functions below; Step 2 adds the
-snapshot export, the compute dispatch, suppression, publishing, and
-verification on top of them.
+Step 1 landed the contract and the pure functions below; Step 2 adds the
+snapshot export, the compute dispatch, suppression, publishing,
+verification, and pipeline step 13 on top of them.
 
 ```
    data/reference/metric_registry.yaml        docs/METHODOLOGY.md
@@ -523,13 +523,21 @@ verification on top of them.
    Frame  cases · assignments · charges · decisions · sentences · events ·
           justice_events · persons · coverage window · observable outcomes
           ◀── tests/property/support.frame_from_world   (in-memory world)
-          ◀── metrics/snapshot.py                        (Step 2: Parquet)
-          ▼
+          ◀── metrics/snapshot.py  Snapshot.frame(source) (DuckDB views over
+          ▼                        <snapshot_dir>/<content_hash>/*.parquet)
    attribution ─▶ index_events ─▶ exposure ─▶ windows ─▶ censoring
    (the gate)     (the cohort)    (time at    (first      (followed members,
                                    risk)       outcome)    Kaplan-Meier)
                                                           └─▶ intervals
                                                               (Wilson, Greenwood)
+          ▼
+   compute.py  compute_all → ObservationDraft per metric, subject, window,
+               dimension (members: kind, id, counted, followed) | NotObservable
+          ▼ suppression.apply (threshold per metric)
+   publish.py  metric_snapshot ⊕ metric_observation ⊕ metric_observation_member
+               (chain completeness, supersession, unchanged subjects skipped)
+          ▼
+   verify.py   every current observation recomputed from its own snapshot
 ```
 
 - **The registry is the contract.** `data/reference/metric_registry.yaml`
@@ -629,12 +637,151 @@ verification on top of them.
   for the pretrial-release cohorts, followed counts, and numerators),
   `tests/integration/test_metric_registry_sync.py`, and the migration
   round trip through `0005`.
-- **What Step 2 adds.** `snapshot.py` (PostgreSQL → Parquet under a
-  content hash, DuckDB views, `Frame` per source), `compute.py` (one
-  function per registry kind over the frame and these helpers),
-  `suppression.py`, `publish.py` (`metric_snapshot`, `metric_observation`
-  keyed by snapshot with `superseded_at` history, and
-  `metric_observation_member` rows of entity ids), `verify.py`,
-  `judgemetrics metrics compute|verify`, pipeline step 13, and the truth
-  generator's `TRUTH_VERSION` 2 implementing exactly the semantics stated
-  in `docs/METHODOLOGY.md`.
+- **Snapshots** (`metrics.snapshot`, Step 2). `export_snapshot(session,
+  settings)` reads the canonical tables a metric reads — `court_case`
+  with its source through `source_record`, `judge_assignment`, `charge`,
+  `decision` joined to `pretrial_release`, `sentence`, `court_event`,
+  `justice_event`, `person` (id and `merged_into_person_id` only),
+  `judge` (id), `court` (id, jurisdiction), `source` (id, name, type,
+  coverage window, observable outcomes) — through SQLAlchemy Core into
+  Polars and writes one Parquet file per table plus `manifest.json`
+  (table → sha256 and row count) under `<snapshot_dir>/<content_hash>/`
+  (`JUDGEMETRICS_SNAPSHOT_DIR`, default `data/snapshots`, git-ignored),
+  where `content_hash` is the sha256 over the sorted `table:sha256`
+  lines. Rows are ordered by id and Polars writes Parquet
+  deterministically, so the same data always yields the same hash; the
+  directory is created with `mkdir(exist_ok=False)` and never
+  overwritten — an export whose hash already exists reuses it. No
+  restricted table is read, every id is the canonical UUID as text, and
+  every timestamp is stored as a naive UTC microsecond `Datetime` (DuckDB
+  returns timezone-aware values only through `pytz`, which is not a
+  dependency); the loader re-attaches `UTC`. `open_snapshot(settings,
+  hash)` validates the hash as 64 hexadecimal characters before it
+  becomes a path, checks every file against the manifest, and registers
+  each Parquet file as a view of an in-memory DuckDB database through the
+  relation API (`read_parquet` over a path the module built; no extension
+  is installed or loaded). `Snapshot.frame(source_id)` runs parameterized
+  queries over those views and builds the `Frame` of one source: the
+  cases of the source's records and their child rows, every person
+  column re-pointed at its merge survivor, the stored justice events of
+  those persons for the any-case outcomes (`failure_to_appear`,
+  `release_violation`, `revocation`, `rearrest`), and the other-case
+  outcomes derived at load time from the merged person's cases and
+  charges exactly as the truth's `outcomes_of` does — `new_case` at the
+  earliest charge filing of each case (the case row carries a date only),
+  `new_charge` at every charge filing, `reconviction` at every convicted
+  charge's disposition, each keyed by its own case — because the
+  synthetic connector derives `new_case` and `reconviction` per
+  participant id before the rule stage merges the planted split persons
+  and never derives `new_charge`. Derived rows carry ids of the form
+  `derived:<type>:<case id>:<instant>` and are never observation
+  members. The `charges` frame table carries the source's `source_row_id`
+  (Step 2 addition) because the lead convicted charge of a case breaks
+  severity ties by the source's charge id — the canonical UUID would make
+  a re-ingest choose a different lead (the demo world has 51 such ties).
+- **The compute dispatch** (`metrics.compute`). `compute_all(snapshot,
+  registry, subjects=None)` iterates the sources with case data (a
+  source without a declared coverage window is skipped and named),
+  builds the frame, enumerates the subjects — every judge with an
+  assignment, decision, or sentence in the source, every court with a
+  case — and dispatches each registry metric on `kind`: `count` (the
+  attributed population rows with the `counted` conditions;
+  `eligible_defendants` counts distinct resolved persons among the
+  eligible cases and its members are the cases, never a person id),
+  `share` (numerator over denominator, Wilson interval),
+  `windowed_rate` (index events → exposure → first outcome → one
+  observation per window: `eligible_count` the whole cohort,
+  `cohort_size` the followed members, `observed_count` the followed
+  members with the outcome), `survival` (the Kaplan-Meier `1 - S(w)` per
+  window over the whole cohort with the Greenwood interval),
+  `distribution` (one observation per vocabulary value of the dimension,
+  zero counts included, the whole map in `distribution`), and `median`
+  (over the rows with a value, `cohort_size` the `n`, grouped by the
+  offense category of the case's lead convicted charge when the
+  dimension says so). Shares, rates, and survival estimates fill
+  `observed_rate` (six decimals) with their interval in the two bounds;
+  medians fill `value`; distributions fill `distribution`. A metric whose
+  outcome the source cannot document returns `NotObservable`: no
+  observation, never a zero. Every draft carries its members `(kind, id,
+  counted, followed)` — the population rows of a count, share,
+  distribution, or median (`followed` and `counted` mark the denominator
+  and numerator), the index events of a windowed metric — and
+  `suppression.apply` sets `suppressed_flag` when `cohort_size` is below
+  the metric's threshold; the stored row keeps its numbers (the API
+  withholds them in Step 3).
+- **Publishing** (`metrics.publish`), in the caller's transaction.
+  First the chain-completeness rule: every member id of every draft must
+  be present in the snapshot's own tables, otherwise `ProvenanceError`
+  is raised before anything is written and the caller rolls back (Step
+  3's trace test relies on it). Then `metric_snapshot` is upserted on
+  `content_hash`, `sync_definitions` runs, and per subject and source
+  the current observations (`superseded_at IS NULL`) and their members
+  are compared with the drafts over every column of `VERIFIED_COLUMNS`
+  and the member multiset: an unchanged subject is left in place — no
+  supersede, no insert, so a recompute without data changes writes
+  nothing — and a changed one has its current observations superseded
+  (`superseded_at = now()`) and the new observations and members
+  inserted in batches of 500 rows per statement. Nothing is ever
+  deleted; an observation a previous publish superseded and that the
+  same snapshot and definition produce again is revived rather than
+  re-inserted (`uq_metric_observation_key` spans superseded rows).
+  Observation and member rows carry entity ids only; log lines carry the
+  snapshot id, counts, and slugs.
+- **Verification** (`metrics.verify`). `verify(session, settings,
+  snapshot=None)` loads every current observation (or one snapshot's),
+  opens each snapshot from `snapshot_dir`, recomputes the observations'
+  subjects with the registry version they record — the current registry
+  file must carry that `registry_version` and the definition's `(slug,
+  version)`, otherwise the observation is `unverifiable` — and compares
+  every column of `VERIFIED_COLUMNS` and the member multiset exactly,
+  reporting each mismatch with the observation id, slug, subject,
+  window, dimension, column, and both values; an observation the
+  recompute no longer produces, and a recomputed observation the store
+  lacks for a subject it holds, are mismatches too. `judgemetrics
+  metrics verify [--snapshot HASH] [--json]` exits 1 on any mismatch or
+  unverifiable observation.
+- **Pipeline step 13** (`ingest.runner.recompute_metrics`). After the
+  publish and the resolution rule stages, `impacted_subjects` closes
+  over what the run published: the touched cases (every published
+  case-level draft and the related cases of published justice events),
+  widened to every case of the persons those rows name — an outcome is
+  the person's, so a changed charge or event in one case moves the
+  cohorts of the person's other cases; the judges are those the
+  published assignment, decision, and sentence drafts name plus every
+  judge with an assignment, decision, or sentence on a touched case; the
+  courts are those of the published case drafts plus the courts of every
+  touched case. When `Settings.metrics_recompute_on_ingest` is on and
+  the set is non-empty, `metrics.engine.compute_and_publish` exports a
+  snapshot through the same session (so the run's rows are in it),
+  computes and publishes those subjects only — unchanged ones are left in
+  place — and records the snapshot in `ingest_run.metrics_snapshot_id`
+  (revision 0006; a column rather than a `checkpoint` key because the
+  whole checkpoint is handed back to a checkpointing connector). A
+  reference-only run (FJC) touches nothing and computes nothing; an
+  unchanged rerun publishes no draft and computes nothing. The test
+  suite turns the setting off (`tests/conftest.py`) and the step-13
+  tests enable it per test.
+- **Commands.** `judgemetrics metrics compute [--label TEXT] [--subject
+  judge:<uuid> ...] [--json]` (export, compute, publish; prints the
+  snapshot hash and counts) and `metrics verify [--snapshot HASH]
+  [--json]`, both as the ingest role; `uv run poe compute-metrics` and
+  `make compute-metrics`.
+- **Coverage and observability.** `SourceInfo.observable_outcomes`
+  (synthetic: `new_case`, `new_charge`, `reconviction`,
+  `failure_to_appear`, `revocation`; FJC: none) fills
+  `source.observable_outcomes`, and the optional `SupportsCoverage`
+  protocol (`coverage_window()`, read by the runner after `load_context`
+  so a connector may read it from the export — the synthetic connector
+  reports the manifest's `corpus` dates, `GENERATOR_VERSION` 2) fills
+  `source.coverage_start`/`coverage_end`; both are written only when they
+  differ.
+- **The truth generator** (`synthetic/truth.py`, `TRUTH_VERSION` 2) is
+  the independent oracle: windowed cohorts for every index kind with
+  exposure deferred by the index case's incarceration term, every
+  outcome's fixed-window rate and Kaplan-Meier estimate per window,
+  `release_violation` and `rearrest` under `not_observable`; it imports
+  nothing from `metrics/`. `tests/unit/test_metrics_compute.py` proves
+  `compute_frame` over `frame_from_world` equals it on the golden world
+  and `tests/golden/test_golden_metrics.py` proves the database path
+  equals it on the golden fixture (`tests/golden/truth_map.py` is the
+  one table both read).

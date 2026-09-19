@@ -9,10 +9,13 @@ generate`` wrote: ``manifest.json``, ``source/``, and ``truth/``, of which
 plain relative path inside that directory. ``load_context`` (the runner
 calls it with every artifact of the run before anything is parsed) checks
 each source file's sha256 against the manifest and fails the run on
-drift, then builds the cross-row lookups ``normalize`` needs.
-``validate_raw`` checks the manifest's ``generator_version`` and that it
-lists every source file, and each CSV's header row against the expected
-set (missing → error naming the header, extra → warning).
+drift, then builds the cross-row lookups ``normalize`` needs and keeps
+the manifest's ``corpus`` dates, which ``coverage_window`` (the
+``SupportsCoverage`` hook) reports as the source's coverage window.
+``validate_raw`` checks the manifest's ``generator_version``, that it
+lists every source file, and that its ``corpus`` carries two ISO dates in
+order, and each CSV's header row against the expected set (missing →
+error naming the header, extra → warning).
 
 The connector hashes person identifiers with the pepper from settings; it
 refuses to be constructed without one (``IdentifierPepperMissingError``),
@@ -23,6 +26,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Sequence
+from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -116,6 +120,7 @@ class SyntheticConnector:
         self._pepper = pepper if pepper is not None else require_identifier_pepper(resolved)
         self._context = SyntheticContext()
         self._context_loaded = False
+        self._coverage: tuple[date, date] | None = None
 
     @property
     def context(self) -> SyntheticContext:
@@ -162,7 +167,8 @@ class SyntheticConnector:
         if manifest is None:
             msg = f"{MANIFEST_FILE} was not retrieved"
             raise ManifestDriftError(msg)
-        listed = _manifest_files(_load_manifest(manifest.read_bytes()))
+        payload = _load_manifest(manifest.read_bytes())
+        listed = _manifest_files(payload)
         drift: list[str] = []
         for name in SOURCE_FILES:
             external_id = artifact_id(name)
@@ -183,6 +189,15 @@ class SyntheticConnector:
             _rows(by_id[artifact_id(CHARGES_FILE)], CHARGES_FILE),
         )
         self._context_loaded = True
+        try:
+            self._coverage = _manifest_corpus(payload)
+        except ManifestDriftError:
+            # validate_raw reports the malformed corpus and fails the run.
+            self._coverage = None
+
+    def coverage_window(self) -> tuple[date, date] | None:
+        """The manifest's corpus window (``SupportsCoverage``), known after ``load_context``."""
+        return self._coverage
 
     # --- validation, parsing, normalization --------------------------------------------
 
@@ -235,6 +250,10 @@ class SyntheticConnector:
             for file in SOURCE_FILES
             if artifact_id(file) not in listed
         )
+        try:
+            _manifest_corpus(payload)
+        except ManifestDriftError as exc:
+            errors.append(f"{name}: {exc}")
         warnings = [
             f"{name}: lists {relative!r}, which the connector does not ingest"
             for relative in sorted(listed)
@@ -287,6 +306,24 @@ def _manifest_files(payload: dict[str, Any]) -> dict[str, str]:
         msg = "the manifest has no `files` mapping"
         raise ManifestDriftError(msg)
     return {str(key): str(value) for key, value in files.items()}
+
+
+def _manifest_corpus(payload: dict[str, Any]) -> tuple[date, date]:
+    """The manifest's ``corpus`` as ``(start, end)``; ``ManifestDriftError`` when malformed."""
+    corpus = payload.get("corpus")
+    if not isinstance(corpus, dict) or "start" not in corpus or "end" not in corpus:
+        msg = "the manifest has no `corpus` with `start` and `end` (GENERATOR_VERSION 2)"
+        raise ManifestDriftError(msg)
+    try:
+        start = date.fromisoformat(str(corpus["start"]))
+        end = date.fromisoformat(str(corpus["end"]))
+    except ValueError as exc:
+        msg = "the manifest's `corpus` dates are not ISO dates"
+        raise ManifestDriftError(msg) from exc
+    if end < start:
+        msg = f"the manifest's `corpus` is inverted ({start} > {end})"
+        raise ManifestDriftError(msg)
+    return start, end
 
 
 def _rows(raw: RawArtifact, file_name: str) -> list[dict[str, str]]:

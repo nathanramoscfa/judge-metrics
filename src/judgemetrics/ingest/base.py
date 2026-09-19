@@ -3,9 +3,11 @@
 
 The brief's ``SourceConnector`` interface is reproduced exactly (``discover``,
 ``fetch``, ``validate_raw``, ``parse``, ``normalize``); ``source_id``,
-``parser_version``, and ``source_info`` identify the connector, and the
+``parser_version``, and ``source_info`` identify the connector, the
 optional ``SupportsCheckpoint`` protocol carries incremental state for
-cursoring sources. Everything a connector produces is a frozen dataclass:
+cursoring sources, and the optional ``SupportsCoverage`` protocol reports
+the window the source's records cover (Phase 3: the instant the metrics
+engine right-censors follow-up at). Everything a connector produces is a frozen dataclass:
 
 - ``SourceArtifact`` — something discoverable at the source (one file, one
   API page); ``RawArtifact`` — the retrieved bytes with their sha256;
@@ -205,12 +207,20 @@ class SourceRecordDraft:
 
 @dataclass(frozen=True, slots=True)
 class SourceInfo:
-    """What the ``source`` row records about a connector's source."""
+    """What the ``source`` row records about a connector's source.
+
+    ``observable_outcomes`` lists the ``justice_event_type`` values the
+    source can document (``source.observable_outcomes``): a metric whose
+    outcome is not among them is not observable for the source and is
+    never published for it, never as a zero (docs/METHODOLOGY.md). A
+    reference-only source (FJC) documents none.
+    """
 
     owner: str
     source_type: str
     access_method: str
     terms_metadata: Mapping[str, Any] = field(default_factory=dict)
+    observable_outcomes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,6 +559,20 @@ class SupportsCheckpoint(Protocol):
     def restore_checkpoint(self, checkpoint: Checkpoint | None) -> None: ...
 
     def checkpoint(self) -> Checkpoint | None: ...
+
+
+@runtime_checkable
+class SupportsCoverage(Protocol):
+    """Optional hook for sources whose records cover a known window.
+
+    The runner calls ``coverage_window`` once per run after
+    ``load_context`` (so a connector may read it from the export itself,
+    as the synthetic connector reads the manifest's corpus dates) and
+    writes ``source.coverage_start`` and ``coverage_end`` when they differ.
+    ``None`` leaves the columns untouched.
+    """
+
+    def coverage_window(self) -> tuple[date, date] | None: ...
 
 
 @runtime_checkable

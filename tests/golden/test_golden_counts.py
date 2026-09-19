@@ -16,6 +16,7 @@ the fallback database beside a live ingest.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections import Counter
 from pathlib import Path
 
@@ -245,6 +246,66 @@ def test_every_row_cites_the_fixture_file_it_came_from(
         )
     )
     assert cited == {record.id}, table
+
+
+def test_truth_index_event_cohorts_agree_with_the_source_files() -> None:
+    """The TRUTH_VERSION 2 cohorts recounted from the fixture's own CSVs, per subject."""
+    truth = json.loads((GOLDEN / "truth" / "metrics.json").read_text(encoding="utf-8"))
+    decisions = [
+        r for r in read_rows("source/decisions.csv") if r["case_number"] not in DUPLICATE_VARIANTS
+    ]
+    sentences = [
+        r for r in read_rows("source/sentences.csv") if r["case_number"] not in DUPLICATE_VARIANTS
+    ]
+    charges = [
+        r for r in read_rows("source/charges.csv") if r["case_number"] not in DUPLICATE_VARIANTS
+    ]
+    cases = {
+        r["case_number"]: r
+        for r in read_rows("source/cases.csv")
+        if r["case_number"] not in DUPLICATE_VARIANTS
+    }
+    disposed_cases = {
+        r["case_number"]
+        for r in charges
+        if r["disposition"] not in ("", "pending") and r["disposed_at"]
+    }
+    for code, block in truth["courts"].items():
+        released = [
+            r
+            for r in decisions
+            if r["court_code"] == code
+            and r["decision_type"] == "pretrial_release"
+            and r["actor"] == "judge"
+            and r["discretion"] == "discretionary"
+            and r["detained"] == "false"
+        ]
+        windows = block["index_events"]
+        assert windows["pretrial_release"]["windows"]["30"]["cohort"] == len(released)
+        assert windows["sentence"]["windows"]["30"]["cohort"] == sum(
+            1 for r in sentences if r["court_code"] == code
+        )
+        assert windows["disposition"]["windows"]["30"]["cohort"] == sum(
+            1 for number in disposed_cases if cases[number]["court_code"] == code
+        )
+    for code, block in truth["judges"].items():
+        windows = block["index_events"]
+        assert windows["sentence"]["windows"]["30"]["cohort"] == sum(
+            1 for r in sentences if r["judge_code"] == code
+        )
+        assert windows["pretrial_release"]["windows"]["30"]["cohort"] == sum(
+            1
+            for r in decisions
+            if r["judge_code"] == code
+            and r["decision_type"] == "pretrial_release"
+            and r["actor"] == "judge"
+            and r["discretion"] == "discretionary"
+            and r["detained"] == "false"
+        )
+    assert {item["outcome"] for item in truth["not_observable"]} == {
+        "release_violation",
+        "rearrest",
+    }
 
 
 def test_no_truth_file_was_ingested(session: Session, golden_fixture: GoldenFixture) -> None:

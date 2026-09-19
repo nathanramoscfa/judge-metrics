@@ -174,8 +174,10 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # Revision 0005: the snapshot and source the observation was computed
     # from, its window and dimension, the cohort before the follow-up
-    # restriction, a value (medians in days, survival estimates), a
-    # distribution, the versions, and when a recompute superseded it.
+    # restriction, a value (medians, in days), a distribution, the versions,
+    # and when a recompute superseded it. Shares, fixed-window rates, and
+    # Kaplan-Meier cumulative incidences live in `observed_rate` (six
+    # decimals) with their interval in the two bounds (docs/DATA_MODEL.md).
     snapshot_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("metric_snapshot.id", ondelete="RESTRICT"),

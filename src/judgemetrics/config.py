@@ -124,6 +124,15 @@ class Settings(BaseSettings):
     # directory holding `manifest.json` and `source/` (docs/SYNTHETIC_DATA.md);
     # `truth/` beside them is never discovered.
     synthetic_dir: Path = Path("data") / "synthetic" / "20260916"
+    # The metrics engine (judgemetrics.metrics, Phase 3). `snapshot_dir` holds
+    # one git-ignored directory per content hash of an exported snapshot
+    # (`<snapshot_dir>/<sha256>/<table>.parquet` + `manifest.json`; never
+    # overwritten, reused when the hash already exists).
+    # `metrics_recompute_on_ingest` runs pipeline step 13 after a publish:
+    # the subjects the run touched are recomputed and republished inside the
+    # ingest transaction; the test suite turns it off and enables it per test.
+    snapshot_dir: Path = Path("data") / "snapshots"
+    metrics_recompute_on_ingest: bool = True
     # Public API (judgemetrics.api). `trust_proxy` lets the rate limiter key
     # on the address a trusted reverse proxy appended to `X-Forwarded-For`;
     # without it the header is ignored (a client could otherwise spoof its

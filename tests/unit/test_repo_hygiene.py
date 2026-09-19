@@ -42,6 +42,8 @@ NON_SECRET_CONSTANTS = {
     "10",
     "0.3",
     "data/synthetic/20260916",
+    "data/snapshots",
+    "true",
 }
 # Shapes that would indicate a real credential was pasted in.
 SECRET_SHAPES = [

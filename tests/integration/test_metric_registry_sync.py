@@ -35,7 +35,8 @@ def test_sync_inserts_every_metric_once_and_is_idempotent(db_session: Session) -
     registry = load_registry()
     before = {(row.slug, row.version) for row in db_session.scalars(select(MetricDefinition))}
     first = sync_definitions(db_session)
-    assert first.inserted == len(registry.metrics) - len(before & set(registry.metrics))
+    keys = {(metric.slug, metric.version) for metric in registry.metrics.values()}
+    assert first.inserted == len(keys - before)
     assert first.updated == 0
     rows = _rows(db_session)
     for metric in registry.metrics.values():
