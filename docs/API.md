@@ -1,10 +1,12 @@
 <!-- docs/API.md -->
 # JudgeMetrics API v1
 
-The public API is read-only, versioned, and paginated. It serves the
-canonical tables the ingest pipeline publishes (`docs/ARCHITECTURE.md`),
-and every entity carries the provenance of the raw source artifacts it
-was derived from. The generated OpenAPI document is committed at
+The public API is versioned and paginated. It serves the canonical
+tables the ingest pipeline publishes (`docs/ARCHITECTURE.md`) and the
+metric observations the metrics engine computes, every entity carrying
+the provenance of the raw source artifacts it was derived from; its one
+write path, `POST /corrections`, accepts a data-correction request whose
+contact is encrypted at rest. The generated OpenAPI document is committed at
 [`openapi.json`](openapi.json) (`judgemetrics openapi export`) and is
 served live at `/api/v1/openapi.json`, with Swagger UI at `/api/v1/docs`.
 
@@ -39,7 +41,13 @@ served live at `/api/v1/openapi.json`, with Swagger UI at `/api/v1/docs`.
 | GET    | `/cases/{case_id}`                     | `CaseDetail` (parties, assignments, charges, decisions, sentences, provenance) |
 | GET    | `/cases/{case_id}/timeline`            | `Timeline`: every dated fact of the case, chronological |
 | GET    | `/search`                              | `SearchResponse`: judges and courts by name, cases by exact number (rate limited) |
-| GET    | `/coverage`                            | `Coverage`: per-source counts, filing window, last run, `synthetic_present` |
+| GET    | `/coverage`                            | `Coverage`: per-source counts, filing and coverage windows, observable outcomes, last run, latest snapshot, `synthetic_present`, registry and methodology versions |
+| GET    | `/metrics`                             | `Registry`: every metric definition, the suppression rule, the known limitations, the versions |
+| GET    | `/judges/{judge_id}/metrics`           | `SubjectMetrics`: every current observation of the judge, by metric slug |
+| GET    | `/courts/{court_id}/metrics`           | `SubjectMetrics`: every current observation of the court, by metric slug |
+| GET    | `/metrics/compare`                     | `ComparePage`: one metric and window for the judges of a court or jurisdiction, sorted and paginated |
+| GET    | `/metrics/{observation_id}/provenance` | `ObservationProvenance`: the chain from the number to the raw artifacts (`docs/PROVENANCE.md`) |
+| POST   | `/corrections`                         | `CorrectionAccepted` (202): a data-correction request, stored with an encrypted contact (rate limited) |
 
 Identifiers are UUIDs. The API exposes public UUIDs, public judge data
 (name, status, appointment facts, the FJC identifiers under
@@ -51,8 +59,12 @@ name, date of birth, or source identifier (those exist only as peppered
 hashes in the restricted `person_identifier` table, which the API role
 cannot read and no route selects from) — and a person merged into
 another by entity resolution is never returned (every person join
-filters `merged_into_person_id IS NULL`). A unit test over the committed
-OpenAPI document asserts that no schema property is named `value_hash`,
+filters `merged_into_person_id IS NULL`). No metrics route returns a
+person at all: observations carry subject ids and entity ids only
+(`tests/golden/test_public_contract.py` walks every metrics route for a
+person key, a `person_id`, or a hash other than the artifact and
+snapshot digests). A unit test over the committed OpenAPI document
+asserts that no schema property is named `value_hash`,
 `encrypted_value`, `date_of_birth`, `full_name`, `person_identifier`,
 `raw_object_path`, or `requester_contact`.
 
@@ -104,7 +116,7 @@ unfiltered list.
 
 | Parameter   | Type              | Meaning                                                                 |
 |-------------|-------------------|-------------------------------------------------------------------------|
-| `q`         | string, 1–200     | Trigram match on the normalized name (diacritics, case, and punctuation are folded exactly as for `normalized_name`); results ordered by similarity |
+| `q`         | string, 1–200     | Trigram match on the normalized name (diacritics, case, and punctuation are folded exactly as for `normalized_name`): a single word by word similarity, several words by whole-name similarity (see `/search`); results ordered by similarity |
 | `court_id`  | UUID              | Judges with a service record at this court                              |
 | `active_on` | ISO date          | Judges with a service record whose interval covers the date: `start_date <= active_on` and (`end_date` is null or `end_date >= active_on`) |
 | `status`    | enum              | `active`, `senior`, `deceased`, `retired`, `resigned`, `removed`, `inactive`, `unknown` |
@@ -148,14 +160,20 @@ simply matches nothing.
 | `limit`   | 1–100         | Results to return, default `25`                        |
 
 Search returns judges, courts, and cases in one list ordered by `score`
-(`pg_trgm` `similarity()`, `0`–`1`), using the `%` operator so the GIN
-trigram indexes apply. Only names at or above the similarity threshold
-(`JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD`, default `0.3`) match; the
-threshold is set per request with `set_config`, never interpolated into
-SQL. Similarity is computed over the whole name, so a misspelt surname
-finds a judge when the surname is a large share of the full name
-("Sotomayer" → Sonia Sotomayor); a short token against a long name may
-fall below the threshold. A case matches only when the whole query,
+(`0`–`1`). A query of several words (after normalization) matches by
+whole-name similarity — `pg_trgm` `similarity()` with the `%` operator
+at `JUDGEMETRICS_SEARCH_SIMILARITY_THRESHOLD` (default `0.3`) — so
+"ruth ginsberg" finds Ruth Bader Ginsburg. A single word matches by
+*word similarity* — `word_similarity()` with the `<%` operator at
+`JUDGEMETRICS_SEARCH_WORD_SIMILARITY_THRESHOLD` (default `0.5`) — the
+query against the best-matching extent of the name, so a misspelt
+surname alone finds a long full name that whole-name similarity would
+score below the threshold ("Ginsberg" scored 0.26 against
+"ruth bader ginsburg" before; Phase 1 finding 4.1). Both operators use
+the GIN trigram indexes; the threshold of the mode in use is set per
+request with `set_config`, never interpolated into SQL, and `score` is
+the matching function's value. The judges list's `q` filter takes the
+same path. A case matches only when the whole query,
 normalized (`syn 2020 000005` → `SYN-2020-000005`), equals its
 normalized number: an exact match scores `1` and therefore outranks
 every similar name, and a partial number matches nothing. A case
@@ -175,10 +193,11 @@ Every non-2xx response is an `ErrorBody`:
 
 | Status | `code`                 | When                                                        |
 |--------|------------------------|-------------------------------------------------------------|
-| 404    | `not_found`            | No entity with that id (or an unknown path)                 |
-| 422    | `validation_error`     | A parameter failed validation, or a query parameter is not one the route declares; `message` names the parameter |
-| 429    | `rate_limited`         | `/search` burst exhausted; `Retry-After` gives the wait in seconds |
+| 404    | `not_found`            | No entity with that id (or an unknown path); a superseded observation on `/metrics/{id}/provenance`; an unknown court or jurisdiction on `/metrics/compare` |
+| 422    | `validation_error`     | A parameter or body field failed validation, or a query parameter is not one the route declares; `message` names the parameter (`metric`, `window`, `court_id`, `target_id`, …) |
+| 429    | `rate_limited`         | The `/search` or `/corrections` bucket is exhausted; `Retry-After` gives the wait in seconds |
 | 503    | `database_unavailable` | The database did not answer                                 |
+| 503    | `corrections_unavailable` | `POST /corrections` when the contact encryption key is not configured (a fixed message) |
 | 500    | `internal_error`       | Anything else                                               |
 
 `request_id` equals the `X-Request-ID` response header (a client may
@@ -236,18 +255,142 @@ entry, which is the record, not an error.
 `source_type`, `synthetic`, the number of jurisdictions, courts,
 judges, cases, and resolved persons (merged rows excluded) whose rows
 derive from its artifacts, the earliest and latest `filed_date` of its
-cases, and `last_ingest` (the most recent completed run: id, completion
-time, status, which may be `failed`). `synthetic_present` is true when
-any synthetic source has at least one row in those tables — a source
-registered by a refused run raises no banner. `generated_at` is the
-server time of the response. Completeness estimates and the known-gaps
-register arrive with the Phase 3 metrics engine.
+cases, `last_ingest` (the most recent completed run: id, completion
+time, status, which may be `failed`), and — coverage v1, Phase 3 — the
+window the connector declares its records cover (`coverage_start`,
+`coverage_end`; follow-up is censored the day after `coverage_end`, and
+a source without a window has no metric), `observable_outcomes` (the
+`justice_event_type` values the source can document; a metric whose
+outcome is not listed is never published for it), `latest_snapshot`
+(the newest hashed export behind the source's current observations:
+`content_hash`, `exported_at`; null before the first compute) and that
+snapshot's `methodology_version`. The top level carries the
+`registry_version` and `methodology_version` the API serves from the
+registry file. `synthetic_present` is true when any synthetic source has
+at least one row in those tables — a source registered by a refused run
+raises no banner. `generated_at` is the server time of the response.
+
+## Metrics
+
+Every published number leaves the API through one shape, `Observation`,
+which carries the brief's presentation rules (`<metric_presentation>`)
+as fields, so no client can show a number without its context:
+
+| Field                                   | Meaning                                                                                                   |
+|-----------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| `id`, `slug`, `name`, `kind`, `unit`, `version` | The observation and its definition (`GET /metrics`); `kind` is `count`, `share`, `windowed_rate`, `survival`, `distribution`, or `median` |
+| `subject_type`, `subject_id`, `source`, `synthetic` | Whose number, from which source register key; `synthetic` when the source is the in-repo generator |
+| `numerator`                             | `observed_count`: the rows or members meeting the condition                                              |
+| `denominator`                           | `cohort_size`: what the numerator is divided by (the followed members of a fixed-window rate, the whole cohort of a survival estimate, the attributed rows of a share, the values of a median, the population of a count) |
+| `eligible_count`                        | Sample size: the whole cohort before any follow-up restriction                                           |
+| `period_start`, `period_end`            | Date range: the source's coverage window the number is computed over                                     |
+| `window_days`, `dimension_value`        | The follow-up window of a windowed metric; the group of a dimensioned one                                |
+| `rate`, `value`, `distribution`         | The figure: `numerator / denominator` or `1 - S(w)` (six decimals); a median in days; a distribution's whole map |
+| `lower`, `upper`, `interval_method`     | The 95% interval and how it was computed: `wilson` for shares and fixed-window rates, `greenwood` for Kaplan-Meier estimates, null otherwise |
+| `suppressed`, `suppression_threshold`   | Whether the denominator fell below the metric's threshold, and the threshold                             |
+| `coverage`                              | `coverage_start`, `coverage_end`, and `observable` (whether the source documents the metric's outcome)   |
+| `methodology_version`, `methodology_url` | The methodology the number follows and the page anchored at the metric (`<JUDGEMETRICS_METHODOLOGY_URL>#<slug>`, default `/methodology#<slug>`) |
+| `snapshot_hash`, `computed_at`          | The hashed export the number was computed from (`judgemetrics metrics verify` reproduces it) and when   |
+
+**Suppression.** When `suppressed` is true the API withholds the number:
+`numerator`, `denominator`, `rate`, `value`, `distribution`, `lower`,
+and `upper` are null, whatever the stored row holds, and only
+`eligible_count` and `suppression_threshold` say why. The stripping is
+done by the response schema itself (`schemas/metrics.py`), so no route
+can leak a withheld figure; the `methodology` page states the rule and
+the rationale (`GET /metrics` → `suppression`).
+
+`GET /metrics` is the registry: `registry_version`,
+`methodology_version`, `methodology_url`, the eight `known_limitations`
+verbatim, the `suppression` rule and rationale, and one
+`MetricDefinitionOut` per metric in registry order (slug, name, kind,
+subject types, description, numerator, denominator, eligibility, the
+structured attribution rule, index event, outcome, windows, dimension,
+threshold, unit, version, `methodology_url`). It needs no database and
+is cacheable.
+
+`GET /judges/{judge_id}/metrics` and `GET /courts/{court_id}/metrics`
+return `SubjectMetrics`: the subject summary, the versions, `total`, and
+`observations` — every *current* observation of the subject across its
+sources, keyed by metric slug, each list ordered by window, dimension
+value, and source. A metric the source cannot observe has no entry
+(never a zero); a court-only metric never appears for a judge; an
+unknown subject is a 404; a subject with no observation (every FJC
+judge today) is `total: 0` with an empty map.
+
+`GET /metrics/compare` answers one metric for one cohort:
+
+| Parameter         | Type              | Meaning                                                                               |
+|-------------------|-------------------|---------------------------------------------------------------------------------------|
+| `metric`          | slug, required    | A registry metric with judge-level observations; anything else is a 422              |
+| `window`          | days              | Required for, and one of, a windowed metric's windows; forbidden otherwise (422)     |
+| `court_id` / `jurisdiction_id` | UUID | Exactly one: the judges with a service record at the court, or at a court of the jurisdiction (the linkage `/judges?court_id=` uses); unknown is a 404 |
+| `period_start`, `period_end` | ISO dates | Only observations of exactly that source period; `period_end` earlier than `period_start` is a 422 |
+| `sort`            | `rate` (default), `numerator`, `denominator`, `value`, `name` | The figure to order by; a suppressed row sorts as if its figure were null, so the order never reveals a withheld number; nulls last |
+| `order`           | `desc` (default), `asc` | Direction; ties break by name and id                                             |
+| `limit`, `offset` | as every list     |                                                                                       |
+
+The response is a page of `CompareRow`s (`subject_id`, `name`, the
+judge's `court` within the cohort, `synthetic`, `observation_id`,
+`source`, the period, window, and dimension, the figures and interval
+under the same suppression rule, `eligible_count`, and
+`coverage_warning`) plus `cohort` (the metric and version compared, the
+cohort's court or jurisdiction and name, the reference period, the sort)
+and the methodology version and link. The reference period is the
+requested one when given, otherwise the period most rows of the *whole*
+cohort share; a row whose period differs carries a `coverage_warning`,
+as does a row whose source cannot document the metric's outcome. The
+comparison is the current definition version of the metric; a judge's
+observation under an older, not yet recomputed version is not compared.
+One page is one statement (`count(*) OVER ()`); an empty page costs one
+more that also settles whether the cohort exists.
+
+`GET /metrics/{observation_id}/provenance` is the chain
+(`docs/PROVENANCE.md`): the observation (the public shape above plus
+its registry and code versions), the snapshot (hash, label, export time,
+versions, row counts — never its storage path), the members grouped by
+kind with counts and the cases they belong to, the distinct source
+records with their sha256 digests, retrieval times, parser versions,
+runs, and public artifact URLs (an artifact read from the operator's
+filesystem shows `artifact_uri: null`), the source systems, and
+`complete`. A superseded or unknown observation is a 404.
+
+## Corrections
+
+`POST /corrections` is the API's one write path (the brief's correction
+process, `ROADMAP.md` §5 "Security & privacy strategy"). The body is a
+`CorrectionIn`:
+
+| Field                 | Constraint                                                     |
+|-----------------------|----------------------------------------------------------------|
+| `target_type`         | `judge`, `court`, `case`, or `metric_observation`              |
+| `target_id`           | The UUID of an existing row of that kind (otherwise a 422 naming `target_id`) |
+| `reason`              | 20–4000 characters, no control characters                      |
+| `contact`             | 3–320 characters: how to reach the requester; **encrypted before it is stored** |
+| `supporting_material` | Optional `http(s)` URL, at most 2000 characters                |
+
+Unknown body fields and any query parameter are 422. The contact is
+encrypted with Fernet under `JUDGEMETRICS_CORRECTION_CONTACT_KEY`
+(`security/crypto.py`) and nothing else; the row is inserted with a
+client-generated id and `status = received` by a role that holds
+`INSERT` on `correction_request` and nothing else (revision 0007) — no
+`SELECT`, so the API can never read a contact back, and no `RETURNING`.
+The response is `202 {id, status, received_at}` with
+`Cache-Control: no-store`; it never echoes a submitted field, and
+neither does any log line (the scrubber redacts `reason`, `contact`,
+`supporting_material`, and the key). Without a usable key the route
+answers 503 `corrections_unavailable` with a fixed message — and the
+API refuses to start without one outside the test environment.
+Requests are rate limited per client (below).
 
 ## Caching
 
 List and detail responses (`/judges`, `/courts`, `/jurisdictions`,
-`/cases` and their details, `/judges/{id}/cases`, `/coverage`) carry
-`Cache-Control: public, max-age=60`. Error responses and `/search` are
+`/cases` and their details, `/judges/{id}/cases`, `/coverage`, and the
+metrics reads: `/metrics`, `/judges/{id}/metrics`,
+`/courts/{id}/metrics`, `/metrics/compare`,
+`/metrics/{id}/provenance`) carry `Cache-Control: public, max-age=60`.
+Error responses, `/search`, and `POST /corrections` (`no-store`) are
 not cached.
 
 ## Rate limits
@@ -255,16 +398,22 @@ not cached.
 `/search` is rate limited in-process by an anonymous token bucket per
 client address: `JUDGEMETRICS_SEARCH_RATE_LIMIT_BURST` tokens (default
 `10`) refilled at `JUDGEMETRICS_SEARCH_RATE_LIMIT_PER_MINUTE` (default
-`60`) a minute. When the bucket is empty the response is `429` with
-`Retry-After` and the `rate_limited` error body. The client address is
-the TCP peer, or the address a trusted reverse proxy appended to
-`X-Forwarded-For` when `JUDGEMETRICS_TRUST_PROXY=true`; without that
-setting the header is ignored because a client controls it. This
-limiter is the local layer beneath the Phase 8 edge limits (the reverse
-proxy or CDN): it protects one process from one client, is not shared
-across workers, and forgets everything on restart. It is on in every
-environment except `test`, where `JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED=true`
-switches it on explicitly.
+`60`) a minute. `POST /corrections` has its own bucket per client:
+`JUDGEMETRICS_CORRECTIONS_RATE_LIMIT_BURST` tokens (default `5`)
+refilled at `JUDGEMETRICS_CORRECTIONS_RATE_LIMIT_PER_HOUR` (default `5`)
+an hour, checked before the body is parsed so an over-limit client never
+reaches validation or the database. When a bucket is empty the response
+is `429` with `Retry-After` and the `rate_limited` error body. The
+client address is the TCP peer, or the address a trusted reverse proxy
+appended to `X-Forwarded-For` when `JUDGEMETRICS_TRUST_PROXY=true`;
+without that setting the header is ignored because a client controls
+it. These limiters are the local layer beneath the Phase 8 edge limits
+(the reverse proxy or CDN): they protect one process from one client,
+are not shared across workers, and forget everything on restart. Each is
+on in every environment except `test`, where
+`JUDGEMETRICS_SEARCH_RATE_LIMIT_ENABLED=true` or
+`JUDGEMETRICS_CORRECTIONS_RATE_LIMIT_ENABLED=true` switches it on
+explicitly.
 
 The OpenAPI document declares an optional `X-API-Key` scheme
 (`ApiKey`). No keys are issued in Phase 1; every request is served as
@@ -308,7 +457,12 @@ statements at the cursor (`tests/integration/test_query_counts.py`):
 | search                         | ≤ 2        | `set_config` and the union                                          |
 | a judge's cases                | ≤ 2        | the page with its window count; an empty page costs one more that also settles whether the judge exists |
 | case detail, case timeline     | ≤ 8        | one statement per case-level table — the case with its court and flag, parties with persons, assignments with judges, charges, events with judges, decisions with pretrial releases, judges, and persons, sentences with judges — plus the provenance rows: a constant, whatever the case holds; the timeline is assembled from the same load |
-| coverage                       | ≤ 3        | one statement over `source` with correlated counts, one for the latest runs |
+| coverage                       | ≤ 3        | one statement over `source` with correlated counts, one for the latest runs, one for the latest snapshots |
+| registry                       | 0          | `GET /metrics` reads the registry file only                          |
+| subject metrics                | ≤ 2        | the subject with its synthetic flag, then its current observations joined to their definition, source, and snapshot |
+| compare                        | ≤ 2        | the page with its window count, the cohort's reference period, and the sort columns; an empty page costs one more that also settles whether the cohort exists |
+| observation provenance         | ≤ 6        | three today: the observation with its definition, snapshot, and source; the members resolved to their rows; the distinct source records with their sources |
+| correction                     | ≤ 2        | the target lookup and the `INSERT` — with no `RETURNING`             |
 
 The person joins select only `public_person_key`; no statement of any
 route touches `person_identifier`, `entity_resolution_candidate`, or
@@ -327,5 +481,12 @@ curl -s 'http://127.0.0.1:8000/api/v1/judges/<uuid>/cases?status=closed&filed_fr
 curl -s 'http://127.0.0.1:8000/api/v1/cases/<uuid>'
 curl -s 'http://127.0.0.1:8000/api/v1/cases/<uuid>/timeline'
 curl -s 'http://127.0.0.1:8000/api/v1/search?q=SYN-2020-000005'  # an exact case number
+curl -s 'http://127.0.0.1:8000/api/v1/search?q=Ginsberg'         # a surname alone: word similarity
 curl -s 'http://127.0.0.1:8000/api/v1/coverage'
+curl -s 'http://127.0.0.1:8000/api/v1/metrics'
+curl -s 'http://127.0.0.1:8000/api/v1/judges/<uuid>/metrics'
+curl -s 'http://127.0.0.1:8000/api/v1/metrics/compare?metric=new_case_rate&window=365&court_id=<uuid>&sort=rate&order=desc'
+curl -s 'http://127.0.0.1:8000/api/v1/metrics/<observation uuid>/provenance'
+curl -si -X POST 'http://127.0.0.1:8000/api/v1/corrections' -H 'Content-Type: application/json' \
+  -d '{"target_type":"judge","target_id":"<uuid>","reason":"The commission date is a year off.","contact":"requester@example.invalid"}'   # 202
 ```

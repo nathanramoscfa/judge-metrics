@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a data-correction request (the contact is encrypted at rest) */
+        post: operations["post_correction_api_v1_corrections_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/courts": {
         parameters: {
             query?: never;
@@ -64,6 +81,23 @@ export interface paths {
         };
         /** Court detail with provenance */
         get: operations["get_court_api_v1_courts__court_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/courts/{court_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every current metric observation of a court, grouped by metric */
+        get: operations["get_court_metrics_api_v1_courts__court_id__metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -157,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/judges/{judge_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every current metric observation of a judge, grouped by metric */
+        get: operations["get_judge_metrics_api_v1_judges__judge_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/judges/{judge_id}/service": {
         parameters: {
             query?: never;
@@ -200,6 +251,57 @@ export interface paths {
         };
         /** Jurisdiction detail with provenance */
         get: operations["get_jurisdiction_api_v1_jurisdictions__jurisdiction_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The metric registry: definitions, versions, thresholds, known limitations */
+        get: operations["get_registry_api_v1_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One metric and window for the judges of a court or jurisdiction, sorted and paginated */
+        get: operations["get_compare_api_v1_metrics_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/{observation_id}/provenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The provenance chain of a current observation, from its number to the raw artifacts */
+        get: operations["get_observation_provenance_api_v1_metrics__observation_id__provenance_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -270,6 +372,32 @@ export interface components {
              * Format: date-time
              */
             start_at: string;
+        };
+        /**
+         * AttributionOut
+         * @description A metric's structured inclusion rule (docs/METHODOLOGY.md "Attribution").
+         */
+        AttributionOut: {
+            /**
+             * Actor Types
+             * @description The actor types admitted, if restricted.
+             */
+            actor_types: string[] | null;
+            /**
+             * Assignment Gate
+             * @description How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, or court_of_case.
+             */
+            assignment_gate: string;
+            /**
+             * Decision Type
+             * @description The decision type a row must carry, if any.
+             */
+            decision_type: string | null;
+            /**
+             * Discretion
+             * @description The discretion classifications admitted, if restricted.
+             */
+            discretion: string[] | null;
         };
         /** CaseDetail */
         CaseDetail: {
@@ -404,6 +532,241 @@ export interface components {
             /** Violent Flag */
             violent_flag: boolean | null;
         };
+        /**
+         * CompareCohort
+         * @description What the rows are compared within.
+         */
+        CompareCohort: {
+            /** Court Id */
+            court_id: string | null;
+            /** Jurisdiction Id */
+            jurisdiction_id: string | null;
+            /**
+             * Metric
+             * @description The metric slug.
+             */
+            metric: string;
+            /**
+             * Name
+             * @description The court's or jurisdiction's name.
+             */
+            name: string;
+            /**
+             * Order
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /** Period End */
+            period_end: string | null;
+            /**
+             * Period Start
+             * @description The cohort's reference period: the requested one, else the period most rows of the whole cohort share; null when the cohort has no row.
+             */
+            period_start: string | null;
+            /**
+             * Sort
+             * @enum {string}
+             */
+            sort: "rate" | "numerator" | "denominator" | "value" | "name";
+            /**
+             * Version
+             * @description The definition version compared.
+             */
+            version: string;
+            /** Window Days */
+            window_days: number | null;
+        };
+        /**
+         * ComparePage
+         * @description A sorted, paginated compare table with its cohort and methodology metadata.
+         */
+        ComparePage: {
+            cohort: components["schemas"]["CompareCohort"];
+            /** Items */
+            items: components["schemas"]["CompareRow"][];
+            /**
+             * Limit
+             * @description Page size that was applied.
+             */
+            limit: number;
+            /**
+             * Methodology Url
+             * @description The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.
+             */
+            methodology_url: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /**
+             * Next Offset
+             * @description Offset of the next page, or null on the last.
+             */
+            next_offset: number | null;
+            /**
+             * Offset
+             * @description Rows skipped before this page.
+             */
+            offset: number;
+            /**
+             * Total
+             * @description Rows matching the filters, across all pages.
+             */
+            total: number;
+        };
+        /**
+         * CompareRow
+         * @description One judge's observation of the compared metric.
+         */
+        CompareRow: {
+            /** @description The judge's court within the cohort. */
+            court: components["schemas"]["CourtRef"];
+            /**
+             * Coverage Warning
+             * @description Set when the judge's coverage window differs from the cohort's reference period, or the source cannot document the metric's outcome.
+             */
+            coverage_warning: string | null;
+            /**
+             * Denominator
+             * @description The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).
+             */
+            denominator: number | null;
+            /** Dimension Value */
+            dimension_value: string | null;
+            /**
+             * Distribution
+             * @description The whole map of a distribution (vocabulary value → count); null otherwise.
+             */
+            distribution: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Eligible Count
+             * @description Sample size before any follow-up restriction.
+             */
+            eligible_count: number;
+            /** Interval Method */
+            interval_method: ("wilson" | "greenwood") | null;
+            /**
+             * Lower
+             * @description The 95% interval's lower bound.
+             */
+            lower: number | null;
+            /**
+             * Name
+             * @description The judge's canonical name.
+             */
+            name: string;
+            /**
+             * Numerator
+             * @description The observed count: rows or members meeting the metric's condition.
+             */
+            numerator: number | null;
+            /**
+             * Observation Id
+             * Format: uuid
+             */
+            observation_id: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Rate
+             * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
+             */
+            rate: number | null;
+            /** Source */
+            source: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Suppressed
+             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             */
+            suppressed: boolean;
+            /**
+             * Suppression Threshold
+             * @description The metric's threshold, stated so a reader knows why.
+             */
+            suppression_threshold: number;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+            /**
+             * Upper
+             * @description The 95% interval's upper bound.
+             */
+            upper: number | null;
+            /**
+             * Value
+             * @description A median, in days; null for every other kind.
+             */
+            value: number | null;
+            /** Window Days */
+            window_days: number | null;
+        };
+        /**
+         * CorrectionAccepted
+         * @description The acknowledgement: the request's id and status, nothing the requester submitted.
+         */
+        CorrectionAccepted: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "received";
+        };
+        /**
+         * CorrectionIn
+         * @description A public data-correction request. The contact is encrypted before it is stored.
+         */
+        CorrectionIn: {
+            /**
+             * Contact
+             * @description How to reach the requester about this request; stored encrypted.
+             */
+            contact: string;
+            /**
+             * Reason
+             * @description What is wrong and what the record should say.
+             */
+            reason: string;
+            /**
+             * Supporting Material
+             * @description An optional http(s) link to supporting material.
+             */
+            supporting_material?: string | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "judge" | "court" | "case" | "metric_observation";
+        };
         /** CourtDetail */
         CourtDetail: {
             /** Active From */
@@ -497,6 +860,16 @@ export interface components {
              */
             generated_at: string;
             /**
+             * Methodology Version
+             * @description The registry's methodology version.
+             */
+            methodology_version: string;
+            /**
+             * Registry Version
+             * @description The metric registry the API serves.
+             */
+            registry_version: number;
+            /**
              * Sources
              * @description Every registered source, by name.
              */
@@ -513,6 +886,16 @@ export interface components {
             cases: number;
             /** Courts */
             courts: number;
+            /**
+             * Coverage End
+             * @description Last day the source's records cover; the metrics engine censors follow-up the day after. Null for a source that declares no window (no metric is computed).
+             */
+            coverage_end: string | null;
+            /**
+             * Coverage Start
+             * @description First day the source's records cover, as the connector declares it.
+             */
+            coverage_start: string | null;
             /** Earliest Filed */
             earliest_filed: string | null;
             /** Judges */
@@ -523,6 +906,18 @@ export interface components {
             last_ingest: components["schemas"]["LastIngest"] | null;
             /** Latest Filed */
             latest_filed: string | null;
+            /** @description The newest snapshot behind the source's current observations, if any. */
+            latest_snapshot: components["schemas"]["LatestSnapshotOut"] | null;
+            /**
+             * Methodology Version
+             * @description The methodology version of that snapshot; null before the first compute.
+             */
+            methodology_version: string | null;
+            /**
+             * Observable Outcomes
+             * @description The justice_event_type values the source can document, sorted.
+             */
+            observable_outcomes: string[];
             /**
              * Persons
              * @description Resolved persons (merged rows excluded).
@@ -757,6 +1152,136 @@ export interface components {
             run_id: string;
             status: components["schemas"]["IngestRunStatus"];
         };
+        /**
+         * LatestSnapshotOut
+         * @description The newest hashed export a source's current observations were computed from.
+         */
+        LatestSnapshotOut: {
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+        };
+        /**
+         * MemberGroup
+         * @description The observation's members of one kind: the eligible canonical rows behind the number.
+         */
+        MemberGroup: {
+            /**
+             * Case Ids
+             * @description The distinct cases the members belong to (`/cases/{id}`), sorted.
+             */
+            case_ids: string[];
+            /**
+             * Counted
+             * @description Members in the numerator.
+             */
+            counted: number;
+            /**
+             * Followed
+             * @description Members in the denominator after censoring.
+             */
+            followed: number;
+            /**
+             * Member Kind
+             * @enum {string}
+             */
+            member_kind: "decision" | "charge" | "court_case" | "sentence" | "court_event" | "justice_event";
+            /**
+             * Members
+             * @description Rows of this kind behind the observation.
+             */
+            members: number;
+            /**
+             * Resolved
+             * @description Members whose canonical row still exists; equals `members` when complete.
+             */
+            resolved: number;
+        };
+        /**
+         * MetricDefinitionOut
+         * @description One registry entry: what a number means and how it is computed.
+         */
+        MetricDefinitionOut: {
+            attribution: components["schemas"]["AttributionOut"];
+            /** Denominator */
+            denominator: string;
+            /** Description */
+            description: string;
+            /**
+             * Dimension
+             * @description disposition or offense_category, when grouped.
+             */
+            dimension: string | null;
+            /** Eligibility */
+            eligibility: string;
+            /**
+             * Index Event
+             * @description pretrial_release, disposition, or sentence for a windowed metric.
+             */
+            index_event: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            /**
+             * Methodology Url
+             * @description The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.
+             */
+            methodology_url: string;
+            /** Name */
+            name: string;
+            /** Numerator */
+            numerator: string;
+            /**
+             * Outcome
+             * @description The justice_event_type a windowed metric counts.
+             */
+            outcome: string | null;
+            /** Slug */
+            slug: string;
+            /** Subject Types */
+            subject_types: ("judge" | "court")[];
+            /**
+             * Suppression Threshold
+             * @description The denominator below which an observation is suppressed.
+             */
+            suppression_threshold: number;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "share" | "days";
+            /**
+             * Version
+             * @description The definition's version; bumped when its semantics change.
+             */
+            version: string;
+            /**
+             * Windows Days
+             * @description The follow-up windows, in days.
+             */
+            windows_days: number[] | null;
+        };
+        /**
+         * MetricsReadiness
+         * @description The latest exported snapshot: what the metrics routes currently serve from.
+         */
+        MetricsReadiness: {
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /** Snapshot Hash */
+            snapshot_hash: string;
+        };
         /** NotReadyResponse */
         NotReadyResponse: {
             /** Reason */
@@ -766,6 +1291,204 @@ export interface components {
              * @constant
              */
             status: "not_ready";
+        };
+        /**
+         * Observation
+         * @description One current metric observation with every presentation field.
+         */
+        Observation: {
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            coverage: components["schemas"]["ObservationCoverage"];
+            /**
+             * Denominator
+             * @description The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).
+             */
+            denominator: number | null;
+            /**
+             * Dimension Value
+             * @description The group of a dimensioned metric.
+             */
+            dimension_value: string | null;
+            /**
+             * Distribution
+             * @description The whole map of a distribution (vocabulary value → count); null otherwise.
+             */
+            distribution: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Eligible Count
+             * @description Sample size: the whole cohort before any follow-up restriction, published even when the number is suppressed.
+             */
+            eligible_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Method
+             * @description wilson for shares and fixed-window rates, greenwood for survival estimates.
+             */
+            interval_method: ("wilson" | "greenwood") | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            /**
+             * Lower
+             * @description The 95% interval's lower bound.
+             */
+            lower: number | null;
+            /**
+             * Methodology Url
+             * @description The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.
+             */
+            methodology_url: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /**
+             * Name
+             * @description The metric's name from the registry.
+             */
+            name: string;
+            /**
+             * Numerator
+             * @description The observed count: rows or members meeting the metric's condition.
+             */
+            numerator: number | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description The observation's date range: the source's window.
+             */
+            period_start: string;
+            /**
+             * Rate
+             * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
+             */
+            rate: number | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Snapshot Hash
+             * @description The content hash of the exported tables the number was computed from.
+             */
+            snapshot_hash: string;
+            /**
+             * Source
+             * @description Source register key (docs/DATA_SOURCES.md).
+             */
+            source: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "judge" | "court";
+            /**
+             * Suppressed
+             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             */
+            suppressed: boolean;
+            /**
+             * Suppression Threshold
+             * @description The metric's threshold, stated so a reader knows why.
+             */
+            suppression_threshold: number;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "share" | "days";
+            /**
+             * Upper
+             * @description The 95% interval's upper bound.
+             */
+            upper: number | null;
+            /**
+             * Value
+             * @description A median, in days; null for every other kind.
+             */
+            value: number | null;
+            /**
+             * Version
+             * @description The definition version the observation was computed under.
+             */
+            version: string;
+            /**
+             * Window Days
+             * @description The follow-up window of a windowed metric.
+             */
+            window_days: number | null;
+        };
+        /**
+         * ObservationCoverage
+         * @description What the observation's source covers, and whether it can document the outcome.
+         */
+        ObservationCoverage: {
+            /**
+             * Coverage End
+             * @description Last day the source's records cover; follow-up is censored the day after.
+             */
+            coverage_end: string | null;
+            /**
+             * Coverage Start
+             * @description First day the source's records cover.
+             */
+            coverage_start: string | null;
+            /**
+             * Observable
+             * @description True when the source documents the metric's outcome (always true for a metric without an outcome); a metric that is not observable is never published.
+             */
+            observable: boolean;
+        };
+        /**
+         * ObservationProvenance
+         * @description The brief's chain, top-down: observation → snapshot → members → cases → records → sources.
+         */
+        ObservationProvenance: {
+            /**
+             * Complete
+             * @description True when every member resolved to a canonical row and every row to a source record with its artifact digest.
+             */
+            complete: boolean;
+            /**
+             * Members
+             * @description By member kind.
+             */
+            members: components["schemas"]["MemberGroup"][];
+            observation: components["schemas"]["TracedObservation"];
+            snapshot: components["schemas"]["SnapshotOut"];
+            /**
+             * Source Records
+             * @description The distinct artifacts behind every member, newest retrieval first.
+             */
+            source_records: components["schemas"]["SourceRecordOut"][];
+            /**
+             * Sources
+             * @description The distinct source systems, by key.
+             */
+            sources: components["schemas"]["SourceOut"][];
         };
         /** Page[CaseSummary] */
         Page_CaseSummary_: {
@@ -933,11 +1656,38 @@ export interface components {
              * @constant
              */
             database: "ok";
+            metrics: components["schemas"]["MetricsReadiness"] | null;
             /**
              * Status
              * @constant
              */
             status: "ready";
+        };
+        /**
+         * Registry
+         * @description The versioned metric registry the methodology page is rendered from.
+         */
+        Registry: {
+            /**
+             * Definitions
+             * @description In registry order.
+             */
+            definitions: components["schemas"]["MetricDefinitionOut"][];
+            /**
+             * Known Limitations
+             * @description The brief's statistical warnings, verbatim and never softened.
+             */
+            known_limitations: string[];
+            /**
+             * Methodology Url
+             * @description The methodology page.
+             */
+            methodology_url: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /** Registry Version */
+            registry_version: number;
+            suppression: components["schemas"]["SuppressionOut"];
         };
         /** SearchResponse */
         SearchResponse: {
@@ -1032,6 +1782,157 @@ export interface components {
             /** Start Date */
             start_date: string | null;
         };
+        /**
+         * SnapshotOut
+         * @description The hashed export the observation was computed from.
+         */
+        SnapshotOut: {
+            /** Code Version */
+            code_version: string;
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Label */
+            label: string | null;
+            /** Methodology Version */
+            methodology_version: string;
+            /** Registry Version */
+            registry_version: number;
+            /**
+             * Row Counts
+             * @description Rows per exported table.
+             */
+            row_counts: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * SourceOut
+         * @description The source system a record came from.
+         */
+        SourceOut: {
+            /** Coverage End */
+            coverage_end: string | null;
+            /** Coverage Start */
+            coverage_start: string | null;
+            /** Observable Outcomes */
+            observable_outcomes: string[];
+            /** Owner */
+            owner: string;
+            /**
+             * Source
+             * @description Source register key.
+             */
+            source: string;
+            /** Source Type */
+            source_type: string;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /**
+         * SourceRecordOut
+         * @description One retrieved raw artifact behind the members.
+         */
+        SourceRecordOut: {
+            /**
+             * Artifact Uri
+             * @description Where the artifact was fetched from, when that is a public http(s) URL; null for an artifact read from the operator's filesystem (a fixture or the synthetic dataset).
+             */
+            artifact_uri: string | null;
+            /**
+             * External Record Id
+             * @description The artifact's id at the source.
+             */
+            external_record_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ingest Run Id
+             * Format: uuid
+             */
+            ingest_run_id: string;
+            /** Parser Version */
+            parser_version: string;
+            /** Raw Sha256 */
+            raw_sha256: string;
+            /**
+             * Retrieved At
+             * Format: date-time
+             */
+            retrieved_at: string;
+            /**
+             * Source
+             * @description Source register key.
+             */
+            source: string;
+        };
+        /**
+         * SubjectMetrics
+         * @description Every current observation of a judge or court, grouped by metric slug.
+         */
+        SubjectMetrics: {
+            /**
+             * Methodology Url
+             * @description The methodology page.
+             */
+            methodology_url: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /**
+             * Observations
+             * @description By metric slug, each list ordered by window, dimension value, and source; a metric the source cannot observe has no entry.
+             */
+            observations: {
+                [key: string]: components["schemas"]["Observation"][];
+            };
+            /** Registry Version */
+            registry_version: number;
+            subject: components["schemas"]["SubjectSummary"];
+            /**
+             * Total
+             * @description Observations across every slug.
+             */
+            total: number;
+        };
+        /** SubjectSummary */
+        SubjectSummary: {
+            /** Canonical Name */
+            canonical_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "judge" | "court";
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+        };
+        /** SuppressionOut */
+        SuppressionOut: {
+            /** Default Threshold */
+            default_threshold: number;
+            /** Rationale */
+            rationale: string;
+            /** Rule */
+            rule: string;
+        };
         /** Timeline */
         Timeline: {
             /**
@@ -1080,6 +1981,167 @@ export interface components {
             label: string;
             /** @description The raw artifact the underlying row came from. */
             source: components["schemas"]["Provenance"];
+        };
+        /**
+         * TracedObservation
+         * @description The observation at the top of a provenance chain, with its versions.
+         */
+        TracedObservation: {
+            /**
+             * Code Version
+             * @description The package version and git SHA that computed it.
+             */
+            code_version: string;
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            coverage: components["schemas"]["ObservationCoverage"];
+            /**
+             * Denominator
+             * @description The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).
+             */
+            denominator: number | null;
+            /**
+             * Dimension Value
+             * @description The group of a dimensioned metric.
+             */
+            dimension_value: string | null;
+            /**
+             * Distribution
+             * @description The whole map of a distribution (vocabulary value → count); null otherwise.
+             */
+            distribution: {
+                [key: string]: number;
+            } | null;
+            /**
+             * Eligible Count
+             * @description Sample size: the whole cohort before any follow-up restriction, published even when the number is suppressed.
+             */
+            eligible_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Interval Method
+             * @description wilson for shares and fixed-window rates, greenwood for survival estimates.
+             */
+            interval_method: ("wilson" | "greenwood") | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            /**
+             * Lower
+             * @description The 95% interval's lower bound.
+             */
+            lower: number | null;
+            /**
+             * Methodology Url
+             * @description The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.
+             */
+            methodology_url: string;
+            /** Methodology Version */
+            methodology_version: string;
+            /**
+             * Name
+             * @description The metric's name from the registry.
+             */
+            name: string;
+            /**
+             * Numerator
+             * @description The observed count: rows or members meeting the metric's condition.
+             */
+            numerator: number | null;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description The observation's date range: the source's window.
+             */
+            period_start: string;
+            /**
+             * Rate
+             * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
+             */
+            rate: number | null;
+            /** Registry Version */
+            registry_version: number;
+            /** Slug */
+            slug: string;
+            /**
+             * Snapshot Hash
+             * @description The content hash of the exported tables the number was computed from.
+             */
+            snapshot_hash: string;
+            /**
+             * Source
+             * @description Source register key (docs/DATA_SOURCES.md).
+             */
+            source: string;
+            /**
+             * Subject Id
+             * Format: uuid
+             */
+            subject_id: string;
+            /**
+             * Subject Type
+             * @enum {string}
+             */
+            subject_type: "judge" | "court";
+            /**
+             * Superseded At
+             * @description Null for a current observation (the only kind the API traces).
+             */
+            superseded_at: string | null;
+            /**
+             * Suppressed
+             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             */
+            suppressed: boolean;
+            /**
+             * Suppression Threshold
+             * @description The metric's threshold, stated so a reader knows why.
+             */
+            suppression_threshold: number;
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "share" | "days";
+            /**
+             * Upper
+             * @description The 95% interval's upper bound.
+             */
+            upper: number | null;
+            /**
+             * Value
+             * @description A median, in days; null for every other kind.
+             */
+            value: number | null;
+            /**
+             * Version
+             * @description The definition version the observation was computed under.
+             */
+            version: string;
+            /**
+             * Window Days
+             * @description The follow-up window of a windowed metric.
+             */
+            window_days: number | null;
         };
     };
     responses: never;
@@ -1170,6 +2232,57 @@ export interface operations {
             };
         };
     };
+    post_correction_api_v1_corrections_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrectionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CorrectionAccepted"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Rate limit exceeded; `Retry-After` gives the wait in seconds. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description The service cannot accept the request right now (a fixed message; never a secret). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     list_courts_api_v1_courts_get: {
         parameters: {
             query?: {
@@ -1248,6 +2361,46 @@ export interface operations {
             };
         };
     };
+    get_court_metrics_api_v1_courts__court_id__metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                court_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectMetrics"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     get_coverage_api_v1_coverage_get: {
         parameters: {
             query?: never;
@@ -1300,7 +2453,7 @@ export interface operations {
     list_judges_api_v1_judges_get: {
         parameters: {
             query?: {
-                /** @description Name to match by trigram similarity (normalized before matching). */
+                /** @description Name to match by trigram similarity (normalized before matching): a single word by word similarity, several words by whole-name similarity. */
                 q?: string | null;
                 /** @description Only judges with a service record at this court. */
                 court_id?: string | null;
@@ -1410,6 +2563,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_CaseSummary_"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_judge_metrics_api_v1_judges__judge_id__metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                judge_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectMetrics"];
                 };
             };
             /** @description The resource does not exist. */
@@ -1546,6 +2739,134 @@ export interface operations {
             };
         };
     };
+    get_registry_api_v1_metrics_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Registry"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_compare_api_v1_metrics_compare_get: {
+        parameters: {
+            query: {
+                /** @description A registry metric slug (`GET /metrics`). */
+                metric: string;
+                /** @description The follow-up window in days; required for, and one of, the metric's windows. */
+                window?: number | null;
+                /** @description Judges with a service record at this court. */
+                court_id?: string | null;
+                /** @description Judges with a service record at a court of this jurisdiction. */
+                jurisdiction_id?: string | null;
+                /** @description Only observations whose period starts on this date. */
+                period_start?: string | null;
+                /** @description Only observations whose period ends on this date. */
+                period_end?: string | null;
+                /** @description Sort key; a suppressed row sorts as if its figure were null. */
+                sort?: "rate" | "numerator" | "denominator" | "value" | "name";
+                /** @description Sort direction. */
+                order?: "asc" | "desc";
+                /** @description Page size, at most 100. */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComparePage"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_observation_provenance_api_v1_metrics__observation_id__provenance_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationProvenance"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     ready_api_v1_ready_get: {
         parameters: {
             query?: never;
@@ -1578,7 +2899,7 @@ export interface operations {
     search_names_api_v1_search_get: {
         parameters: {
             query: {
-                /** @description Name to match; normalized like judge names before matching. */
+                /** @description Name to match, normalized like judge names before matching: a single word by word similarity (a surname alone), several words by whole-name similarity. */
                 q: string;
                 /** @description Results to return, at most 100. */
                 limit?: number;

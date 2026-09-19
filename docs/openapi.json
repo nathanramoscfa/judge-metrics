@@ -55,6 +55,66 @@
         "title": "AssignmentOut",
         "type": "object"
       },
+      "AttributionOut": {
+        "description": "A metric's structured inclusion rule (docs/METHODOLOGY.md \"Attribution\").",
+        "properties": {
+          "actor_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The actor types admitted, if restricted.",
+            "title": "Actor Types"
+          },
+          "assignment_gate": {
+            "description": "How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, or court_of_case.",
+            "title": "Assignment Gate",
+            "type": "string"
+          },
+          "decision_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The decision type a row must carry, if any.",
+            "title": "Decision Type"
+          },
+          "discretion": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The discretion classifications admitted, if restricted.",
+            "title": "Discretion"
+          }
+        },
+        "required": [
+          "decision_type",
+          "actor_types",
+          "discretion",
+          "assignment_gate"
+        ],
+        "title": "AttributionOut",
+        "type": "object"
+      },
       "CaseDetail": {
         "properties": {
           "assignments": {
@@ -362,6 +422,500 @@
         "title": "ChargeOut",
         "type": "object"
       },
+      "CompareCohort": {
+        "description": "What the rows are compared within.",
+        "properties": {
+          "court_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Court Id"
+          },
+          "jurisdiction_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jurisdiction Id"
+          },
+          "metric": {
+            "description": "The metric slug.",
+            "title": "Metric",
+            "type": "string"
+          },
+          "name": {
+            "description": "The court's or jurisdiction's name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "order": {
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort's reference period: the requested one, else the period most rows of the whole cohort share; null when the cohort has no row.",
+            "title": "Period Start"
+          },
+          "sort": {
+            "enum": [
+              "rate",
+              "numerator",
+              "denominator",
+              "value",
+              "name"
+            ],
+            "title": "Sort",
+            "type": "string"
+          },
+          "version": {
+            "description": "The definition version compared.",
+            "title": "Version",
+            "type": "string"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "metric",
+          "version",
+          "window_days",
+          "court_id",
+          "jurisdiction_id",
+          "name",
+          "period_start",
+          "period_end",
+          "sort",
+          "order"
+        ],
+        "title": "CompareCohort",
+        "type": "object"
+      },
+      "ComparePage": {
+        "description": "A sorted, paginated compare table with its cohort and methodology metadata.",
+        "properties": {
+          "cohort": {
+            "$ref": "#/components/schemas/CompareCohort"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CompareRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "description": "Page size that was applied.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "methodology_url": {
+            "description": "The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Offset of the next page, or null on the last.",
+            "title": "Next Offset"
+          },
+          "offset": {
+            "description": "Rows skipped before this page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows matching the filters, across all pages.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "next_offset",
+          "cohort",
+          "methodology_version",
+          "methodology_url"
+        ],
+        "title": "ComparePage",
+        "type": "object"
+      },
+      "CompareRow": {
+        "description": "One judge's observation of the compared metric.",
+        "properties": {
+          "court": {
+            "$ref": "#/components/schemas/CourtRef",
+            "description": "The judge's court within the cohort."
+          },
+          "coverage_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the judge's coverage window differs from the cohort's reference period, or the source cannot document the metric's outcome.",
+            "title": "Coverage Warning"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).",
+            "title": "Denominator"
+          },
+          "dimension_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Value"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The whole map of a distribution (vocabulary value → count); null otherwise.",
+            "title": "Distribution"
+          },
+          "eligible_count": {
+            "description": "Sample size before any follow-up restriction.",
+            "minimum": 0.0,
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "interval_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wilson",
+                  "greenwood"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interval Method"
+          },
+          "lower": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's lower bound.",
+            "title": "Lower"
+          },
+          "name": {
+            "description": "The judge's canonical name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The observed count: rows or members meeting the metric's condition.",
+            "title": "Numerator"
+          },
+          "observation_id": {
+            "format": "uuid",
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
+            "title": "Rate"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "suppressed": {
+            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "title": "Suppressed",
+            "type": "boolean"
+          },
+          "suppression_threshold": {
+            "description": "The metric's threshold, stated so a reader knows why.",
+            "minimum": 0.0,
+            "title": "Suppression Threshold",
+            "type": "integer"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "upper": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's upper bound.",
+            "title": "Upper"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A median, in days; null for every other kind.",
+            "title": "Value"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "numerator",
+          "denominator",
+          "rate",
+          "value",
+          "distribution",
+          "lower",
+          "upper",
+          "suppressed",
+          "suppression_threshold",
+          "subject_id",
+          "name",
+          "court",
+          "synthetic",
+          "observation_id",
+          "source",
+          "period_start",
+          "period_end",
+          "window_days",
+          "dimension_value",
+          "eligible_count",
+          "interval_method",
+          "coverage_warning"
+        ],
+        "title": "CompareRow",
+        "type": "object"
+      },
+      "CorrectionAccepted": {
+        "description": "The acknowledgement: the request's id and status, nothing the requester submitted.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "status": {
+            "const": "received",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "received_at"
+        ],
+        "title": "CorrectionAccepted",
+        "type": "object"
+      },
+      "CorrectionIn": {
+        "additionalProperties": false,
+        "description": "A public data-correction request. The contact is encrypted before it is stored.",
+        "properties": {
+          "contact": {
+            "description": "How to reach the requester about this request; stored encrypted.",
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Contact",
+            "type": "string"
+          },
+          "reason": {
+            "description": "What is wrong and what the record should say.",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Reason",
+            "type": "string"
+          },
+          "supporting_material": {
+            "anyOf": [
+              {
+                "format": "uri",
+                "maxLength": 2083,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An optional http(s) link to supporting material.",
+            "title": "Supporting Material"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "judge",
+              "court",
+              "case",
+              "metric_observation"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "reason",
+          "contact"
+        ],
+        "title": "CorrectionIn",
+        "type": "object"
+      },
       "CourtDetail": {
         "properties": {
           "active_from": {
@@ -534,6 +1088,17 @@
             "title": "Generated At",
             "type": "string"
           },
+          "methodology_version": {
+            "description": "The registry's methodology version.",
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "registry_version": {
+            "description": "The metric registry the API serves.",
+            "minimum": 1.0,
+            "title": "Registry Version",
+            "type": "integer"
+          },
           "sources": {
             "description": "Every registered source, by name.",
             "items": {
@@ -551,6 +1116,8 @@
         "required": [
           "sources",
           "synthetic_present",
+          "registry_version",
+          "methodology_version",
           "generated_at"
         ],
         "title": "Coverage",
@@ -567,6 +1134,32 @@
             "minimum": 0.0,
             "title": "Courts",
             "type": "integer"
+          },
+          "coverage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day the source's records cover; the metrics engine censors follow-up the day after. Null for a source that declares no window (no metric is computed).",
+            "title": "Coverage End"
+          },
+          "coverage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First day the source's records cover, as the connector declares it.",
+            "title": "Coverage Start"
           },
           "earliest_filed": {
             "anyOf": [
@@ -613,6 +1206,37 @@
             ],
             "title": "Latest Filed"
           },
+          "latest_snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestSnapshotOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest snapshot behind the source's current observations, if any."
+          },
+          "methodology_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The methodology version of that snapshot; null before the first compute.",
+            "title": "Methodology Version"
+          },
+          "observable_outcomes": {
+            "description": "The justice_event_type values the source can document, sorted.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Observable Outcomes",
+            "type": "array"
+          },
           "persons": {
             "description": "Resolved persons (merged rows excluded).",
             "minimum": 0.0,
@@ -645,7 +1269,12 @@
           "persons",
           "earliest_filed",
           "latest_filed",
-          "last_ingest"
+          "last_ingest",
+          "coverage_start",
+          "coverage_end",
+          "observable_outcomes",
+          "latest_snapshot",
+          "methodology_version"
         ],
         "title": "CoverageSource",
         "type": "object"
@@ -1162,6 +1791,266 @@
         "title": "LastIngest",
         "type": "object"
       },
+      "LatestSnapshotOut": {
+        "description": "The newest hashed export a source's current observations were computed from.",
+        "properties": {
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_hash",
+          "exported_at"
+        ],
+        "title": "LatestSnapshotOut",
+        "type": "object"
+      },
+      "MemberGroup": {
+        "description": "The observation's members of one kind: the eligible canonical rows behind the number.",
+        "properties": {
+          "case_ids": {
+            "description": "The distinct cases the members belong to (`/cases/{id}`), sorted.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Case Ids",
+            "type": "array"
+          },
+          "counted": {
+            "description": "Members in the numerator.",
+            "minimum": 0.0,
+            "title": "Counted",
+            "type": "integer"
+          },
+          "followed": {
+            "description": "Members in the denominator after censoring.",
+            "minimum": 0.0,
+            "title": "Followed",
+            "type": "integer"
+          },
+          "member_kind": {
+            "enum": [
+              "decision",
+              "charge",
+              "court_case",
+              "sentence",
+              "court_event",
+              "justice_event"
+            ],
+            "title": "Member Kind",
+            "type": "string"
+          },
+          "members": {
+            "description": "Rows of this kind behind the observation.",
+            "minimum": 0.0,
+            "title": "Members",
+            "type": "integer"
+          },
+          "resolved": {
+            "description": "Members whose canonical row still exists; equals `members` when complete.",
+            "minimum": 0.0,
+            "title": "Resolved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "member_kind",
+          "members",
+          "counted",
+          "followed",
+          "resolved",
+          "case_ids"
+        ],
+        "title": "MemberGroup",
+        "type": "object"
+      },
+      "MetricDefinitionOut": {
+        "description": "One registry entry: what a number means and how it is computed.",
+        "properties": {
+          "attribution": {
+            "$ref": "#/components/schemas/AttributionOut"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "disposition or offense_category, when grouped.",
+            "title": "Dimension"
+          },
+          "eligibility": {
+            "title": "Eligibility",
+            "type": "string"
+          },
+          "index_event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "pretrial_release, disposition, or sentence for a windowed metric.",
+            "title": "Index Event"
+          },
+          "kind": {
+            "enum": [
+              "count",
+              "share",
+              "windowed_rate",
+              "survival",
+              "distribution",
+              "median"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "methodology_url": {
+            "description": "The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "numerator": {
+            "title": "Numerator",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The justice_event_type a windowed metric counts.",
+            "title": "Outcome"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "subject_types": {
+            "items": {
+              "enum": [
+                "judge",
+                "court"
+              ],
+              "type": "string"
+            },
+            "title": "Subject Types",
+            "type": "array"
+          },
+          "suppression_threshold": {
+            "description": "The denominator below which an observation is suppressed.",
+            "minimum": 0.0,
+            "title": "Suppression Threshold",
+            "type": "integer"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "share",
+              "days"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "version": {
+            "description": "The definition's version; bumped when its semantics change.",
+            "title": "Version",
+            "type": "string"
+          },
+          "windows_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The follow-up windows, in days.",
+            "title": "Windows Days"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "kind",
+          "subject_types",
+          "description",
+          "numerator",
+          "denominator",
+          "eligibility",
+          "attribution",
+          "index_event",
+          "outcome",
+          "windows_days",
+          "dimension",
+          "suppression_threshold",
+          "unit",
+          "version",
+          "methodology_url"
+        ],
+        "title": "MetricDefinitionOut",
+        "type": "object"
+      },
+      "MetricsReadiness": {
+        "description": "The latest exported snapshot: what the metrics routes currently serve from.",
+        "properties": {
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "title": "Snapshot Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_hash",
+          "exported_at",
+          "methodology_version"
+        ],
+        "title": "MetricsReadiness",
+        "type": "object"
+      },
       "NotReadyResponse": {
         "properties": {
           "reason": {
@@ -1179,6 +2068,389 @@
           "reason"
         ],
         "title": "NotReadyResponse",
+        "type": "object"
+      },
+      "Observation": {
+        "description": "One current metric observation with every presentation field.",
+        "properties": {
+          "computed_at": {
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ObservationCoverage"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).",
+            "title": "Denominator"
+          },
+          "dimension_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group of a dimensioned metric.",
+            "title": "Dimension Value"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The whole map of a distribution (vocabulary value → count); null otherwise.",
+            "title": "Distribution"
+          },
+          "eligible_count": {
+            "description": "Sample size: the whole cohort before any follow-up restriction, published even when the number is suppressed.",
+            "minimum": 0.0,
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interval_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wilson",
+                  "greenwood"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates.",
+            "title": "Interval Method"
+          },
+          "kind": {
+            "enum": [
+              "count",
+              "share",
+              "windowed_rate",
+              "survival",
+              "distribution",
+              "median"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lower": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's lower bound.",
+            "title": "Lower"
+          },
+          "methodology_url": {
+            "description": "The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "name": {
+            "description": "The metric's name from the registry.",
+            "title": "Name",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The observed count: rows or members meeting the metric's condition.",
+            "title": "Numerator"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "The observation's date range: the source's window.",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
+            "title": "Rate"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "description": "The content hash of the exported tables the number was computed from.",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key (docs/DATA_SOURCES.md).",
+            "title": "Source",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "judge",
+              "court"
+            ],
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "suppressed": {
+            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "title": "Suppressed",
+            "type": "boolean"
+          },
+          "suppression_threshold": {
+            "description": "The metric's threshold, stated so a reader knows why.",
+            "minimum": 0.0,
+            "title": "Suppression Threshold",
+            "type": "integer"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "share",
+              "days"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "upper": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's upper bound.",
+            "title": "Upper"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A median, in days; null for every other kind.",
+            "title": "Value"
+          },
+          "version": {
+            "description": "The definition version the observation was computed under.",
+            "title": "Version",
+            "type": "string"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The follow-up window of a windowed metric.",
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "numerator",
+          "denominator",
+          "rate",
+          "value",
+          "distribution",
+          "lower",
+          "upper",
+          "suppressed",
+          "suppression_threshold",
+          "id",
+          "slug",
+          "name",
+          "kind",
+          "unit",
+          "version",
+          "subject_type",
+          "subject_id",
+          "source",
+          "synthetic",
+          "period_start",
+          "period_end",
+          "window_days",
+          "dimension_value",
+          "eligible_count",
+          "interval_method",
+          "coverage",
+          "methodology_version",
+          "methodology_url",
+          "snapshot_hash",
+          "computed_at"
+        ],
+        "title": "Observation",
+        "type": "object"
+      },
+      "ObservationCoverage": {
+        "description": "What the observation's source covers, and whether it can document the outcome.",
+        "properties": {
+          "coverage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day the source's records cover; follow-up is censored the day after.",
+            "title": "Coverage End"
+          },
+          "coverage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First day the source's records cover.",
+            "title": "Coverage Start"
+          },
+          "observable": {
+            "description": "True when the source documents the metric's outcome (always true for a metric without an outcome); a metric that is not observable is never published.",
+            "title": "Observable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "coverage_start",
+          "coverage_end",
+          "observable"
+        ],
+        "title": "ObservationCoverage",
+        "type": "object"
+      },
+      "ObservationProvenance": {
+        "description": "The brief's chain, top-down: observation → snapshot → members → cases → records → sources.",
+        "properties": {
+          "complete": {
+            "description": "True when every member resolved to a canonical row and every row to a source record with its artifact digest.",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "members": {
+            "description": "By member kind.",
+            "items": {
+              "$ref": "#/components/schemas/MemberGroup"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "observation": {
+            "$ref": "#/components/schemas/TracedObservation"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotOut"
+          },
+          "source_records": {
+            "description": "The distinct artifacts behind every member, newest retrieval first.",
+            "items": {
+              "$ref": "#/components/schemas/SourceRecordOut"
+            },
+            "title": "Source Records",
+            "type": "array"
+          },
+          "sources": {
+            "description": "The distinct source systems, by key.",
+            "items": {
+              "$ref": "#/components/schemas/SourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observation",
+          "snapshot",
+          "members",
+          "source_records",
+          "sources",
+          "complete"
+        ],
+        "title": "ObservationProvenance",
         "type": "object"
       },
       "Page_CaseSummary_": {
@@ -1509,6 +2781,16 @@
             "title": "Database",
             "type": "string"
           },
+          "metrics": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricsReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "const": "ready",
             "title": "Status",
@@ -1518,9 +2800,58 @@
         "required": [
           "status",
           "database",
-          "alembic_current"
+          "alembic_current",
+          "metrics"
         ],
         "title": "ReadyResponse",
+        "type": "object"
+      },
+      "Registry": {
+        "description": "The versioned metric registry the methodology page is rendered from.",
+        "properties": {
+          "definitions": {
+            "description": "In registry order.",
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionOut"
+            },
+            "title": "Definitions",
+            "type": "array"
+          },
+          "known_limitations": {
+            "description": "The brief's statistical warnings, verbatim and never softened.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Known Limitations",
+            "type": "array"
+          },
+          "methodology_url": {
+            "description": "The methodology page.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "registry_version": {
+            "minimum": 1.0,
+            "title": "Registry Version",
+            "type": "integer"
+          },
+          "suppression": {
+            "$ref": "#/components/schemas/SuppressionOut"
+          }
+        },
+        "required": [
+          "registry_version",
+          "methodology_version",
+          "methodology_url",
+          "known_limitations",
+          "suppression",
+          "definitions"
+        ],
+        "title": "Registry",
         "type": "object"
       },
       "SearchResponse": {
@@ -1722,6 +3053,308 @@
         "title": "ServiceRecord",
         "type": "object"
       },
+      "SnapshotOut": {
+        "description": "The hashed export the observation was computed from.",
+        "properties": {
+          "code_version": {
+            "title": "Code Version",
+            "type": "string"
+          },
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "registry_version": {
+            "title": "Registry Version",
+            "type": "integer"
+          },
+          "row_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Rows per exported table.",
+            "title": "Row Counts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "content_hash",
+          "label",
+          "exported_at",
+          "code_version",
+          "registry_version",
+          "methodology_version",
+          "row_counts"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "SourceOut": {
+        "description": "The source system a record came from.",
+        "properties": {
+          "coverage_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage End"
+          },
+          "coverage_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Start"
+          },
+          "observable_outcomes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Observable Outcomes",
+            "type": "array"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key.",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "owner",
+          "source_type",
+          "synthetic",
+          "coverage_start",
+          "coverage_end",
+          "observable_outcomes"
+        ],
+        "title": "SourceOut",
+        "type": "object"
+      },
+      "SourceRecordOut": {
+        "description": "One retrieved raw artifact behind the members.",
+        "properties": {
+          "artifact_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the artifact was fetched from, when that is a public http(s) URL; null for an artifact read from the operator's filesystem (a fixture or the synthetic dataset).",
+            "title": "Artifact Uri"
+          },
+          "external_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The artifact's id at the source.",
+            "title": "External Record Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ingest_run_id": {
+            "format": "uuid",
+            "title": "Ingest Run Id",
+            "type": "string"
+          },
+          "parser_version": {
+            "title": "Parser Version",
+            "type": "string"
+          },
+          "raw_sha256": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Raw Sha256",
+            "type": "string"
+          },
+          "retrieved_at": {
+            "format": "date-time",
+            "title": "Retrieved At",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "external_record_id",
+          "raw_sha256",
+          "retrieved_at",
+          "parser_version",
+          "ingest_run_id",
+          "artifact_uri"
+        ],
+        "title": "SourceRecordOut",
+        "type": "object"
+      },
+      "SubjectMetrics": {
+        "description": "Every current observation of a judge or court, grouped by metric slug.",
+        "properties": {
+          "methodology_url": {
+            "description": "The methodology page.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "observations": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Observation"
+              },
+              "type": "array"
+            },
+            "description": "By metric slug, each list ordered by window, dimension value, and source; a metric the source cannot observe has no entry.",
+            "title": "Observations",
+            "type": "object"
+          },
+          "registry_version": {
+            "title": "Registry Version",
+            "type": "integer"
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SubjectSummary"
+          },
+          "total": {
+            "description": "Observations across every slug.",
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "subject",
+          "registry_version",
+          "methodology_version",
+          "methodology_url",
+          "total",
+          "observations"
+        ],
+        "title": "SubjectMetrics",
+        "type": "object"
+      },
+      "SubjectSummary": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "judge",
+              "court"
+            ],
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subject_type",
+          "id",
+          "canonical_name",
+          "synthetic"
+        ],
+        "title": "SubjectSummary",
+        "type": "object"
+      },
+      "SuppressionOut": {
+        "properties": {
+          "default_threshold": {
+            "minimum": 0.0,
+            "title": "Default Threshold",
+            "type": "integer"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "default_threshold",
+          "rule",
+          "rationale"
+        ],
+        "title": "SuppressionOut",
+        "type": "object"
+      },
       "Timeline": {
         "properties": {
           "case_id": {
@@ -1822,6 +3455,321 @@
         ],
         "title": "TimelineEntry",
         "type": "object"
+      },
+      "TracedObservation": {
+        "description": "The observation at the top of a provenance chain, with its versions.",
+        "properties": {
+          "code_version": {
+            "description": "The package version and git SHA that computed it.",
+            "title": "Code Version",
+            "type": "string"
+          },
+          "computed_at": {
+            "format": "date-time",
+            "title": "Computed At",
+            "type": "string"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ObservationCoverage"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cohort size the numerator is divided by (the followed members of a fixed-window rate; the whole cohort of a survival estimate; the attributed rows of a share; the values a median is taken over; the population of a count).",
+            "title": "Denominator"
+          },
+          "dimension_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The group of a dimensioned metric.",
+            "title": "Dimension Value"
+          },
+          "distribution": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The whole map of a distribution (vocabulary value → count); null otherwise.",
+            "title": "Distribution"
+          },
+          "eligible_count": {
+            "description": "Sample size: the whole cohort before any follow-up restriction, published even when the number is suppressed.",
+            "minimum": 0.0,
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interval_method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wilson",
+                  "greenwood"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates.",
+            "title": "Interval Method"
+          },
+          "kind": {
+            "enum": [
+              "count",
+              "share",
+              "windowed_rate",
+              "survival",
+              "distribution",
+              "median"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lower": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's lower bound.",
+            "title": "Lower"
+          },
+          "methodology_url": {
+            "description": "The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "methodology_version": {
+            "title": "Methodology Version",
+            "type": "string"
+          },
+          "name": {
+            "description": "The metric's name from the registry.",
+            "title": "Name",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The observed count: rows or members meeting the metric's condition.",
+            "title": "Numerator"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "The observation's date range: the source's window.",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
+            "title": "Rate"
+          },
+          "registry_version": {
+            "title": "Registry Version",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "snapshot_hash": {
+            "description": "The content hash of the exported tables the number was computed from.",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key (docs/DATA_SOURCES.md).",
+            "title": "Source",
+            "type": "string"
+          },
+          "subject_id": {
+            "format": "uuid",
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "judge",
+              "court"
+            ],
+            "title": "Subject Type",
+            "type": "string"
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a current observation (the only kind the API traces).",
+            "title": "Superseded At"
+          },
+          "suppressed": {
+            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "title": "Suppressed",
+            "type": "boolean"
+          },
+          "suppression_threshold": {
+            "description": "The metric's threshold, stated so a reader knows why.",
+            "minimum": 0.0,
+            "title": "Suppression Threshold",
+            "type": "integer"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "share",
+              "days"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "upper": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The 95% interval's upper bound.",
+            "title": "Upper"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A median, in days; null for every other kind.",
+            "title": "Value"
+          },
+          "version": {
+            "description": "The definition version the observation was computed under.",
+            "title": "Version",
+            "type": "string"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The follow-up window of a windowed metric.",
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "numerator",
+          "denominator",
+          "rate",
+          "value",
+          "distribution",
+          "lower",
+          "upper",
+          "suppressed",
+          "suppression_threshold",
+          "id",
+          "slug",
+          "name",
+          "kind",
+          "unit",
+          "version",
+          "subject_type",
+          "subject_id",
+          "source",
+          "synthetic",
+          "period_start",
+          "period_end",
+          "window_days",
+          "dimension_value",
+          "eligible_count",
+          "interval_method",
+          "coverage",
+          "methodology_version",
+          "methodology_url",
+          "snapshot_hash",
+          "computed_at",
+          "registry_version",
+          "code_version",
+          "superseded_at"
+        ],
+        "title": "TracedObservation",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1834,7 +3782,7 @@
     }
   },
   "info": {
-    "description": "Read-only, versioned access to JudgeMetrics' canonical data: judges, courts, jurisdictions, cases with their timelines, source coverage, and search, each with the provenance of the raw source artifacts behind it and a `synthetic` flag on every row derived from the in-repo demo dataset. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), persons appear only as pseudonymous public keys, and every error is an `ErrorBody`. See docs/API.md.",
+    "description": "Versioned access to JudgeMetrics' canonical data and published metrics: judges, courts, jurisdictions, cases with their timelines, source coverage, search, the versioned metric registry, every current metric observation of a judge or court with its numerator, denominator, date range, coverage, sample size, interval, suppression, and methodology link, a compare table per metric and cohort, and the provenance chain from any observation back to the raw source artifacts — each with the provenance of the raw source artifacts behind it and a `synthetic` flag on every row derived from the in-repo demo dataset. The one write path, `POST /corrections`, accepts a data correction request whose contact is encrypted at rest. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), persons appear only as pseudonymous public keys and never in a metrics response, and every error is an `ErrorBody`. See docs/API.md.",
     "title": "JudgeMetrics API",
     "version": "0.1.0"
   },
@@ -1943,6 +3891,67 @@
         "summary": "Every dated fact of a case in chronological order, each citing its artifact",
         "tags": [
           "cases"
+        ]
+      }
+    },
+    "/api/v1/corrections": {
+      "post": {
+        "operationId": "post_correction_api_v1_corrections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectionIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorrectionAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Rate limit exceeded; `Retry-After` gives the wait in seconds."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The service cannot accept the request right now (a fixed message; never a secret)."
+          }
+        },
+        "summary": "Submit a data-correction request (the contact is encrypted at rest)",
+        "tags": [
+          "corrections"
         ]
       }
     },
@@ -2099,6 +4108,59 @@
         ]
       }
     },
+    "/api/v1/courts/{court_id}/metrics": {
+      "get": {
+        "operationId": "get_court_metrics_api_v1_courts__court_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "court_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Court Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectMetrics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Every current metric observation of a court, grouped by metric",
+        "tags": [
+          "courts"
+        ]
+      }
+    },
     "/api/v1/coverage": {
       "get": {
         "operationId": "get_coverage_api_v1_coverage_get",
@@ -2156,7 +4218,7 @@
         "operationId": "list_judges_api_v1_judges_get",
         "parameters": [
           {
-            "description": "Name to match by trigram similarity (normalized before matching).",
+            "description": "Name to match by trigram similarity (normalized before matching): a single word by word similarity, several words by whole-name similarity.",
             "in": "query",
             "name": "q",
             "required": false,
@@ -2171,7 +4233,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Name to match by trigram similarity (normalized before matching).",
+              "description": "Name to match by trigram similarity (normalized before matching): a single word by word similarity, several words by whole-name similarity.",
               "title": "Q"
             }
           },
@@ -2510,6 +4572,59 @@
         ]
       }
     },
+    "/api/v1/judges/{judge_id}/metrics": {
+      "get": {
+        "operationId": "get_judge_metrics_api_v1_judges__judge_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "judge_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Judge Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubjectMetrics"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "Every current metric observation of a judge, grouped by metric",
+        "tags": [
+          "judges"
+        ]
+      }
+    },
     "/api/v1/judges/{judge_id}/service": {
       "get": {
         "operationId": "get_judge_service_api_v1_judges__judge_id__service_get",
@@ -2680,6 +4795,305 @@
         ]
       }
     },
+    "/api/v1/metrics": {
+      "get": {
+        "operationId": "get_registry_api_v1_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registry"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "The metric registry: definitions, versions, thresholds, known limitations",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/metrics/compare": {
+      "get": {
+        "operationId": "get_compare_api_v1_metrics_compare_get",
+        "parameters": [
+          {
+            "description": "A registry metric slug (`GET /metrics`).",
+            "in": "query",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "description": "A registry metric slug (`GET /metrics`).",
+              "maxLength": 64,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_]*$",
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The follow-up window in days; required for, and one of, the metric's windows.",
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The follow-up window in days; required for, and one of, the metric's windows.",
+              "title": "Window"
+            }
+          },
+          {
+            "description": "Judges with a service record at this court.",
+            "in": "query",
+            "name": "court_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Judges with a service record at this court.",
+              "title": "Court Id"
+            }
+          },
+          {
+            "description": "Judges with a service record at a court of this jurisdiction.",
+            "in": "query",
+            "name": "jurisdiction_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Judges with a service record at a court of this jurisdiction.",
+              "title": "Jurisdiction Id"
+            }
+          },
+          {
+            "description": "Only observations whose period starts on this date.",
+            "in": "query",
+            "name": "period_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only observations whose period starts on this date.",
+              "title": "Period Start"
+            }
+          },
+          {
+            "description": "Only observations whose period ends on this date.",
+            "in": "query",
+            "name": "period_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only observations whose period ends on this date.",
+              "title": "Period End"
+            }
+          },
+          {
+            "description": "Sort key; a suppressed row sorts as if its figure were null.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "rate",
+              "description": "Sort key; a suppressed row sorts as if its figure were null.",
+              "enum": [
+                "rate",
+                "numerator",
+                "denominator",
+                "value",
+                "name"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort direction.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "description": "Sort direction.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size, at most 100.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Page size, at most 100.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Rows to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "One metric and window for the judges of a court or jurisdiction, sorted and paginated",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/metrics/{observation_id}/provenance": {
+      "get": {
+        "operationId": "get_observation_provenance_api_v1_metrics__observation_id__provenance_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "observation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Observation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationProvenance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "The provenance chain of a current observation, from its number to the raw artifacts",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
     "/api/v1/ready": {
       "get": {
         "operationId": "ready_api_v1_ready_get",
@@ -2716,12 +5130,12 @@
         "operationId": "search_names_api_v1_search_get",
         "parameters": [
           {
-            "description": "Name to match; normalized like judge names before matching.",
+            "description": "Name to match, normalized like judge names before matching: a single word by word similarity (a surname alone), several words by whole-name similarity.",
             "in": "query",
             "name": "q",
             "required": true,
             "schema": {
-              "description": "Name to match; normalized like judge names before matching.",
+              "description": "Name to match, normalized like judge names before matching: a single word by word similarity (a surname alone), several words by whole-name similarity.",
               "maxLength": 200,
               "minLength": 1,
               "title": "Q",

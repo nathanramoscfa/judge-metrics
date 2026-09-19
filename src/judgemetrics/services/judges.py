@@ -13,7 +13,7 @@ from judgemetrics.repositories.judges import case_window, get_judge, list_judges
 from judgemetrics.schemas.common import CoverageWindow, Page
 from judgemetrics.schemas.judges import JudgeDetail, JudgeSummary, ServiceRecord
 from judgemetrics.services.provenance import provenance_for
-from judgemetrics.services.search import set_similarity_threshold
+from judgemetrics.services.search import apply_similarity_threshold, similarity_mode
 
 
 def judges_page(
@@ -26,12 +26,18 @@ def judges_page(
     limit: int,
     offset: int,
     threshold: float,
+    word_threshold: float,
 ) -> Page[JudgeSummary]:
     normalized_q = normalize_person_name(q) if q else None
     if normalized_q == "":
         return Page[JudgeSummary].build([], total=0, limit=limit, offset=offset)
+    word = False
     if normalized_q is not None:
-        set_similarity_threshold(session, threshold)
+        mode = similarity_mode(normalized_q)
+        word = mode == "word"
+        apply_similarity_threshold(
+            session, mode, threshold=threshold, word_threshold=word_threshold
+        )
     rows, total = list_judges(
         session,
         normalized_q=normalized_q,
@@ -40,6 +46,7 @@ def judges_page(
         status=status,
         limit=limit,
         offset=offset,
+        word=word,
     )
     items = [JudgeSummary.from_row(judge, synthetic=synthetic) for judge, synthetic in rows]
     return Page[JudgeSummary].build(items, total=total, limit=limit, offset=offset)

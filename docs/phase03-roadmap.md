@@ -72,7 +72,7 @@ The phase lands in 6 layers:
    `/courts/{id}/metrics`, `/metrics/compare`,
    `/metrics/{observation_id}/provenance`, the extended `/coverage`,
    `POST /api/v1/corrections` with the Fernet-encrypted contact and
-   migration `0006_corrections_intake` (INSERT-only grant to the app
+   migration `0007_corrections_intake` (INSERT-only grant to the app
    role), the snapshot block on `/api/v1/ready`, word similarity for
    surname-only search (Phase 2 carry-over item 1), regenerated
    `docs/openapi.json` and `web/lib/api/schema.d.ts`, and `docs/API.md`
@@ -446,7 +446,8 @@ MUST execute all six stages before declaring a step complete.
 - Migrations are self-contained (never import the models), create and
   drop enums explicitly, and `uv run alembic check` must report no drift;
   the head is `0004_entity_resolution_review`. Phase 3 adds `0005` (Step
-  1) and `0006` (Step 3).
+  1), `0006` (Step 2: `ingest_run.metrics_snapshot_id`), and `0007`
+  (Step 3).
 
 ### Truth and golden-fixture surface
 
@@ -671,7 +672,7 @@ Step 3  (provenance + metrics API)       `provenance trace`, /metrics,
                                           /metrics/compare,
                                           /metrics/{id}/provenance,
                                           /coverage v1, POST /corrections,
-                                          migration 0006, /ready snapshot,
+                                          migration 0007, /ready snapshot,
                                           word similarity, openapi + schema
                                           → implement
   ↓
@@ -2845,7 +2846,7 @@ Conversation is New per phase-boundary hygiene.
 > observable outcomes, snapshot hash and time, methodology version),
 > `POST /api/v1/corrections` (validated, rate-limited, contact encrypted
 > with `security/crypto.py`, INSERT-only grant to the app role via
-> migration `0006_corrections_intake`, `202` with the id), the latest
+> migration `0007_corrections_intake`, `202` with the id), the latest
 > snapshot on `/api/v1/ready`, word similarity (`<%`) for surname-only
 > search (carry-over item 1), the regenerated `docs/openapi.json` and
 > `web/lib/api/schema.d.ts`, `tests/unit/test_openapi.py` pinned to the
@@ -2857,8 +2858,8 @@ Conversation is New per phase-boundary hygiene.
 **Branch:** `feature/phase03-step3-provenance-metrics-api`
 
 **Deploys:** local API (`uv run poe dev-api`) — the merge carries
-migration `0006`; the operator applies it locally, restarts the API, and
-`/api/v1/ready` reports the head `0006_corrections_intake` and the
+migration `0007`; the operator applies it locally, restarts the API, and
+`/api/v1/ready` reports the head `0007_corrections_intake` and the
 latest snapshot. `JUDGEMETRICS_CORRECTION_CONTACT_KEY` becomes a required
 setting for the API process (verified at kickoff: placeholder in
 `.env.example`, a real Fernet key in the operator's `.env`, proven by an
@@ -3083,7 +3084,7 @@ phase-boundary hygiene.
        app role gets `INSERT` on
        `correction_request` and
        nothing else on it (migration
-       `0006`; test that `SELECT` as
+       `0007`; test that `SELECT` as
        the app role raises
        insufficient privilege); the
        API never reads the table;
@@ -3568,7 +3569,10 @@ phase-boundary hygiene.
 
     <requirement>
       Migration
-      `alembic/versions/0006_corrections_intake.py`:
+      `alembic/versions/0007_corrections_intake.py`
+      (spec rot: `0006` was taken by
+      Step 2's
+      `ingest_run.metrics_snapshot_id`):
       `GRANT INSERT ON TABLE
       correction_request TO
       judgemetrics_app` (no SELECT,
@@ -3719,8 +3723,8 @@ phase-boundary hygiene.
 - `uv run poe check` passes; `pnpm lint`, `pnpm typecheck`, `pnpm test`
   pass in `web/`.
 - **Deployed & verified:** after the squash-merge, `uv run poe migrate`
-  applies `0006`, the restarted local API's `/api/v1/ready` reports the
-  head `0006_corrections_intake` and a `metrics.snapshot_hash`, and a
+  applies `0007`, the restarted local API's `/api/v1/ready` reports the
+  head `0007_corrections_intake` and a `metrics.snapshot_hash`, and a
   `curl -X POST /api/v1/corrections` with a valid body answers 202
   (proving the configured key), after which `SELECT status FROM
   correction_request WHERE id = <id>` as the admin role returns
@@ -4024,7 +4028,44 @@ phase-boundary hygiene.
       regenerated and typed for
       them; `web/lib/api/client.ts`
       wraps every call in
-      `ApiResult`.
+      `ApiResult` (Step 3 added
+      `getRegistry`,
+      `getJudgeMetrics`,
+      `getCourtMetrics`,
+      `compareMetrics`,
+      `getObservationProvenance`,
+      `submitCorrection`).
+      Shapes as shipped by Step 3
+      (docs/API.md "Metrics"):
+      `SubjectMetrics.observations`
+      is a dict keyed by slug, each
+      list ordered by window,
+      dimension value, and source —
+      `groupObservations` takes that
+      map and groups each list by
+      window → dimension;
+      `Observation` carries `kind`,
+      `unit`, `name`, and
+      `interval_method` beside the
+      presentation fields;
+      `methodology_url` is already
+      `/methodology#<slug>`
+      (`JUDGEMETRICS_METHODOLOGY_URL`
+      + `#<slug>`), so
+      `methodologyHref` can pass it
+      through; `/metrics/compare`
+      takes `sort=rate|numerator|
+      denominator|value|name`,
+      answers `ComparePage` (a page
+      plus `cohort` with the
+      reference period, name, and
+      ids) and 422 for a windowed
+      metric without `window`;
+      `/coverage` carries
+      `registry_version` and
+      `methodology_version` at the
+      top level and `latest_snapshot`
+      per source.
     - Web conventions
       (`docs/ARCHITECTURE.md` "Web
       tier", `web/AGENTS.md`): App
@@ -5379,7 +5420,7 @@ hygiene.
        metrics schemas carry no
        person field; the corrections
        grant is INSERT-only in
-       `0006`; and no private-key
+       `0007`; and no private-key
        header, `AKIA`, or
        `-----BEGIN` string exists
        under the phase's paths.
@@ -5541,7 +5582,7 @@ hygiene.
         subset check;
         `test_openapi.py` pins the
         exact set).
-    22. `alembic/versions/0006_corrections_intake.py`
+    22. `alembic/versions/0007_corrections_intake.py`
         exists and grants `INSERT`
         only (no `SELECT`, `UPDATE`,
         `DELETE` for the app role on

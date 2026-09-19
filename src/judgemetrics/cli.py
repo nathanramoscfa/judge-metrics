@@ -15,7 +15,9 @@ the committed file differs), and ``metrics`` (``compute`` exports a
 snapshot, computes every registry metric for every subject — or the
 ``--subject`` ones — and publishes the observations; ``verify``
 recomputes every current observation from its snapshot and exits 1 on
-any mismatch; both as the ingest role).
+any mismatch; both as the ingest role), and ``provenance`` (``trace
+<observation id>`` prints the chain from a published number back to the
+raw artifacts and exits 1 when it is incomplete; as the read-only role).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -52,6 +54,9 @@ methodology_app = typer.Typer(
     help="The methodology document rendered from the metric registry (docs/METHODOLOGY.md)."
 )
 metrics_app = typer.Typer(help="The metrics engine: compute and verify observations.")
+provenance_app = typer.Typer(
+    help="The provenance chain from a published number back to the raw artifacts."
+)
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
@@ -60,6 +65,7 @@ app.add_typer(synthetic_app, name="synthetic")
 app.add_typer(er_app, name="er")
 app.add_typer(methodology_app, name="methodology")
 app.add_typer(metrics_app, name="metrics")
+app.add_typer(provenance_app, name="provenance")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -496,7 +502,7 @@ def seed(
     target = (SYNTHETIC_DATA_DIR / str(seed)).resolve()
     if settings.env == "production":
         # Nothing is generated: the runner records the refusal and that is all.
-        log.warning("seed.skipped_generation", reason="production environment", out=str(target))
+        log.warning("seed.skipped_generation", because="production environment", out=str(target))
     elif not force and manifest_matches(target, seed, scale.value):
         log.info("seed.generation_skipped", seed=seed, scale=scale.value, out=str(target))
         typer.echo(f"dataset up to date at {target}")
@@ -888,6 +894,56 @@ def metrics_verify(
         if len(lines) > VERIFY_REPORT_LINES:
             typer.echo(f"... {len(lines) - VERIFY_REPORT_LINES} more", err=True)
     if not result.ok:
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+# --- provenance: the chain behind one observation ----------------------------------------
+
+
+@provenance_app.command("trace")
+def provenance_trace(
+    observation_id: Annotated[str, typer.Argument(help="A metric_observation id (UUID).")],
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Print the chain observation → snapshot → members → cases → source records → artifacts.
+
+    Reads as the read-only role; exits 1 when the chain is incomplete (a
+    member without a canonical row, a row without a source record, a
+    record without its artifact digest) and 2 for a malformed or unknown id.
+    """
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.provenance import TraceError, parse_observation_id, render, trace
+
+    settings = get_settings()
+    configure_logging(settings)
+    try:
+        oid = parse_observation_id(observation_id)
+    except TraceError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    engine = make_engine(settings.database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                traced = trace(session, oid)
+            except TraceError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.rollback()
+    finally:
+        engine.dispose()
+    if as_json:
+        typer.echo(json.dumps(traced.as_dict(), indent=2, sort_keys=True))
+    else:
+        for line in render(traced):
+            typer.echo(line)
+    if not traced.complete:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 

@@ -26,7 +26,12 @@ created by the Alembic revisions under `alembic/versions/`:
   `superseded_at` columns on `metric_observation` with its unique key and
   the current-observation index, the `metric_observation_member` table,
   and `source.coverage_start`, `coverage_end`, `observable_outcomes`
-  (`docs/METHODOLOGY.md`, `docs/ARCHITECTURE.md` "Metrics engine").
+  (`docs/METHODOLOGY.md`, `docs/ARCHITECTURE.md` "Metrics engine");
+- `0006_ingest_run_metrics_snapshot` — `ingest_run.metrics_snapshot_id`,
+  the snapshot pipeline step 13 published a run's impacted subjects from;
+- `0007_corrections_intake` — `GRANT INSERT` on `correction_request` to
+  `judgemetrics_app` (and nothing else), the one write the public API
+  makes (`docs/API.md` "Corrections").
 
 `uv run alembic check` must report no drift between the models and the
 head. Every table has a UUID `id` (`gen_random_uuid()` server default)
@@ -63,7 +68,7 @@ observation).
 | `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. `period_start`/`period_end` are the source's coverage window. | via `metric_snapshot` and its members |
 | `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
-| `correction_request`           | A public correction request with an encrypted requester contact. **Restricted.**     | —                             |
+| `correction_request`           | A public correction request (`POST /api/v1/corrections`): `target_type` (`judge`, `court`, `case`, `metric_observation`), `target_id`, `requester_contact` (Fernet ciphertext under `JUDGEMETRICS_CORRECTION_CONTACT_KEY`, never plaintext), `reason`, `supporting_material_path` (an optional http(s) URL), `status` (`received` at intake), `resolved_at`. **Restricted**: the app role inserts and never reads. | — |
 | `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
 
 The `Source of provenance` column shows how every fact row traces to raw
@@ -252,11 +257,17 @@ Restricted attributes never appear in any of these columns.
 
 ## Grants
 
-| Role                  | `person_identifier`, `correction_request` | Every other table                       |
-|-----------------------|--------------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
-| `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all      |
+| Role                  | `person_identifier` | `correction_request`                          | Every other table                       |
+|-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
+| `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all |
+
+`tests/integration/test_api_corrections.py` proves the split: as the app
+role an `INSERT` succeeds and a `SELECT`, `UPDATE`, `DELETE`, or
+`INSERT … RETURNING` raises `InsufficientPrivilege`;
+`tests/integration/test_migrations.py` reads the catalog and finds
+exactly `{INSERT}`.
 
 `ALTER DEFAULT PRIVILEGES` in `infra/docker/postgres/02-roles.sql`
 extends the split to objects created by later migrations, whether they

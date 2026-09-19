@@ -75,3 +75,26 @@ def test_configuration_is_validated() -> None:
         TokenBucketLimiter(per_minute=0, burst=1)
     with pytest.raises(ValueError, match="positive"):
         TokenBucketLimiter(per_minute=60, burst=0)
+    with pytest.raises(ValueError, match="positive"):
+        TokenBucketLimiter(per_hour=0, burst=1)
+    with pytest.raises(ValueError, match="exactly one"):
+        TokenBucketLimiter(burst=1)
+    with pytest.raises(ValueError, match="exactly one"):
+        TokenBucketLimiter(per_minute=60, per_hour=5, burst=1)
+
+
+def test_per_hour_bucket_refills_a_token_every_period(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The corrections default: five an hour, a burst of five, `Retry-After` of twelve minutes."""
+    clock = Clock()
+    limiter = TokenBucketLimiter(per_hour=5, burst=5, clock=clock)
+    assert [limiter.acquire("a").allowed for _ in range(5)] == [True] * 5
+    refused = limiter.acquire("a")
+    assert not refused.allowed
+    assert refused.retry_after_seconds == 720
+    clock.now = 719.0
+    assert not limiter.acquire("a").allowed
+    clock.now = 720.0
+    assert limiter.acquire("a").allowed
+    assert not limiter.acquire("a").allowed
+    clock.now = 3600.0 * 24
+    assert [limiter.acquire("a").allowed for _ in range(6)] == [True] * 5 + [False]

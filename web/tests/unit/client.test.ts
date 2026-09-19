@@ -6,15 +6,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   API_BASE_URL,
+  compareMetrics,
   getCase,
   getCaseTimeline,
   getCourt,
+  getCourtMetrics,
   getCoverage,
   getJudge,
   getJudgeCases,
+  getJudgeMetrics,
+  getObservationProvenance,
+  getRegistry,
   listJudges,
   listJurisdictions,
   search,
+  submitCorrection,
 } from "@/lib/api/client";
 
 const JUDGE_ID = "3a221440-e710-4f65-b5b9-215b52a17d08";
@@ -255,5 +261,96 @@ describe("cases, judge cases, and coverage", () => {
     const url = lastRequestUrl();
     expect(url.pathname).toBe("/api/v1/coverage");
     expect(url.search).toBe("");
+  });
+});
+
+describe("metrics, compare, provenance, and corrections", () => {
+  const OBSERVATION_ID = "a580e920-1da4-4dd1-942d-4b4d1a526dcc";
+
+  it("fetches the registry and a subject's metrics", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({ registry_version: 1, methodology_version: "0.1", definitions: [] }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ total: 0, observations: {} }))
+      .mockResolvedValueOnce(jsonResponse({ total: 0, observations: {} }));
+
+    const registry = await getRegistry();
+    expect(registry.ok).toBe(true);
+    expect(registry.data?.methodology_version).toBe("0.1");
+    expect(lastRequestUrl().pathname).toBe("/api/v1/metrics");
+
+    const judge = await getJudgeMetrics(JUDGE_ID);
+    expect(judge.ok).toBe(true);
+    expect(lastRequestUrl().pathname).toBe(`/api/v1/judges/${JUDGE_ID}/metrics`);
+
+    const court = await getCourtMetrics(JUDGE_ID);
+    expect(court.ok).toBe(true);
+    expect(lastRequestUrl().pathname).toBe(`/api/v1/courts/${JUDGE_ID}/metrics`);
+  });
+
+  it("serializes the compare parameters that are set", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ items: [], total: 0, limit: 25, offset: 0, next_offset: null }),
+    );
+    const result = await compareMetrics({
+      metric: "new_case_rate",
+      window: 365,
+      court_id: JUDGE_ID,
+      sort: "rate",
+      order: "desc",
+      jurisdiction_id: undefined,
+    });
+    expect(result.ok).toBe(true);
+    const url = lastRequestUrl();
+    expect(url.pathname).toBe("/api/v1/metrics/compare");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      metric: "new_case_rate",
+      window: "365",
+      court_id: JUDGE_ID,
+      sort: "rate",
+      order: "desc",
+    });
+  });
+
+  it("fetches an observation's provenance by id", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ complete: true, members: [] }));
+    const result = await getObservationProvenance(OBSERVATION_ID);
+    expect(result.ok).toBe(true);
+    expect(result.data?.complete).toBe(true);
+    expect(lastRequestUrl().pathname).toBe(`/api/v1/metrics/${OBSERVATION_ID}/provenance`);
+  });
+
+  it("posts a correction and returns the acknowledgement or the error envelope", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { id: OBSERVATION_ID, status: "received", received_at: "2026-09-19T00:00:00Z" },
+        { status: 202 },
+      ),
+    );
+    const body = {
+      target_type: "judge" as const,
+      target_id: JUDGE_ID,
+      reason: "The appointment date on this profile is a year off.",
+      contact: "requester@example.invalid",
+    };
+    const accepted = await submitCorrection(body);
+    expect(accepted.ok).toBe(true);
+    expect(accepted.data?.status).toBe("received");
+    const request = fetchMock.mock.calls.at(-1)?.[0];
+    expect(request).toBeInstanceOf(Request);
+    expect((request as Request).method).toBe("POST");
+    expect(new URL((request as Request).url).pathname).toBe("/api/v1/corrections");
+    expect(await (request as Request).json()).toEqual(body);
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { code: "rate_limited", message: "corrections rate limit exceeded", request_id: "r" },
+        { status: 429, headers: { "content-type": "application/json", "retry-after": "720" } },
+      ),
+    );
+    const refused = await submitCorrection(body);
+    expect(refused.ok).toBe(false);
+    expect(refused.error).toMatchObject({ status: 429, code: "rate_limited", retryAfterSeconds: 720 });
   });
 });

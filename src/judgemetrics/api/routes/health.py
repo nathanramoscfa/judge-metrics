@@ -5,22 +5,28 @@
 only the package version, the build's git SHA, and the migration head the
 code expects — no configuration values, hostnames, or credentials.
 ``/ready`` is the readiness probe: 200 when the database answers ``SELECT 1``
-and its applied revision equals the head, 503 with a short reason otherwise.
+and its applied revision equals the head, 503 with a short reason otherwise;
+its ``metrics`` block names the latest exported snapshot (hash, export
+time, methodology version) from one statement over ``metric_snapshot``,
+or is null before the first ``metrics compute``.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from judgemetrics import __version__
 from judgemetrics.config import Settings
 from judgemetrics.db.migrations import current_revision, head_revision
 from judgemetrics.logging import get_logger
+from judgemetrics.repositories.coverage import latest_snapshot
 
 router = APIRouter(tags=["health"])
 log = get_logger(__name__)
@@ -33,10 +39,19 @@ class HealthResponse(BaseModel):
     alembic_head: str | None
 
 
+class MetricsReadiness(BaseModel):
+    """The latest exported snapshot: what the metrics routes currently serve from."""
+
+    snapshot_hash: str
+    exported_at: datetime
+    methodology_version: str
+
+
 class ReadyResponse(BaseModel):
     status: Literal["ready"]
     database: Literal["ok"]
     alembic_current: str | None
+    metrics: MetricsReadiness | None
 
 
 class NotReadyResponse(BaseModel):
@@ -80,5 +95,20 @@ def ready(request: Request) -> JSONResponse:
             reason=f"migration {current or 'none'} applied, {head} expected",
         )
         return JSONResponse(status_code=503, content=body.model_dump())
-    ok = ReadyResponse(status="ready", database="ok", alembic_current=current)
-    return JSONResponse(status_code=200, content=ok.model_dump())
+    with Session(request.app.state.engine) as session:
+        snapshot = latest_snapshot(session)
+    ok = ReadyResponse(
+        status="ready",
+        database="ok",
+        alembic_current=current,
+        metrics=(
+            None
+            if snapshot is None
+            else MetricsReadiness(
+                snapshot_hash=snapshot.content_hash,
+                exported_at=snapshot.exported_at,
+                methodology_version=snapshot.methodology_version,
+            )
+        ),
+    )
+    return JSONResponse(status_code=200, content=ok.model_dump(mode="json"))

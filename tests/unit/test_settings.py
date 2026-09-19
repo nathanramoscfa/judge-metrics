@@ -150,3 +150,34 @@ def test_search_rate_limit_is_off_under_test_unless_enabled(
         Settings(env="test", search_similarity_threshold=0)
     with pytest.raises(ValidationError):
         Settings(env="test", search_rate_limit_burst=0)
+
+
+def test_corrections_rate_limit_word_threshold_and_methodology_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert Settings(env="local").effective_corrections_rate_limit_enabled is True
+    assert Settings(env="production").effective_corrections_rate_limit_enabled is True
+    assert Settings(env="test").effective_corrections_rate_limit_enabled is False
+    assert Settings(
+        env="test", corrections_rate_limit_enabled=True
+    ).effective_corrections_rate_limit_enabled
+    monkeypatch.setenv("JUDGEMETRICS_CORRECTIONS_RATE_LIMIT_ENABLED", "false")
+    assert Settings(env="production").effective_corrections_rate_limit_enabled is False
+    defaults = Settings(env="test")
+    assert (defaults.corrections_rate_limit_per_hour, defaults.corrections_rate_limit_burst) == (
+        5,
+        5,
+    )
+    assert defaults.search_word_similarity_threshold == 0.5
+    assert defaults.methodology_url == "/methodology"
+    assert defaults.methodology_url_for("eligible_cases") == "/methodology#eligible_cases"
+    monkeypatch.setenv("JUDGEMETRICS_METHODOLOGY_URL", "https://judgemetrics.example/methodology")
+    assert (
+        Settings(env="test").methodology_url_for("x")
+        == "https://judgemetrics.example/methodology#x"
+    )
+    with pytest.raises(ValidationError):
+        Settings(env="test", corrections_rate_limit_per_hour=0)
+    with pytest.raises(ValidationError):
+        Settings(env="test", search_word_similarity_threshold=1.5)
+    assert Settings(env="test").correction_contact_key is None

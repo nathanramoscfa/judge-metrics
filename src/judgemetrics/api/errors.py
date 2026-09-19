@@ -75,6 +75,7 @@ _DESCRIPTIONS = {
     404: "The resource does not exist.",
     422: "A parameter is invalid, or a query parameter is not one the route declares.",
     429: "Rate limit exceeded; `Retry-After` gives the wait in seconds.",
+    503: "The service cannot accept the request right now (a fixed message; never a secret).",
 }
 
 

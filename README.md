@@ -53,7 +53,16 @@ Step 2 the computation engine — `uv run poe compute-metrics` exports a
 hashed Parquet snapshot, computes every registry metric for every judge
 and court with its members, and publishes observations that
 `uv run judgemetrics metrics verify` reproduces exactly, with pipeline
-step 13 recomputing the subjects an ingest touched. See:
+step 13 recomputing the subjects an ingest touched; Step 3 the
+provenance trace (`uv run judgemetrics provenance trace <observation
+id>` and `GET /api/v1/metrics/{id}/provenance` walk from a published
+number to the raw artifacts, [`docs/PROVENANCE.md`](docs/PROVENANCE.md)),
+the metrics API (the registry, every observation of a judge or court
+with numerator, denominator, date range, coverage, sample size,
+interval, suppression, and methodology link, the compare table,
+coverage v1), and the corrections intake (`POST /api/v1/corrections`,
+the contact encrypted at rest under a key the API can never read
+back). See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -101,22 +110,27 @@ uv run judgemetrics er run   # recompute person candidates and apply system merg
 uv run judgemetrics methodology render --check   # docs/METHODOLOGY.md equals the metric registry render (omit --check to rewrite it)
 uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
 uv run judgemetrics metrics verify   # recompute every current observation from its snapshot; exit 1 on any mismatch
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render, metrics compute|verify
+uv run judgemetrics provenance trace <observation id> [--json]   # the chain from a published number to the raw artifacts; exit 1 when incomplete
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render, metrics compute|verify, provenance trace
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
 (any long random string; it peppers the sha256 hashes under which person
 identifiers are stored, and changing it orphans every hash — back it up
-with the database).
+with the database). The API (`uv run poe dev-api`) needs
+`JUDGEMETRICS_CORRECTION_CONTACT_KEY`, a Fernet key that encrypts every
+correction request's contact at rest; it refuses to start without one
+outside the test environment (generate one with the command in
+`.env.example` and back it up with the database).
 
 ## API v1
 
-The read-only API ([`docs/API.md`](docs/API.md); OpenAPI document
-committed at [`docs/openapi.json`](docs/openapi.json)) serves the
-canonical tables with pagination (`limit` ≤ 100), strict filter
+The API ([`docs/API.md`](docs/API.md); OpenAPI document committed at
+[`docs/openapi.json`](docs/openapi.json)) serves the canonical tables and
+the published metrics with pagination (`limit` ≤ 100), strict filter
 validation (unknown parameters are 422), a uniform error envelope,
-`Cache-Control` on lists and details, provenance on every entity, and a
-rate-limited trigram search:
+`Cache-Control` on lists and details, provenance on every entity, a
+rate-limited trigram search, and one rate-limited write path:
 
 | Endpoint                                   | Purpose                                   |
 |--------------------------------------------|-------------------------------------------|
@@ -132,10 +146,18 @@ rate-limited trigram search:
 | `GET /api/v1/cases/{id}`                   | parties (public keys), assignments, charges, attributed decisions, sentences, provenance |
 | `GET /api/v1/cases/{id}/timeline`          | every dated fact of the case, chronological, each citing its artifact |
 | `GET /api/v1/search?q=`                    | judges and courts by name similarity, cases by exact number (rate limited) |
-| `GET /api/v1/coverage`                     | per-source counts, filing window, last run, `synthetic_present` |
+| `GET /api/v1/coverage`                     | per-source counts, filing and coverage windows, observable outcomes, last run, latest snapshot, `synthetic_present` |
+| `GET /api/v1/metrics`                      | the metric registry: definitions, versions, thresholds, the known limitations verbatim |
+| `GET /api/v1/judges/{id}/metrics`, `/courts/{id}/metrics` | every current observation with numerator, denominator, date range, coverage, sample size, interval, suppression, methodology link |
+| `GET /api/v1/metrics/compare`              | one metric and window for the judges of a court or jurisdiction, sorted and paginated, with coverage warnings |
+| `GET /api/v1/metrics/{id}/provenance`      | the chain from the observation to the raw artifacts ([`docs/PROVENANCE.md`](docs/PROVENANCE.md)) |
+| `POST /api/v1/corrections`                 | a data-correction request; the contact is encrypted at rest (rate limited) |
 
-Every summary, detail, search result, and provenance block carries
-`synthetic: bool`; persons appear only as pseudonymous public keys.
+Every summary, detail, search result, provenance block, and observation
+carries `synthetic: bool`; persons appear only as pseudonymous public
+keys, and never in a metrics response. A suppressed observation (a
+denominator below the metric's threshold) leaves the API with its
+numbers null.
 
 The API image builds with `docker build -f infra/docker/api.Dockerfile .`
 and runs beside the services with `docker compose --profile app up`

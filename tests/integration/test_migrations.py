@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0006): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0007): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -150,7 +150,7 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "uq_person_public_person_key" in uniques["person"]
     assert "uq_metric_snapshot_content_hash" in uniques["metric_snapshot"]
     assert "ix_ingest_run_metrics_snapshot_id" in indexes["ingest_run"]
-    assert current_revision(migrated_database) == head_revision() == "0006"
+    assert current_revision(migrated_database) == head_revision() == "0007"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -436,6 +436,28 @@ def test_app_role_cannot_read_restricted_tables(
             connection.execute(text(f"SELECT count(*) FROM {table}"))  # noqa: S608 - fixed name
 
 
+def test_revision_0007_grants_insert_only_on_correction_request(
+    migrated_database: Engine,
+) -> None:
+    """Read from the catalog (any connection role): INSERT and nothing else for the app role."""
+    with migrated_database.connect() as connection:
+        if not connection.execute(
+            text("SELECT 1 FROM pg_roles WHERE rolname = 'judgemetrics_app'")
+        ).scalar():
+            pytest.skip("the judgemetrics_app role does not exist on this database")
+        privileges = {
+            row[0]
+            for row in connection.execute(
+                text(
+                    "SELECT privilege_type FROM information_schema.role_table_grants "
+                    "WHERE grantee = 'judgemetrics_app' AND table_schema = 'public' "
+                    "AND table_name = 'correction_request'"
+                )
+            )
+        }
+    assert privileges == {"INSERT"}
+
+
 def test_app_role_can_read_public_tables(migrated_database: Engine, app_engine: Engine) -> None:
     with app_engine.connect() as connection:
         if connection.execute(text("SELECT current_user")).scalar() != "judgemetrics_app":
@@ -483,16 +505,19 @@ def test_ingest_role_has_dml_on_every_case_level_table(migrated_database: Engine
         assert granted.get("audit_log", set()) == {"SELECT", "INSERT"}
         app_rows = connection.execute(
             text(
-                "SELECT table_name FROM information_schema.role_table_grants "
+                "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
                 "WHERE grantee = 'judgemetrics_app' AND table_schema = 'public'"
             )
         ).all()
-        app_tables = {row[0] for row in app_rows}
-        if app_tables:
-            assert "person_identifier" not in app_tables
-            assert "correction_request" not in app_tables
-            assert "entity_resolution_candidate" not in app_tables
-            assert "audit_log" not in app_tables
+        app_granted: dict[str, set[str]] = {}
+        for table, privilege in app_rows:
+            app_granted.setdefault(table, set()).add(privilege)
+        if app_granted:
+            assert "person_identifier" not in app_granted
+            assert "entity_resolution_candidate" not in app_granted
+            assert "audit_log" not in app_granted
+            # Revision 0007: the corrections intake writes, and never reads, this table.
+            assert app_granted.get("correction_request") == {"INSERT"}
         admin_rows = connection.execute(
             text(
                 "SELECT privilege_type FROM information_schema.role_table_grants "

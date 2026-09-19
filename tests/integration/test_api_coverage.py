@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from judgemetrics.api.deps import CACHE_CONTROL
-from tests.integration.conftest import FjcFixture, GoldenFixture, purge_synthetic
+from tests.integration.conftest import FjcFixture, GoldenFixture, GoldenMetrics, purge_synthetic
 
 pytestmark = pytest.mark.integration
 
@@ -37,6 +37,12 @@ SOURCE_KEYS = {
     "earliest_filed",
     "latest_filed",
     "last_ingest",
+    # v1 (Phase 3 Step 3)
+    "coverage_start",
+    "coverage_end",
+    "observable_outcomes",
+    "latest_snapshot",
+    "methodology_version",
 }
 
 
@@ -54,8 +60,16 @@ def test_only_the_fjc_fixture_present_means_no_synthetic_source(
     assert response.status_code == 200, response.text
     assert response.headers["Cache-Control"] == CACHE_CONTROL
     body = response.json()
-    assert set(body) == {"sources", "synthetic_present", "generated_at"}
+    assert set(body) == {
+        "sources",
+        "synthetic_present",
+        "registry_version",
+        "methodology_version",
+        "generated_at",
+    }
     assert body["synthetic_present"] is False
+    assert body["registry_version"] >= 1
+    assert body["methodology_version"] == "0.1"
     sources = _by_source(body)
     assert "synthetic" not in sources
     assert set(sources["fjc"]) == SOURCE_KEYS
@@ -63,6 +77,11 @@ def test_only_the_fjc_fixture_present_means_no_synthetic_source(
     assert sources["fjc"]["source_type"] == "government_directory"
     assert sources["fjc"]["cases"] == 0
     assert sources["fjc"]["earliest_filed"] is None
+    # A reference-only source declares no window, observes nothing, and has no snapshot.
+    assert sources["fjc"]["coverage_start"] is None and sources["fjc"]["coverage_end"] is None
+    assert sources["fjc"]["observable_outcomes"] == []
+    assert sources["fjc"]["latest_snapshot"] is None
+    assert sources["fjc"]["methodology_version"] is None
     # The fixture's own run is the latest FJC run on a clean database; on a
     # developer's database a live run may be newer, so only its shape is fixed.
     last = sources["fjc"]["last_ingest"]
@@ -102,9 +121,34 @@ def test_golden_ingest_is_reported_with_counts_window_and_last_run(
         "status": "succeeded",
     }
     assert synthetic["last_ingest"]["completed_at"] is not None
+    # The connector's declared coverage window and observable outcomes (Phase 3).
+    assert (synthetic["coverage_start"], synthetic["coverage_end"]) == ("2019-01-01", "2021-12-31")
+    assert synthetic["observable_outcomes"] == [
+        "failure_to_appear",
+        "new_case",
+        "new_charge",
+        "reconviction",
+        "revocation",
+    ]
+    # Step 13 is off for the suite: no snapshot behind the source until a compute.
+    assert synthetic["latest_snapshot"] is None
+    assert synthetic["methodology_version"] is None
     # The FJC source is unchanged by the synthetic ingest.
     assert sources["fjc"]["synthetic"] is False
     assert sources["fjc"]["cases"] == 0
+
+
+def test_coverage_names_the_latest_snapshot_after_a_compute(
+    golden_metrics: GoldenMetrics, api: TestClient
+) -> None:
+    body = api.get("/api/v1/coverage").json()
+    synthetic = _by_source(body)["synthetic"]
+    assert synthetic["latest_snapshot"] == {
+        "content_hash": golden_metrics.result.snapshot.content_hash,
+        "exported_at": synthetic["latest_snapshot"]["exported_at"],
+    }
+    assert synthetic["methodology_version"] == body["methodology_version"]
+    assert _by_source(body)["fjc"]["latest_snapshot"] is None
 
 
 def test_coverage_rejects_query_parameters(api: TestClient) -> None:

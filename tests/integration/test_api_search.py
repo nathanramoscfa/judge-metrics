@@ -1,10 +1,11 @@
 # tests/integration/test_api_search.py
 """`/api/v1/search` over the committed FJC fixture ingest.
 
-Search tolerance (a misspelt surname still finds the judge), ordering by
-score, courts in the same result list, strict parameters, and the
-in-process rate limiter: off by default under `env == test`, switched on
-explicitly here with a held clock so the burst is exhausted
+Search tolerance (a misspelt surname still finds the judge — alone, by
+word similarity, and beside a first name, by whole-name similarity),
+ordering by score, courts in the same result list, strict parameters, and
+the in-process rate limiter: off by default under `env == test`, switched
+on explicitly here with a held clock so the burst is exhausted
 deterministically and the 429 carries `Retry-After` and an `ErrorBody`.
 """
 
@@ -24,6 +25,7 @@ pytestmark = pytest.mark.integration
 
 SOTOMAYOR = "1388091"
 KAVANAUGH = "1392406"
+GINSBURG = "1381271"
 
 
 def test_misspelled_surname_finds_the_judge(api: TestClient, fjc_fixture: FjcFixture) -> None:
@@ -47,6 +49,39 @@ def test_misspelled_surname_finds_the_judge(api: TestClient, fjc_fixture: FjcFix
 
     kavanagh = api.get("/api/v1/search", params={"q": "kavanagh", "limit": 5}).json()
     assert str(fjc_fixture.judge_ids[KAVANAUGH]) in {item["id"] for item in kavanagh["items"]}
+
+
+def test_misspelled_surname_alone_finds_a_long_full_name(
+    api: TestClient, fjc_fixture: FjcFixture
+) -> None:
+    """Phase 1 finding 4.1: "Ginsberg" scored 0.26 against "ruth bader ginsburg" whole-name.
+
+    A one-word query now matches by word similarity (`<%`), so the surname
+    alone finds the judge; the same query with a first name keeps
+    whole-name similarity and still finds her.
+    """
+    ginsburg = str(fjc_fixture.judge_ids[GINSBURG])
+    alone = api.get("/api/v1/search", params={"q": "Ginsberg"}).json()
+    assert alone["query"] == "ginsberg"
+    judges = [item for item in alone["items"] if item["entity_type"] == "judge"]
+    assert judges and judges[0]["id"] == ginsburg
+    assert judges[0]["name"] == "Ruth Bader Ginsburg"
+    assert 0.5 <= judges[0]["score"] <= 1.0
+    # The judges list's `q` filter takes the same path.
+    listed = api.get("/api/v1/judges", params={"q": "Ginsberg"}).json()
+    assert listed["items"] and listed["items"][0]["id"] == ginsburg
+    assert listed["total"] >= 1
+    # Several words: whole-name similarity, as before.
+    full = api.get("/api/v1/search", params={"q": "ruth ginsberg"}).json()
+    assert full["items"] and full["items"][0]["id"] == ginsburg
+    listed_full = api.get("/api/v1/judges", params={"q": "ruth ginsberg"}).json()
+    assert listed_full["items"] and listed_full["items"][0]["id"] == ginsburg
+    # A surname alone still ranks its judge first among the fixture's names.
+    for query, nid in (("Kavanagh", KAVANAUGH), ("Sotomayer", SOTOMAYOR)):
+        top = api.get("/api/v1/search", params={"q": query}).json()["items"][0]
+        assert top["id"] == str(fjc_fixture.judge_ids[nid]), query
+    # A word that matches nothing is an empty list, not an error.
+    assert api.get("/api/v1/search", params={"q": "zzzzzzzz"}).json()["items"] == []
 
 
 def test_results_are_ordered_by_score_and_include_courts(

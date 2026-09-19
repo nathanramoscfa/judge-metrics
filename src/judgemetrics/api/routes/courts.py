@@ -1,5 +1,5 @@
 # src/judgemetrics/api/routes/courts.py
-"""``/api/v1/courts``: the list and the detail."""
+"""``/api/v1/courts``: the list, the detail, and the court's metrics."""
 
 from __future__ import annotations
 
@@ -8,10 +8,19 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from judgemetrics.api.deps import PAGE_PARAMS, PageDep, SessionDep, StrictQuery, cache_public
+from judgemetrics.api.deps import (
+    PAGE_PARAMS,
+    PageDep,
+    SessionDep,
+    SettingsDep,
+    StrictQuery,
+    cache_public,
+)
 from judgemetrics.api.errors import ApiError, error_responses
+from judgemetrics.api.routes.metrics import subject_metrics_route
 from judgemetrics.schemas.common import Page
 from judgemetrics.schemas.courts import CourtDetail, CourtSummary
+from judgemetrics.schemas.metrics import SubjectMetrics
 from judgemetrics.services.courts import court_detail, courts_page
 
 router = APIRouter(prefix="/courts", tags=["courts"], dependencies=[Depends(cache_public)])
@@ -61,3 +70,16 @@ def get_court(court_id: uuid.UUID, session: SessionDep) -> CourtDetail:
     if detail is None:
         raise ApiError(status_code=404, code="not_found", message=f"court {court_id} not found")
     return detail
+
+
+@router.get(
+    "/{court_id}/metrics",
+    response_model=SubjectMetrics,
+    responses=error_responses(404, 422),
+    summary="Every current metric observation of a court, grouped by metric",
+    dependencies=[Depends(StrictQuery())],
+)
+def get_court_metrics(
+    court_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+) -> SubjectMetrics:
+    return subject_metrics_route(session, settings, "court", court_id)

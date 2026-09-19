@@ -2,13 +2,15 @@
 """The committed OpenAPI document and what it promises.
 
 `docs/openapi.json` must equal the rendered document (regenerate it with
-`judgemetrics openapi export` after any route change: Step 5 generates
-the web client from it). The document lists exactly the health probes and
-the twelve v1 paths, every route's strict query allow-list matches the
-parameters the document declares, every error response is an `ErrorBody`,
-the API-key scheme is declared optional, and no schema property carries a
-restricted name (the contract that `person_identifier` is unreachable
-through any public route).
+`judgemetrics openapi export` after any route change: the web client is
+generated from it). The document lists exactly the health probes and the
+eighteen v1 paths (Phase 3 Step 3 added the metrics routes and the one
+write path, `POST /corrections`), every route's strict query allow-list
+matches the parameters the document declares, every error response is an
+`ErrorBody`, the API-key scheme is declared optional, and no schema
+property carries a restricted name (the contract that
+`person_identifier` and `correction_request` are unreachable through any
+public route).
 """
 
 from __future__ import annotations
@@ -23,7 +25,16 @@ from typer.testing import CliRunner
 
 from judgemetrics.api import API_PREFIX
 from judgemetrics.api.deps import StrictQuery
-from judgemetrics.api.routes import cases, courts, coverage, judges, jurisdictions, search
+from judgemetrics.api.routes import (
+    cases,
+    corrections,
+    courts,
+    coverage,
+    judges,
+    jurisdictions,
+    metrics,
+    search,
+)
 from judgemetrics.cli import app as cli
 from judgemetrics.openapi import openapi_document, render_openapi
 
@@ -46,7 +57,15 @@ EXPECTED_PATHS = {
     "/api/v1/cases/{case_id}/timeline",
     "/api/v1/search",
     "/api/v1/coverage",
+    # Phase 3 Step 3: the metrics API and the corrections intake.
+    "/api/v1/judges/{judge_id}/metrics",
+    "/api/v1/courts/{court_id}/metrics",
+    "/api/v1/metrics",
+    "/api/v1/metrics/compare",
+    "/api/v1/metrics/{observation_id}/provenance",
+    "/api/v1/corrections",
 }
+WRITE_PATHS = {"/api/v1/corrections"}
 # Names that belong to the restricted schema (`person_identifier`,
 # `correction_request`) or to internal storage, and must never be a
 # property of any response schema.
@@ -76,7 +95,8 @@ def test_committed_document_equals_the_generated_one() -> None:
 def test_document_lists_exactly_the_health_and_v1_paths() -> None:
     document = openapi_document()
     assert set(document["paths"]) == EXPECTED_PATHS
-    assert all(set(item) == {"get"} for item in document["paths"].values())
+    for path, item in document["paths"].items():
+        assert set(item) == ({"post"} if path in WRITE_PATHS else {"get"}), path
     assert document["info"]["title"] == "JudgeMetrics API"
 
 
@@ -86,11 +106,14 @@ def test_error_responses_are_the_error_envelope() -> None:
     for path, item in document["paths"].items():
         if path in {"/api/v1/health", "/api/v1/ready"}:
             continue
-        for status, response in item["get"]["responses"].items():
-            if status.startswith("2"):
-                continue
-            schema = response["content"]["application/json"]["schema"]
-            assert schema == error_ref, (path, status)
+        for operation in item.values():
+            for status, response in operation["responses"].items():
+                if status.startswith("2"):
+                    continue
+                schema = response["content"]["application/json"]["schema"]
+                assert schema == error_ref, (path, status)
+    corrections_responses = document["paths"]["/api/v1/corrections"]["post"]["responses"]
+    assert set(corrections_responses) == {"202", "422", "429", "503"}
     assert set(document["components"]["schemas"]["ErrorBody"]["required"]) == {
         "code",
         "message",
@@ -109,6 +132,8 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
         cases.router,
         search.router,
         coverage.router,
+        metrics.router,
+        corrections.router,
     ):
         for route in router.routes:
             assert isinstance(route, APIRoute)
@@ -118,14 +143,15 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
                 d.dependency for d in route.dependencies if isinstance(d.dependency, StrictQuery)
             ]
             assert len(strict) == 1, path
+            (method,) = {m.lower() for m in route.methods or ()}
             declared = {
                 parameter["name"]
-                for parameter in document["paths"][path]["get"].get("parameters", [])
+                for parameter in document["paths"][path][method].get("parameters", [])
                 if parameter["in"] == "query"
             }
             assert strict[0].allowed == declared, path
             checked += 1
-    assert checked == 12
+    assert checked == 18
 
 
 def test_api_key_scheme_is_declared_optional() -> None:
@@ -149,6 +175,7 @@ def test_page_sizes_are_capped_in_the_document() -> None:
         "/api/v1/jurisdictions",
         "/api/v1/search",
         "/api/v1/judges/{judge_id}/cases",
+        "/api/v1/metrics/compare",
     ):
         parameters: dict[str, dict[str, Any]] = {
             parameter["name"]: parameter["schema"]
@@ -194,7 +221,7 @@ def test_no_schema_property_carries_a_restricted_name() -> None:
     # Persons appear only as their pseudonymous key.
     assert "public_person_key" in names
     assert not any(name.startswith("person_id") for name in names)
-    # Every summary, detail, provenance block, and search result carries the synthetic flag.
+    # Every summary, detail, provenance block, search result, and metric row carries the flag.
     schemas = document["components"]["schemas"]
     for name in (
         "JudgeSummary",
@@ -207,8 +234,103 @@ def test_no_schema_property_carries_a_restricted_name() -> None:
         "Provenance",
         "Timeline",
         "CoverageSource",
+        "Observation",
+        "TracedObservation",
+        "SubjectSummary",
+        "CompareRow",
+        "SourceOut",
     ):
         assert "synthetic" in schemas[name]["required"], name
+    # The corrections body names the contact `contact`; the stored column's name never appears.
+    assert set(schemas["CorrectionIn"]["properties"]) == {
+        "target_type",
+        "target_id",
+        "reason",
+        "contact",
+        "supporting_material",
+    }
+    assert set(schemas["CorrectionAccepted"]["properties"]) == {"id", "status", "received_at"}
+
+
+def test_metrics_routes_declare_the_presentation_fields_and_the_compare_parameters() -> None:
+    document = openapi_document()
+    schemas = document["components"]["schemas"]
+    observation = set(schemas["Observation"]["properties"])
+    assert {
+        "numerator",
+        "denominator",
+        "eligible_count",
+        "period_start",
+        "period_end",
+        "coverage",
+        "rate",
+        "lower",
+        "upper",
+        "interval_method",
+        "suppressed",
+        "suppression_threshold",
+        "methodology_version",
+        "methodology_url",
+        "snapshot_hash",
+        "synthetic",
+    } <= observation
+    assert set(schemas["CompareRow"]["properties"]) >= {
+        "subject_id",
+        "name",
+        "court",
+        "numerator",
+        "denominator",
+        "eligible_count",
+        "rate",
+        "lower",
+        "upper",
+        "suppressed",
+        "coverage_warning",
+    }
+    compare = document["paths"]["/api/v1/metrics/compare"]["get"]
+    parameters = {p["name"]: p for p in compare["parameters"] if p["in"] == "query"}
+    assert set(parameters) == {
+        "metric",
+        "window",
+        "court_id",
+        "jurisdiction_id",
+        "period_start",
+        "period_end",
+        "sort",
+        "order",
+        "limit",
+        "offset",
+    }
+    assert parameters["metric"]["required"] is True
+    assert parameters["sort"]["schema"]["enum"] == [
+        "rate",
+        "numerator",
+        "denominator",
+        "value",
+        "name",
+    ]
+    assert parameters["order"]["schema"]["enum"] == ["asc", "desc"]
+    registry = schemas["Registry"]["properties"]
+    assert {"registry_version", "methodology_version", "known_limitations", "definitions"} <= set(
+        registry
+    )
+    assert "methodology_url" in schemas["MetricDefinitionOut"]["required"]
+    ready = schemas["ReadyResponse"]["properties"]
+    assert "metrics" in ready
+    assert set(schemas["MetricsReadiness"]["properties"]) == {
+        "snapshot_hash",
+        "exported_at",
+        "methodology_version",
+    }
+    coverage_source = set(schemas["CoverageSource"]["properties"])
+    assert {
+        "coverage_start",
+        "coverage_end",
+        "observable_outcomes",
+        "latest_snapshot",
+        "methodology_version",
+    } <= coverage_source
+    assert "registry_version" in schemas["Coverage"]["required"]
 
 
 def test_judge_cases_filters_and_timeline_kinds_are_declared() -> None:

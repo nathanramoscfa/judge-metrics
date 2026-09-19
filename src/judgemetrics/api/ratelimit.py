@@ -1,15 +1,17 @@
 # src/judgemetrics/api/ratelimit.py
-"""In-process token-bucket rate limiter for ``/api/v1/search``.
+"""In-process token-bucket rate limiters for ``/api/v1/search`` and ``POST /api/v1/corrections``.
 
 This is the local layer beneath the Phase 8 edge limits (the reverse proxy
 or CDN in front of the API): it protects one process from one client, it
 is not shared across workers, and it forgets everything on restart. Each
 bucket (``RequestIdentity.rate_limit_key``: anonymous + client address)
-holds ``burst`` tokens and refills at ``per_minute`` tokens a minute; a
-request takes one token or is answered 429 with ``Retry-After`` and an
-``ErrorBody``. ``create_app`` builds the limiter from
-``settings.search_rate_limit_*`` and leaves it off under the test
-environment unless ``search_rate_limit_enabled`` says otherwise.
+holds ``burst`` tokens and refills at ``per_minute`` tokens a minute (the
+search limiter) or ``per_hour`` tokens an hour (the corrections limiter);
+a request takes one token or is answered 429 with ``Retry-After`` and an
+``ErrorBody``. ``create_app`` builds both limiters from
+``settings.search_rate_limit_*`` and ``settings.corrections_rate_limit_*``
+and leaves each off under the test environment unless its
+``*_rate_limit_enabled`` setting says otherwise.
 """
 
 from __future__ import annotations
@@ -30,6 +32,8 @@ RETRY_AFTER_HEADER = "Retry-After"
 # Buckets are pruned once the table grows past this many keys; a full
 # bucket carries no state worth keeping, so dropping it is exact.
 MAX_TRACKED_KEYS = 10_000
+SECONDS_PER_MINUTE = 60.0
+SECONDS_PER_HOUR = 3600.0
 
 
 @dataclass(slots=True)
@@ -45,20 +49,35 @@ class Decision:
 
 
 class TokenBucketLimiter:
-    """``burst`` tokens per key, refilled at ``per_minute`` / 60 tokens a second.
+    """``burst`` tokens per key, refilled at ``per_minute`` / 60 or ``per_hour`` / 3600 a second.
 
-    ``clock`` is injectable so tests can hold time still.
+    Exactly one of ``per_minute`` and ``per_hour`` is given. ``clock`` is
+    injectable so tests can hold time still.
     """
 
     def __init__(
-        self, *, per_minute: int, burst: int, clock: Callable[[], float] = time.monotonic
+        self,
+        *,
+        burst: int,
+        per_minute: int | None = None,
+        per_hour: int | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        if per_minute < 1 or burst < 1:
-            msg = "per_minute and burst must be positive"
+        if (per_minute is None) == (per_hour is None):
+            msg = "exactly one of per_minute and per_hour must be given"
             raise ValueError(msg)
-        self.per_minute = per_minute
+        rate = per_minute if per_minute is not None else per_hour
+        if rate is None or rate < 1 or burst < 1:
+            msg = "the refill rate and burst must be positive"
+            raise ValueError(msg)
         self.burst = burst
-        self._refill_per_second = per_minute / 60.0
+        self.per_minute = per_minute
+        self.per_hour = per_hour
+        self._refill_per_second = (
+            per_minute / SECONDS_PER_MINUTE
+            if per_minute is not None
+            else float(per_hour or 0) / SECONDS_PER_HOUR
+        )
         self._clock = clock
         self._buckets: dict[str, _Bucket] = {}
         self._lock = threading.Lock()
@@ -94,9 +113,7 @@ class TokenBucketLimiter:
                 del self._buckets[key]
 
 
-def search_rate_limit(request: Request) -> None:
-    """Route dependency: take a token for this request's identity or answer 429."""
-    limiter: TokenBucketLimiter | None = request.app.state.search_limiter
+def _acquire_or_429(request: Request, limiter: TokenBucketLimiter | None, what: str) -> None:
     if limiter is None:
         return
     identity = resolve_identity(request, get_settings(request))
@@ -105,6 +122,18 @@ def search_rate_limit(request: Request) -> None:
         raise ApiError(
             status_code=429,
             code="rate_limited",
-            message="search rate limit exceeded; retry after the indicated seconds",
+            message=f"{what} rate limit exceeded; retry after the indicated seconds",
             headers={RETRY_AFTER_HEADER: str(decision.retry_after_seconds)},
         )
+
+
+def search_rate_limit(request: Request) -> None:
+    """Route dependency: take a search token for this request's identity or answer 429."""
+    limiter: TokenBucketLimiter | None = request.app.state.search_limiter
+    _acquire_or_429(request, limiter, "search")
+
+
+def corrections_rate_limit(request: Request) -> None:
+    """Route dependency: take a corrections token for this request's identity or answer 429."""
+    limiter: TokenBucketLimiter | None = request.app.state.corrections_limiter
+    _acquire_or_429(request, limiter, "corrections")

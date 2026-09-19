@@ -40,7 +40,8 @@ def unreachable_client() -> Iterator[TestClient]:
 
 @pytest.fixture
 def live_client(migrated_database: Engine, test_settings: Settings) -> Iterator[TestClient]:
-    app = create_app(Settings(env=test_settings.env, database_url=test_settings.database_url))
+    # `env="test"`: the contact key is required outside the test environment.
+    app = create_app(Settings(env="test", database_url=test_settings.database_url))
     with TestClient(app) as client:
         yield client
     app.state.engine.dispose()
@@ -53,7 +54,7 @@ def test_health_reports_version_sha_and_head(unreachable_client: TestClient) -> 
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["git_sha"] == "unknown" or SHA.match(body["git_sha"])
-    assert body["alembic_head"] == head_revision() == "0006"
+    assert body["alembic_head"] == head_revision() == "0007"
     assert set(body) == {"status", "version", "git_sha", "alembic_head"}
 
 
@@ -106,11 +107,22 @@ def test_ready_returns_503_when_database_unreachable(unreachable_client: TestCli
     assert "placeholder" not in response.text
 
 
-def test_ready_returns_200_at_head(live_client: TestClient) -> None:
+def test_ready_returns_200_at_head_with_the_latest_snapshot(live_client: TestClient) -> None:
     response = live_client.get("/api/v1/ready")
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body == {"status": "ready", "database": "ok", "alembic_current": head_revision()}
+    assert set(body) == {"status", "database", "alembic_current", "metrics"}
+    assert (body["status"], body["database"], body["alembic_current"]) == (
+        "ready",
+        "ok",
+        head_revision(),
+    )
+    # Null before the first compute; the latest snapshot's hash, time, and version after.
+    metrics = body["metrics"]
+    if metrics is not None:
+        assert set(metrics) == {"snapshot_hash", "exported_at", "methodology_version"}
+        assert re.fullmatch(r"[0-9a-f]{64}", metrics["snapshot_hash"])
+        assert metrics["methodology_version"]
 
 
 def test_openapi_is_served_under_the_versioned_prefix(unreachable_client: TestClient) -> None:

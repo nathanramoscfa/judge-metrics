@@ -37,6 +37,17 @@ export type ActorType = Schemas["ActorType"];
 export type Coverage = Schemas["Coverage"];
 export type CoverageSource = Schemas["CoverageSource"];
 export type ErrorBody = Schemas["ErrorBody"];
+// The metrics surface (Phase 3 Step 3).
+export type Registry = Schemas["Registry"];
+export type MetricDefinition = Schemas["MetricDefinitionOut"];
+export type Observation = Schemas["Observation"];
+export type SubjectMetrics = Schemas["SubjectMetrics"];
+export type ComparePage = Schemas["ComparePage"];
+export type CompareRow = Schemas["CompareRow"];
+export type CompareCohort = Schemas["CompareCohort"];
+export type ObservationProvenance = Schemas["ObservationProvenance"];
+export type CorrectionIn = Schemas["CorrectionIn"];
+export type CorrectionAccepted = Schemas["CorrectionAccepted"];
 export type Page<T> = {
   items: T[];
   total: number;
@@ -92,6 +103,19 @@ export type ListJudgeCasesParams = {
   filed_to?: string;
   status?: string;
   case_type?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type CompareParams = {
+  metric: string;
+  window?: number;
+  court_id?: string;
+  jurisdiction_id?: string;
+  period_start?: string;
+  period_end?: string;
+  sort?: "rate" | "numerator" | "denominator" | "value" | "name";
+  order?: "asc" | "desc";
   limit?: number;
   offset?: number;
 };
@@ -266,4 +290,45 @@ export function getJudgeCases(
 
 export function getCoverage(): Promise<ApiResult<Coverage>> {
   return call(() => client.GET("/api/v1/coverage"));
+}
+
+export function getRegistry(): Promise<ApiResult<Registry>> {
+  return call(() => client.GET("/api/v1/metrics"));
+}
+
+export function getJudgeMetrics(judgeId: string): Promise<ApiResult<SubjectMetrics>> {
+  return call(() =>
+    client.GET("/api/v1/judges/{judge_id}/metrics", {
+      params: { path: { judge_id: judgeId } },
+    }),
+  );
+}
+
+export function getCourtMetrics(courtId: string): Promise<ApiResult<SubjectMetrics>> {
+  return call(() =>
+    client.GET("/api/v1/courts/{court_id}/metrics", {
+      params: { path: { court_id: courtId } },
+    }),
+  );
+}
+
+export function compareMetrics(params: CompareParams): Promise<ApiResult<ComparePage>> {
+  return call(() =>
+    client.GET("/api/v1/metrics/compare", { params: { query: compact(params) } }),
+  );
+}
+
+export function getObservationProvenance(
+  observationId: string,
+): Promise<ApiResult<ObservationProvenance>> {
+  return call(() =>
+    client.GET("/api/v1/metrics/{observation_id}/provenance", {
+      params: { path: { observation_id: observationId } },
+    }),
+  );
+}
+
+/** The one write path: a correction request; the contact is encrypted by the API. */
+export function submitCorrection(body: CorrectionIn): Promise<ApiResult<CorrectionAccepted>> {
+  return call(() => client.POST("/api/v1/corrections", { body }));
 }

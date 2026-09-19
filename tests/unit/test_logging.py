@@ -43,6 +43,10 @@ DENYLIST = {
     "value_hash",
     "date_of_birth",
     "full_name",
+    "correction_contact_key",
+    "contact",
+    "reason",
+    "supporting_material",
 }
 
 
@@ -64,9 +68,66 @@ def test_case_separator_and_compound_keys_match(key: str) -> None:
     assert is_sensitive_key(key)
 
 
-@pytest.mark.parametrize("key", ["event", "request_id", "public_person_key", "judge_id", "path"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "event",
+        "request_id",
+        "public_person_key",
+        "judge_id",
+        "path",
+        "correction_id",
+        "target_type",
+        # Operational causes are named so they survive the `reason` entry.
+        "failure",
+        "refusal",
+        "because",
+    ],
+)
 def test_ordinary_keys_pass_through(key: str) -> None:
     assert not is_sensitive_key(key)
+
+
+def test_a_bound_corrections_log_line_redacts_every_submitted_field_and_the_key() -> None:
+    """The corrections intake (Phase 3 Step 3): nothing a requester submitted reaches a log."""
+    stream = _capture(Settings(env="test", log_format="json"))
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id="req-corr")
+    try:
+        get_logger("judgemetrics.services.corrections").info(
+            "corrections.received",
+            correction_id="c-1",
+            target_type="judge",
+            reason="the appointment date is wrong",
+            contact="requester@example.invalid",
+            requester_contact=b"ciphertext",
+            supporting_material="https://example.invalid/evidence",
+            correction_contact_key="not-a-real-key",  # pragma: allowlist secret
+            body={
+                "contact": "requester@example.invalid",
+                "reason": "wrong",
+                "target_type": "judge",
+            },
+        )
+    finally:
+        structlog.contextvars.clear_contextvars()
+    record = json.loads(stream.getvalue().strip().splitlines()[-1])
+    assert record["event"] == "corrections.received"
+    assert record["request_id"] == "req-corr"
+    assert record["correction_id"] == "c-1"
+    assert record["target_type"] == "judge"
+    for key in (
+        "reason",
+        "contact",
+        "requester_contact",
+        "supporting_material",
+        "correction_contact_key",
+    ):
+        assert record[key] == REDACTED, key
+    assert record["body"] == {"contact": REDACTED, "reason": REDACTED, "target_type": "judge"}
+    text = stream.getvalue()
+    for leaked in ("example.invalid", "appointment date", "not-a-real-key", "ciphertext"):
+        assert leaked not in text, leaked
 
 
 def test_scrubs_recursively_through_dicts_lists_and_tuples() -> None:
