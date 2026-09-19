@@ -467,7 +467,9 @@ def seed(
     """Generate the synthetic dataset for SEED into data/synthetic/<seed> and ingest it.
 
     Generation is skipped when the manifest there already records the same
-    seed, scale, and generator version (``--force`` regenerates). The ingest
+    seed, scale, and generator version; a manifest from another generator
+    version or scale is stale and is regenerated (``--force`` regenerates
+    and re-parses regardless). The ingest
     runs the ``synthetic`` connector against that directory as the ingest
     role and is refused, like any synthetic ingest, when
     ``JUDGEMETRICS_ENV=production``.
@@ -499,9 +501,12 @@ def seed(
         log.info("seed.generation_skipped", seed=seed, scale=scale.value, out=str(target))
         typer.echo(f"dataset up to date at {target}")
     else:
-        log.info("seed.generate.start", seed=seed, scale=scale.value, out=str(target))
+        # A dataset this command generated earlier under an older generator
+        # version (or another scale) is stale: regenerate over it.
+        stale = (target / "manifest.json").is_file()
+        log.info("seed.generate.start", seed=seed, scale=scale.value, out=str(target), stale=stale)
         try:
-            manifest = generate_dataset(seed, scale.value, target, force=force)
+            manifest = generate_dataset(seed, scale.value, target, force=force or stale)
         except DatasetExistsError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc

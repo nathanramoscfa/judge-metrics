@@ -125,6 +125,19 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   the whole world — the unchanged-subject rule then leaves every
   untouched subject's observations in place, which is what the
   step-13 test asserts. Incremental sources narrow the set.
+- Member rows are written once per observation, so a windowed metric
+  lists its whole cohort once per window (six times per metric): the
+  demo seed's first `compute-metrics` wrote 3,426 observations and
+  822,777 members in 2 m 27 s (a rerun reuses the snapshot and writes
+  nothing in 25 s; `metrics verify` takes 28 s). Fine for the local
+  demo and the batch-only rule; storing a cohort member once per metric
+  with per-window flags is the fix if Cook County scale (Phase 5) makes
+  the table or the publish time a problem.
+- `judgemetrics seed` regenerates its own dataset when the manifest on
+  disk records another generator version or scale (a stale dataset), so
+  `uv run poe seed` still restores the demo after `GENERATOR_VERSION`
+  bumps; `--force` remains the way to regenerate and re-parse
+  regardless.
 - Exposure after a disposition or a sentence is deferred by the index
   case's own incarceration term only; other terms the same person serves
   are not modelled, so time at risk is overstated for such persons and
