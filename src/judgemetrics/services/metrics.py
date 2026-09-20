@@ -10,7 +10,11 @@ coverage block comes from the source, and the methodology link is
 ``Settings.methodology_url_for(slug)``. Suppression is applied by the
 schema itself (``schemas.metrics.SuppressibleFigures``), so this module
 never decides what to withhold. The registry response is built from
-``metrics.registry.load_registry`` alone — no database. The compare
+``metrics.registry.load_registry`` alone — no database — plus the
+methodology prose constants of ``metrics.methodology`` (how to read a
+number, the index-event semantics, the attribution notes, the changelog),
+so the web methodology page shows the text ``docs/METHODOLOGY.md`` is
+rendered from rather than a second copy. The compare
 service validates the metric and window against the registry before any
 query and turns ``repositories.metrics.compare_page`` rows into
 ``CompareRow``s with their ``coverage_warning``. The provenance service
@@ -31,8 +35,20 @@ from sqlalchemy.orm import Session
 
 from judgemetrics.api.errors import ApiError
 from judgemetrics.config import Settings
+from judgemetrics.metrics.methodology import (
+    ATTRIBUTION_TEXT,
+    CHANGELOG,
+    GATE_TEXT,
+    HOW_TO_READ,
+    SEMANTICS,
+)
 from judgemetrics.metrics.provenance import TraceError, trace
-from judgemetrics.metrics.registry import MetricDefinitionSpec, Registry, load_registry
+from judgemetrics.metrics.registry import (
+    WINDOWS_DAYS,
+    MetricDefinitionSpec,
+    Registry,
+    load_registry,
+)
 from judgemetrics.repositories.metrics import (
     CompareSortKey,
     compare_page,
@@ -46,6 +62,8 @@ from judgemetrics.schemas.metrics import (
     ComparePage,
     CompareRow,
     MemberGroup,
+    MethodologyChange,
+    MethodologyTerm,
     MetricDefinitionOut,
     Observation,
     ObservationCoverage,
@@ -104,12 +122,18 @@ def registry_response(settings: Settings, registry: Registry | None = None) -> R
         registry_version=registry.version,
         methodology_version=registry.methodology_version,
         methodology_url=settings.methodology_url,
+        windows_days=list(WINDOWS_DAYS),
         known_limitations=list(registry.known_limitations),
         suppression=SuppressionOut(
             default_threshold=registry.suppression.default_threshold,
             rule=registry.suppression.rule,
             rationale=registry.suppression.rationale,
         ),
+        how_to_read=[MethodologyTerm(term=term, text=text) for term, text in HOW_TO_READ],
+        semantics=[MethodologyTerm(term=term, text=text) for term, text in SEMANTICS],
+        attribution_notes=list(ATTRIBUTION_TEXT),
+        gate_descriptions=dict(GATE_TEXT),
+        changelog=[MethodologyChange(version=version, text=text) for version, text in CHANGELOG],
         definitions=[definition_out(item, settings) for item in registry.metrics.values()],
     )
 

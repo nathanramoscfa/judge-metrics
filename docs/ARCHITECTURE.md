@@ -513,11 +513,86 @@ no third-party script, and reads exactly one variable,
   attributed decisions with pretrial detail; the sentence; and the
   "Sources" panel through `ProvenancePanel`), `/courts/[courtId]`
   (court, type, jurisdiction, a date form driving
-  `/judges?court_id=&active_on=`, paginated), `/methodology` (the ten
-  principles, the association-is-not-causation statement, the Phase 3
-  note), `/coverage` (one card per source with a row-count table, the
-  filing window, the last run, and the source documentation link; the
-  Phase 3 completeness note), `/about`.
+  `/judges?court_id=&active_on=`, paginated), `/compare` (below),
+  `/methodology` (below), `/coverage` (the "Snapshot" card — registry
+  and methodology versions, the newest snapshot hash and time — and one
+  card per source with a row-count table, the filing window, the
+  declared coverage window, the observable outcomes and the registry
+  outcomes the source cannot document, the source's latest snapshot and
+  methodology version, the last run, and the source documentation link;
+  `/coverage` and `/metrics` are fetched together), `/about`.
+- **Metric surfaces (Phase 3 Step 4).** `components/metric-stat.tsx` is
+  the presentation-rule component and the only way an observation (a
+  published number) is rendered: label, primary figure (a rate as a
+  percentage, a median as days, a count as an integer, one value of a
+  distribution as its share), numerator / denominator, the eligible
+  count when it differs, the interval with its method, the period, the
+  coverage (source, window, observable), the sample-size line, the
+  methodology link anchored at the slug (`methodology_url` passed
+  through), and the synthetic badge; a suppressed observation renders
+  the notice with the threshold and no figure slot at all
+  (`data-testid="metric-stat"` with `data-slug`, `data-window`,
+  `data-dimension`, `data-suppressed`, `data-variant`); `MetricNotObservable`
+  is the row for a metric the source cannot document. `lib/metrics.ts`
+  groups `SubjectMetrics.observations` by slug → window → dimension,
+  resolves the window from the registry's `windows_days` (default 365,
+  never a literal in a page), formats every field null-safely, builds
+  the cohort labels, the case and compare links, and the cohort
+  position (judges, published figures, median, rank) from compare rows;
+  `JUDGE_PANELS` names the unwindowed slugs of each panel while windowed
+  metrics are placed by the registry's `index_event`, so a new outcome
+  metric lands in the right panel and an unlisted judge metric falls
+  into "Other metrics" rather than vanishing. The judge page fetches
+  `/judges/{id}`, `/judges/{id}/metrics`, and `/metrics` together, then
+  `/courts/{id}/metrics` (the judge's current or latest court, for the
+  pooled value) and one `/metrics/compare` per compared definition
+  (shares, rates, survival estimates, medians; `Promise.all`), and
+  renders the association statement, then Cases, Pretrial, Outcomes
+  after qualifying release (window and cohort selectors), Disposition
+  (with the after-disposition outcomes), Sentencing (with the
+  after-sentence outcomes), then the service table, cases panel, and
+  provenance panel. Every panel is a `MetricPanel` (`id` is the anchor)
+  with a "View eligible cases" link to `/judges/[id]/cases` filtered
+  with `status=closed` for Disposition and Sentencing (the cases route
+  has no pretrial, disposition, or sentence filter; unfiltered
+  otherwise). A failed registry or metrics call renders one `ErrorState`
+  in place of the panels; a failed pooled or compare call renders an
+  `ErrorState` inside the affected panel and the stats still render.
+  The cohort (`?cohort=court|jurisdiction`) and window (`?window=`) are
+  query parameters read by the server page; `components/cohort-selector.tsx`
+  (`CohortSelector`, `WindowSelector`) and `components/query-select.tsx`
+  are client components that render a plain GET form with the other
+  parameters as hidden inputs, submitting on change (and through an
+  Apply button without JavaScript), so the page state is the URL.
+  `/compare` (`app/compare/page.tsx`) holds its whole state in the query
+  (`metric`, `window`, `court_id`, `jurisdiction_id`, `sort`, `order`,
+  `offset`, plus `judge` to highlight a row), validates it against the
+  registry before any fetch (unknown metric, a window the metric lacks,
+  a malformed id, an unknown sort or order, a negative offset → an
+  `ErrorState` with a 422-shaped validation error, never a crash), and
+  renders `components/compare-table.tsx` — the API's order, header
+  links that flip `sort`/`order`, `aria-sort`, fraction, figure,
+  interval, sample size, period, coverage warning, the suppression
+  notice in place of the figures of a suppressed row — with pagination
+  and a "Comparison notes" card (cohort definition, reference period,
+  formula, methodology link, the association statement and the case-mix
+  warning). The court list is two `/courts` pages (100 each; a court
+  search arrives with a larger registry). `/methodology` is
+  `force-dynamic` from `GET /api/v1/metrics`: the statement (unchanged
+  text and test id), the principles, "How to read a number", "Index
+  events, exposure, and censoring", "Attribution" (the API's
+  `how_to_read`, `semantics`, `attribution_notes` — the renderer's own
+  constants, so the page and `docs/METHODOLOGY.md` never diverge), one
+  `<section id="<slug>">` per definition, "Suppression", "Known
+  limitations" (verbatim list, `data-testid="known-limitations"`), the
+  changelog, and the links; every string is a React text node.
+- **Coverage cache.** `lib/coverage-cache.ts` is a module-level,
+  in-process, unkeyed cache (`createCoverageCache`; the process-wide
+  `coverageCache`) the banner reads `/coverage` through: a successful
+  result is reused for sixty seconds, a failure is never cached,
+  concurrent misses share one call, and the cache is bypassed under
+  `NODE_ENV=test` so unit tests observe every fetch (the factory is
+  tested with fake timers). The root layout stays `force-dynamic`.
 - **Accessibility.** Skip link, `header`/`nav`/`main`/`footer`
   landmarks, `scope="col"` on every table header, `aria-sort` on the
   sortable table, visible `:focus-visible` rings, the `/` shortcut
@@ -547,8 +622,20 @@ no third-party script, and reads exactly one variable,
 - **Tests.** Vitest (client helpers with a stubbed `fetch`, the
   provenance panel's truncation, copy, and synthetic label, the banner
   rendering only on `synthetic_present`, the badges, the timeline entry
-  rendering, schema freshness, bundle scan); Playwright
-  `web/tests/e2e/smoke.spec.ts` against a running web app and API (home
+  rendering, schema freshness, bundle scan; `lib/metrics.ts` helper by
+  helper including the null-safe paths; `MetricStat` for every kind with
+  every presentation field, the suppressed row's notice and digit-free
+  figure region, the not-observable row, the panel, the row, the cohort
+  line, and the compare table; the methodology page over a stubbed
+  registry — every definition anchored, every limitation verbatim, the
+  error state; the coverage cache's TTL with fake timers); Playwright
+  `web/tests/e2e/metrics.spec.ts` (a synthetic judge found through
+  `/metrics/compare` sorted by denominator → the judge page's statement
+  before the panels and a `pretrial_release_share` stat with its fields
+  → the window selector to 90 days → the compare link and the judge's
+  row with its sample size → the methodology anchor with the formula;
+  the compare page's validation and suppressed rows; the coverage v1
+  fields) and `web/tests/e2e/smoke.spec.ts` against a running web app and API (home
   and the `/` shortcut, search by a fixture surname, judge page service
   rows and source panel, theme toggle, court page by date, 404 and the
   methodology statement, the case flow — search a synthetic judge → the

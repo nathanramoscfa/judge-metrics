@@ -1202,6 +1202,29 @@ export interface components {
             resolved: number;
         };
         /**
+         * MethodologyChange
+         * @description One methodology changelog entry.
+         */
+        MethodologyChange: {
+            /** Text */
+            text: string;
+            /**
+             * Version
+             * @description The methodology version the entry describes.
+             */
+            version: string;
+        };
+        /**
+         * MethodologyTerm
+         * @description One term of the methodology prose: a heading and its text, rendered as text nodes.
+         */
+        MethodologyTerm: {
+            /** Term */
+            term: string;
+            /** Text */
+            text: string;
+        };
+        /**
          * MetricDefinitionOut
          * @description One registry entry: what a number means and how it is computed.
          */
@@ -1666,13 +1689,39 @@ export interface components {
         /**
          * Registry
          * @description The versioned metric registry the methodology page is rendered from.
+         *
+         *     The prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,
+         *     ``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered
+         *     from, so the web page and the committed document never diverge.
          */
         Registry: {
+            /**
+             * Attribution Notes
+             * @description How rows are tied to a judge, and what is never attributed.
+             */
+            attribution_notes: string[];
+            /**
+             * Changelog
+             * @description Oldest version first.
+             */
+            changelog: components["schemas"]["MethodologyChange"][];
             /**
              * Definitions
              * @description In registry order.
              */
             definitions: components["schemas"]["MetricDefinitionOut"][];
+            /**
+             * Gate Descriptions
+             * @description Each assignment gate (`AttributionOut.assignment_gate`) in words.
+             */
+            gate_descriptions: {
+                [key: string]: string;
+            };
+            /**
+             * How To Read
+             * @description What each presentation field beside a number means.
+             */
+            how_to_read: components["schemas"]["MethodologyTerm"][];
             /**
              * Known Limitations
              * @description The brief's statistical warnings, verbatim and never softened.
@@ -1687,7 +1736,17 @@ export interface components {
             methodology_version: string;
             /** Registry Version */
             registry_version: number;
+            /**
+             * Semantics
+             * @description Index events, exposure, outcomes and windows, censoring, Kaplan-Meier.
+             */
+            semantics: components["schemas"]["MethodologyTerm"][];
             suppression: components["schemas"]["SuppressionOut"];
+            /**
+             * Windows Days
+             * @description The follow-up windows every windowed metric is computed over, in days.
+             */
+            windows_days: number[];
         };
         /** SearchResponse */
         SearchResponse: {

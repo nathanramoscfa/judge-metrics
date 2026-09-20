@@ -213,7 +213,7 @@ test("the coverage page lists the synthetic source and the home tile counts case
   await expect(synthetic.first()).toBeVisible();
   await expect(synthetic.first().getByTestId("coverage-window")).toContainText(/\d{4}/);
   await expect(synthetic.first().getByTestId("coverage-last-run")).toContainText("succeeded");
-  await expect(page.getByTestId("coverage-note")).toContainText("Phase 3");
+  await expect(page.getByTestId("coverage-note")).toContainText("Phase 5");
 
   await page.goto("/");
   await expect(page.getByTestId("tile-cases")).toContainText(/[1-9]\d*/);
