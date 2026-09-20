@@ -8,7 +8,7 @@
 #   docker compose --profile app up
 
 # --- build stage -------------------------------------------------------------
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 # uv pinned to the version the lockfile was produced with.
 COPY --from=ghcr.io/astral-sh/uv:0.12.15 /uv /uvx /bin/
@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-group planning
 
 # --- runtime stage -----------------------------------------------------------
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ARG GIT_SHA=unknown
 
