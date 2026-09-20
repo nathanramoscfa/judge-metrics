@@ -9,6 +9,9 @@ export const ROADMAP_URL = `${REPOSITORY_URL}/blob/main/ROADMAP.md`;
 
 export const SYNTHETIC_DATA_URL = `${REPOSITORY_URL}/blob/main/docs/SYNTHETIC_DATA.md`;
 
+/** The Markdown render of the metric registry, versioned with the code. */
+export const METHODOLOGY_DOC_URL = `${REPOSITORY_URL}/blob/main/docs/METHODOLOGY.md`;
+
 /** The GitHub issue form for a wrong, changed, or misread data source. */
 export function dataIssueUrl(title: string): string {
   const params = new URLSearchParams({

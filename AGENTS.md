@@ -658,6 +658,46 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   methodology renderer's "Sample size" prose now states that the
   denominator is withheld with a suppressed number (no version bump: the
   registry's suppression rule already said so).
+- Metric pages (Phase 3 Step 4, docs/ARCHITECTURE.md "Web tier",
+  web/AGENTS.md): `GET /metrics` now also serves the methodology prose
+  (`how_to_read`, `semantics`, `attribution_notes`, `gate_descriptions`,
+  `changelog`) and `windows_days` from the same constants
+  `metrics/methodology.py` renders `docs/METHODOLOGY.md` from (the
+  changelog moved into a `CHANGELOG` tuple there), so the web
+  `/methodology` page is the registry the API serves, never a second
+  copy; a change to that prose is a change to both surfaces and needs
+  `docs/openapi.json` and `web/lib/api/schema.d.ts` regenerated.
+  `web/components/metric-stat.tsx` is the only way an observation is
+  rendered (numerator, denominator, period, coverage, sample size,
+  interval and method, methodology anchor, synthetic badge; a suppressed
+  row renders the threshold notice and no figure slot), `lib/metrics.ts`
+  holds the grouping, window resolution from the registry's
+  `windows_days`, null-safe formatters, cohort labels, links, and the
+  cohort position (the one derived figure), and `JUDGE_PANELS` places
+  unwindowed slugs while windowed metrics follow the registry's
+  `index_event`. Page state is the URL: the judge page's `?cohort=` and
+  `?window=` selectors and every `/compare` control are plain GET forms
+  (`components/query-select.tsx`, client component, submits on change),
+  and `/compare` validates its query against the registry before any
+  fetch and renders `ErrorState` on an invalid value. The judge page
+  makes one `/metrics/compare` call per compared definition (shares,
+  rates, survival estimates, medians) under `Promise.all` — about two
+  dozen cached-60s API reads per view at demo scale; the pooled value
+  is `/courts/{id}/metrics` of the judge's current or latest court and
+  no jurisdiction pooled value exists. The cases route has no pretrial,
+  disposition, or sentence filter, so "View eligible cases" is
+  `status=closed` for Disposition and Sentencing and unfiltered
+  elsewhere. The banner's `/coverage` read goes through
+  `lib/coverage-cache.ts` (sixty-second in-process TTL, failures never
+  cached, bypassed under `NODE_ENV=test`); `NODE_ENV` joined `CI` and
+  `PLAYWRIGHT_BASE_URL` in the hygiene test's allowed `process.env`
+  reads because it is Node's own flag, not a setting. `/coverage`
+  fetches `/metrics` beside `/coverage` to name the registry outcomes a
+  source cannot observe. The Playwright metrics flow
+  (`web/tests/e2e/metrics.spec.ts`) needs computed metrics over a
+  synthetic dataset — the demo seed locally; Step 5 switches CI's `e2e`
+  job to the seed — and the smoke test's coverage note now reads
+  "Phase 5".
 
 ## End-of-session report (from the brief)
 

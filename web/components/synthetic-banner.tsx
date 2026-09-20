@@ -1,13 +1,14 @@
 // web/components/synthetic-banner.tsx
 // The site-wide demo-data notice: a server component that reads
-// /api/v1/coverage on every request and renders a persistent,
-// non-dismissable banner whenever any synthetic source has rows. When the
-// call fails the banner is simply absent (ApiResult never throws) — the
+// /api/v1/coverage through the sixty-second in-process cache
+// (lib/coverage-cache.ts) and renders a persistent, non-dismissable banner
+// whenever any synthetic source has rows. When the call fails the banner is
+// simply absent (ApiResult never throws; a failure is not cached) — the
 // pages show their own error states.
 import { FlaskConical } from "lucide-react";
 import Link from "next/link";
 
-import { getCoverage } from "@/lib/api/client";
+import { coverageCache } from "@/lib/coverage-cache";
 
 export const SYNTHETIC_BANNER_TEXT =
   "Demo data: this site currently includes a synthetic dataset; synthetic records are labelled";
@@ -36,6 +37,6 @@ export function SyntheticBannerView({ present }: { present: boolean }) {
 }
 
 export async function SyntheticBanner() {
-  const coverage = await getCoverage();
+  const coverage = await coverageCache.get();
   return <SyntheticBannerView present={coverage.ok && coverage.data.synthetic_present} />;
 }

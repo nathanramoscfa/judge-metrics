@@ -311,9 +311,18 @@ def test_metrics_routes_declare_the_presentation_fields_and_the_compare_paramete
     ]
     assert parameters["order"]["schema"]["enum"] == ["asc", "desc"]
     registry = schemas["Registry"]["properties"]
-    assert {"registry_version", "methodology_version", "known_limitations", "definitions"} <= set(
-        registry
-    )
+    assert {
+        "registry_version",
+        "methodology_version",
+        "windows_days",
+        "known_limitations",
+        "how_to_read",
+        "semantics",
+        "attribution_notes",
+        "gate_descriptions",
+        "changelog",
+        "definitions",
+    } <= set(registry)
     assert "methodology_url" in schemas["MetricDefinitionOut"]["required"]
     ready = schemas["ReadyResponse"]["properties"]
     assert "metrics" in ready

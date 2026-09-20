@@ -27,6 +27,13 @@ from sqlalchemy.orm import Session
 
 from judgemetrics.api.deps import CACHE_CONTROL
 from judgemetrics.db.models import MetricObservation
+from judgemetrics.metrics.methodology import (
+    ATTRIBUTION_TEXT,
+    CHANGELOG,
+    GATE_TEXT,
+    HOW_TO_READ,
+    SEMANTICS,
+)
 from judgemetrics.metrics.registry import load_registry
 from judgemetrics.schemas.metrics import SUPPRESSED_FIELDS
 from tests.integration.conftest import GoldenFixture, GoldenMetrics, make_app
@@ -85,11 +92,25 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
         "registry_version",
         "methodology_version",
         "methodology_url",
+        "windows_days",
         "known_limitations",
         "suppression",
+        "how_to_read",
+        "semantics",
+        "attribution_notes",
+        "gate_descriptions",
+        "changelog",
         "definitions",
     }
     assert body["registry_version"] == REGISTRY.version
+    # The prose the web methodology page renders is the renderer's own text.
+    assert body["windows_days"] == [30, 90, 180, 365, 730, 1095]
+    assert [item["term"] for item in body["how_to_read"]] == [term for term, _ in HOW_TO_READ]
+    assert [item["term"] for item in body["semantics"]] == [term for term, _ in SEMANTICS]
+    assert body["attribution_notes"] == list(ATTRIBUTION_TEXT)
+    assert body["gate_descriptions"] == GATE_TEXT
+    assert body["changelog"] == [{"version": v, "text": t} for v, t in CHANGELOG]
+    assert body["changelog"][0]["version"] == REGISTRY.methodology_version
     assert body["methodology_version"] == REGISTRY.methodology_version
     assert body["known_limitations"] == list(REGISTRY.known_limitations)
     assert len(body["known_limitations"]) == 8

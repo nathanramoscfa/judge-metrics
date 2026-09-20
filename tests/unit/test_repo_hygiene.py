@@ -471,7 +471,11 @@ def test_web_manifest_scripts_and_lockfile() -> None:
 
 
 def test_web_reads_no_server_side_variables() -> None:
-    """Only NEXT_PUBLIC_* reaches the client bundle; the web tier reads nothing else."""
+    """Only NEXT_PUBLIC_* reaches the client bundle; the web tier reads nothing else.
+
+    ``NODE_ENV`` is Node's own mode flag (the coverage cache is bypassed under
+    ``test``), never a JudgeMetrics setting, so it is allowed like ``CI``.
+    """
     web = REPO_ROOT / "web"
     offenders: list[str] = []
     for path in list(web.rglob("*.ts")) + list(web.rglob("*.tsx")):
@@ -480,7 +484,11 @@ def test_web_reads_no_server_side_variables() -> None:
         text = path.read_text(encoding="utf-8")
         for match in re.finditer(r"process\.env\.([A-Z0-9_]+)", text):
             name = match.group(1)
-            if not name.startswith("NEXT_PUBLIC_") and name not in {"CI", "PLAYWRIGHT_BASE_URL"}:
+            if not name.startswith("NEXT_PUBLIC_") and name not in {
+                "CI",
+                "NODE_ENV",
+                "PLAYWRIGHT_BASE_URL",
+            }:
                 offenders.append(f"{path.relative_to(REPO_ROOT)}: {name}")
         assert "dangerouslySetInnerHTML" not in text, path
     assert offenders == []

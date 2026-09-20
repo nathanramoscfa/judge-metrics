@@ -173,10 +173,25 @@ timeline, cases panel, source coverage panel with each artifact's
 sha256), `/judges/[judgeId]/cases` (filtered, paginated case list),
 `/cases/[caseId]` (timeline, charges, judge assignments, attributed
 decisions with actor badges, disposition, sentence, sources),
-`/courts/[courtId]` (judges serving on a chosen date), `/coverage` (one
-card per source), and `/methodology`. A persistent demo-data banner
-appears whenever a synthetic source is present and every synthetic
-record carries a badge. Its API client is generated from
+`/courts/[courtId]` (judges serving on a chosen date), `/compare` (one
+objective metric across the judges of a court or jurisdiction: a
+sortable table with numerator and denominator, interval, sample size,
+coverage warnings, suppressed rows marked, the state in the query
+string), `/methodology` (rendered from `GET /api/v1/metrics`: how to
+read a number, the index-event semantics, one anchored section per
+metric definition, suppression, the eight known limitations verbatim,
+the changelog), and `/coverage` (the snapshot card and, per source, the
+coverage window, observable and not-observable outcomes, the latest
+snapshot, and the methodology version). The judge page carries the
+association statement above its Cases, Pretrial, Outcomes after
+qualifying release (window selector), Disposition, and Sentencing
+panels; every number renders through one component that always shows
+the numerator, denominator, date range, coverage, sample size, the
+interval, and the methodology link, beside the court's pooled value and
+the judge's position in the comparison cohort (same court or
+jurisdiction, same period). A persistent demo-data banner (its coverage
+read cached in-process for sixty seconds) appears whenever a synthetic
+source is present and every synthetic record carries a badge. Its API client is generated from
 `docs/openapi.json` and it reads one variable, `NEXT_PUBLIC_API_BASE_URL`.
 
 ```sh

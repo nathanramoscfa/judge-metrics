@@ -301,13 +301,19 @@ can leak a withheld figure; the `methodology` page states the rule and
 the rationale (`GET /metrics` → `suppression`).
 
 `GET /metrics` is the registry: `registry_version`,
-`methodology_version`, `methodology_url`, the eight `known_limitations`
-verbatim, the `suppression` rule and rationale, and one
-`MetricDefinitionOut` per metric in registry order (slug, name, kind,
-subject types, description, numerator, denominator, eligibility, the
-structured attribution rule, index event, outcome, windows, dimension,
-threshold, unit, version, `methodology_url`). It needs no database and
-is cacheable.
+`methodology_version`, `methodology_url`, `windows_days` (the follow-up
+windows every windowed metric is computed over), the eight
+`known_limitations` verbatim, the `suppression` rule and rationale, the
+methodology prose the web page renders — `how_to_read` and `semantics`
+(lists of `{term, text}`), `attribution_notes`, `gate_descriptions`
+(each `assignment_gate` in words), and the `changelog` (`{version,
+text}`, oldest first) — which are the same constants
+`docs/METHODOLOGY.md` is rendered from (`metrics/methodology.py`), and
+one `MetricDefinitionOut` per metric in registry order (slug, name,
+kind, subject types, description, numerator, denominator, eligibility,
+the structured attribution rule, index event, outcome, windows,
+dimension, threshold, unit, version, `methodology_url`). It needs no
+database and is cacheable.
 
 `GET /judges/{judge_id}/metrics` and `GET /courts/{court_id}/metrics`
 return `SubjectMetrics`: the subject summary, the versions, `total`, and

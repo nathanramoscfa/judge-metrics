@@ -1874,6 +1874,45 @@
         "title": "MemberGroup",
         "type": "object"
       },
+      "MethodologyChange": {
+        "description": "One methodology changelog entry.",
+        "properties": {
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "version": {
+            "description": "The methodology version the entry describes.",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "text"
+        ],
+        "title": "MethodologyChange",
+        "type": "object"
+      },
+      "MethodologyTerm": {
+        "description": "One term of the methodology prose: a heading and its text, rendered as text nodes.",
+        "properties": {
+          "term": {
+            "title": "Term",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "term",
+          "text"
+        ],
+        "title": "MethodologyTerm",
+        "type": "object"
+      },
       "MetricDefinitionOut": {
         "description": "One registry entry: what a number means and how it is computed.",
         "properties": {
@@ -2807,14 +2846,46 @@
         "type": "object"
       },
       "Registry": {
-        "description": "The versioned metric registry the methodology page is rendered from.",
+        "description": "The versioned metric registry the methodology page is rendered from.\n\nThe prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,\n``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered\nfrom, so the web page and the committed document never diverge.",
         "properties": {
+          "attribution_notes": {
+            "description": "How rows are tied to a judge, and what is never attributed.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Attribution Notes",
+            "type": "array"
+          },
+          "changelog": {
+            "description": "Oldest version first.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyChange"
+            },
+            "title": "Changelog",
+            "type": "array"
+          },
           "definitions": {
             "description": "In registry order.",
             "items": {
               "$ref": "#/components/schemas/MetricDefinitionOut"
             },
             "title": "Definitions",
+            "type": "array"
+          },
+          "gate_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Each assignment gate (`AttributionOut.assignment_gate`) in words.",
+            "title": "Gate Descriptions",
+            "type": "object"
+          },
+          "how_to_read": {
+            "description": "What each presentation field beside a number means.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "How To Read",
             "type": "array"
           },
           "known_limitations": {
@@ -2839,16 +2910,38 @@
             "title": "Registry Version",
             "type": "integer"
           },
+          "semantics": {
+            "description": "Index events, exposure, outcomes and windows, censoring, Kaplan-Meier.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "Semantics",
+            "type": "array"
+          },
           "suppression": {
             "$ref": "#/components/schemas/SuppressionOut"
+          },
+          "windows_days": {
+            "description": "The follow-up windows every windowed metric is computed over, in days.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Windows Days",
+            "type": "array"
           }
         },
         "required": [
           "registry_version",
           "methodology_version",
           "methodology_url",
+          "windows_days",
           "known_limitations",
           "suppression",
+          "how_to_read",
+          "semantics",
+          "attribution_notes",
+          "gate_descriptions",
+          "changelog",
           "definitions"
         ],
         "title": "Registry",

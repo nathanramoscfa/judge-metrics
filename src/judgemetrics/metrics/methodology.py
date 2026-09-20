@@ -203,6 +203,19 @@ ATTRIBUTION_TEXT: tuple[str, ...] = (
     "disposing actor.",
 )
 
+# (version, what changed) — oldest first; served by ``GET /metrics`` as ``changelog``.
+CHANGELOG: tuple[tuple[str, str], ...] = (
+    (
+        "0.1",
+        "first registry (Phase 3 Step 1): descriptive counts and shares, "
+        "fixed-window rates and Kaplan-Meier cumulative incidence after "
+        "pretrial release, disposition, and sentence, the disposition "
+        "distribution, the judicial dismissal rate, and the medians; "
+        "right-censoring at the source's coverage end; incarceration deferral; "
+        "Wilson and Greenwood intervals; suppression below a denominator of 10.",
+    ),
+)
+
 
 def _fill(text: str, *, initial: str = "", subsequent: str = "") -> str:
     return textwrap.fill(
@@ -346,16 +359,8 @@ def render_methodology(registry: Registry | None = None) -> str:
         lines.append(_numbered(index, warning))
     lines.append("")
     lines.extend(["## Methodology changelog", ""])
-    lines.append(
-        _bullet(
-            "0.1 - first registry (Phase 3 Step 1): descriptive counts and shares, "
-            "fixed-window rates and Kaplan-Meier cumulative incidence after "
-            "pretrial release, disposition, and sentence, the disposition "
-            "distribution, the judicial dismissal rate, and the medians; "
-            "right-censoring at the source's coverage end; incarceration deferral; "
-            "Wilson and Greenwood intervals; suppression below a denominator of 10."
-        )
-    )
+    for version, text in CHANGELOG:
+        lines.append(_bullet(f"{version} - {text}"))
     lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 

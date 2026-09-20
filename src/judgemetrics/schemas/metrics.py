@@ -118,16 +118,51 @@ class SuppressionOut(BaseModel):
     rationale: str
 
 
+class MethodologyTerm(BaseModel):
+    """One term of the methodology prose: a heading and its text, rendered as text nodes."""
+
+    term: str
+    text: str
+
+
+class MethodologyChange(BaseModel):
+    """One methodology changelog entry."""
+
+    version: str = Field(description="The methodology version the entry describes.")
+    text: str
+
+
 class Registry(BaseModel):
-    """The versioned metric registry the methodology page is rendered from."""
+    """The versioned metric registry the methodology page is rendered from.
+
+    The prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,
+    ``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered
+    from, so the web page and the committed document never diverge.
+    """
 
     registry_version: int = Field(ge=1)
     methodology_version: str
     methodology_url: str = Field(description="The methodology page.")
+    windows_days: list[int] = Field(
+        description="The follow-up windows every windowed metric is computed over, in days."
+    )
     known_limitations: list[str] = Field(
         description="The brief's statistical warnings, verbatim and never softened."
     )
     suppression: SuppressionOut
+    how_to_read: list[MethodologyTerm] = Field(
+        description="What each presentation field beside a number means."
+    )
+    semantics: list[MethodologyTerm] = Field(
+        description="Index events, exposure, outcomes and windows, censoring, Kaplan-Meier."
+    )
+    attribution_notes: list[str] = Field(
+        description="How rows are tied to a judge, and what is never attributed."
+    )
+    gate_descriptions: dict[str, str] = Field(
+        description="Each assignment gate (`AttributionOut.assignment_gate`) in words."
+    )
+    changelog: list[MethodologyChange] = Field(description="Oldest version first.")
     definitions: list[MetricDefinitionOut] = Field(description="In registry order.")
 
 
@@ -463,6 +498,8 @@ __all__ = [
     "CorrectionTargetType",
     "IntervalMethod",
     "MemberGroup",
+    "MethodologyChange",
+    "MethodologyTerm",
     "MetricDefinitionOut",
     "MetricKind",
     "MetricSubjectType",
