@@ -5,12 +5,15 @@
 // filter. `MetricRow` places a judge's stat beside the court's pooled stat
 // and the cohort-position line from the compare rows; `CohortPositionLine`
 // is the one derived figure on the page (a count of judges, the cohort's
-// median, the judge's rank), and it names the rows it was derived from.
+// median, the judge's rank), and it names the rows it was derived from. A
+// panel with a `reportObservationId` carries the "Report a data error" link
+// targeting that observation (its first published number).
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { MetricStat } from "@/components/metric-stat";
+import { ReportErrorLink } from "@/components/report-error-link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Observation } from "@/lib/api/client";
@@ -29,6 +32,7 @@ export function MetricPanel({
   controls,
   casesHref,
   casesLabel = "View eligible cases",
+  reportObservationId,
   children,
 }: {
   /** The section anchor: `pretrial`, `outcomes`, `disposition`, `sentencing`, `cases`. */
@@ -40,13 +44,24 @@ export function MetricPanel({
   /** The judge's case list, filtered where the cases route supports it. */
   casesHref?: string;
   casesLabel?: string;
+  /** The panel's first observation: the target of its "Report a data error" link. */
+  reportObservationId?: string | null;
   children: ReactNode;
 }) {
   return (
     <Card id={id} size="sm" data-testid="metric-panel" data-panel={id} className="scroll-mt-20">
       <CardHeader>
         <CardTitle>
-          <h2 id={`${id}-heading`}>{title}</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id={`${id}-heading`}>{title}</h2>
+            {reportObservationId ? (
+              <ReportErrorLink
+                targetType="metric_observation"
+                targetId={reportObservationId}
+                label={title}
+              />
+            ) : null}
+          </div>
         </CardTitle>
         {description ? <CardDescription>{description}</CardDescription> : null}
         {controls ? <div className="flex flex-wrap items-center gap-4 pt-1">{controls}</div> : null}

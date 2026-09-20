@@ -5,15 +5,26 @@
 // coverage window its connector declares, the outcomes it can and cannot
 // document (the not-observable ones named from the registry's outcomes),
 // the latest snapshot hash and time, the methodology version, and its last
-// run — read from /api/v1/coverage and /api/v1/metrics on every request.
+// run — read from /api/v1/coverage and /api/v1/metrics on every request —
+// and the jurisdictions covered (from /api/v1/jurisdictions), each linked
+// to its page.
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { CopyHashButton } from "@/components/provenance-panel";
 import { SyntheticBadge } from "@/components/badges";
 import { EmptyState, ErrorState } from "@/components/states";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getCoverage, getRegistry, type Coverage, type CoverageSource, type Registry } from "@/lib/api/client";
+import {
+  getCoverage,
+  getRegistry,
+  listJurisdictions,
+  type Coverage,
+  type CoverageSource,
+  type JurisdictionSummary,
+  type Registry,
+} from "@/lib/api/client";
 import { formatDate, formatDateTime, formatInteger, titleCase, truncateHash } from "@/lib/format";
 import { DATA_SOURCES_URL, sourceLinks } from "@/lib/links";
 import { formatPeriod } from "@/lib/metrics";
@@ -218,8 +229,52 @@ function SourceCard({ source, outcomes }: { source: CoverageSource; outcomes: st
   );
 }
 
+function JurisdictionsCard({ jurisdictions, total }: { jurisdictions: JurisdictionSummary[]; total: number }) {
+  const sorted = [...jurisdictions].sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <Card size="sm" data-testid="jurisdictions-card">
+      <CardHeader>
+        <CardTitle>
+          <h2>Jurisdictions covered</h2>
+        </CardTitle>
+        <CardDescription>
+          Every jurisdiction with a court on file; each page lists its courts, available years,
+          data completeness, and its judges compared on one metric.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {sorted.length === 0 ? (
+          <EmptyState title="No jurisdiction is on file yet." />
+        ) : (
+          <ul className="flex flex-wrap gap-2 text-sm" data-testid="jurisdiction-list">
+            {sorted.map((jurisdiction) => (
+              <li key={jurisdiction.id}>
+                <Link
+                  href={`/jurisdictions/${jurisdiction.id}`}
+                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-primary hover:underline"
+                  data-testid="jurisdiction-link"
+                >
+                  {jurisdiction.name}
+                  <span className="text-xs text-muted-foreground">· {titleCase(jurisdiction.type)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        {total > sorted.length ? (
+          <p className="mt-2 text-xs text-muted-foreground">Showing the first {sorted.length} of {total}.</p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default async function CoveragePage() {
-  const [coverage, registry] = await Promise.all([getCoverage(), getRegistry()]);
+  const [coverage, registry, jurisdictions] = await Promise.all([
+    getCoverage(),
+    getRegistry(),
+    listJurisdictions({ limit: 100 }),
+  ]);
   const outcomes = registryOutcomes(registry.ok ? registry.data : null);
   return (
     <article className="flex flex-col gap-6">
@@ -238,6 +293,11 @@ export default async function CoveragePage() {
         <>
           <SnapshotCard coverage={coverage.data} registry={registry.ok ? registry.data : null} />
           {!registry.ok ? <ErrorState what="the metric registry" error={registry.error} /> : null}
+          {jurisdictions.ok ? (
+            <JurisdictionsCard jurisdictions={jurisdictions.data.items} total={jurisdictions.data.total} />
+          ) : (
+            <ErrorState what="the jurisdiction list" error={jurisdictions.error} />
+          )}
           {coverage.data.sources.length === 0 ? (
             <EmptyState title="No source has been ingested yet." />
           ) : (

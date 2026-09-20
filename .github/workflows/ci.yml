@@ -2,9 +2,10 @@
 # Continuous integration: mirrors the local pre-commit gate (ruff, mypy,
 # bandit, secret scan, dependency audit), runs the Python test suite against
 # a PostgreSQL service, lints, type-checks, tests, builds, and audits the web
-# application, runs the Playwright smoke test against the API over the FJC
-# and golden synthetic fixtures, and builds and vulnerability-scans the API
-# and web images. The aggregate `test` job is the single required status check on `main`.
+# application, runs the Playwright suites (smoke, metrics, first milestone)
+# against the API over the FJC fixture and the seeded demo dataset with
+# computed metrics, and builds and vulnerability-scans the API and web
+# images. The aggregate `test` job is the single required status check on `main`.
 #
 # Trust boundary rules (ROADMAP.md §5 "Per-step security gate"):
 #   - every third-party action is pinned to a full commit SHA;
@@ -207,9 +208,9 @@ jobs:
         run: pnpm audit --audit-level=high
 
   e2e:
-    name: e2e (Playwright smoke against the API over the FJC and golden fixtures)
+    name: e2e (Playwright suites against the API over the FJC fixture and the demo seed)
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -232,7 +233,12 @@ jobs:
       JUDGEMETRICS_INGEST_DATABASE_URL: postgresql+psycopg://judgemetrics_ingest:ci-only-ingest@localhost:5432/judgemetrics # pragma: allowlist secret
       JUDGEMETRICS_RAW_STORE_URL: file://./data/lake
       JUDGEMETRICS_LOG_FORMAT: json
-      JUDGEMETRICS_IDENTIFIER_PEPPER: ci-only-pepper-not-a-secret # pragma: allowlist secret
+      # The identifier pepper and the correction contact key are generated
+      # in the job below (never stored in the workflow) and exported through
+      # $GITHUB_ENV to every later step: the seed hashes participant ids with
+      # the pepper, and the API encrypts the walkthrough's correction with
+      # the key. The snapshot directory is the job's workspace.
+      JUDGEMETRICS_SNAPSHOT_DIR: data/snapshots
       JUDGEMETRICS_APP_DB_PASSWORD: ci-only-app # pragma: allowlist secret
       JUDGEMETRICS_INGEST_DB_PASSWORD: ci-only-ingest # pragma: allowlist secret
       JUDGEMETRICS_ADMIN_DB_PASSWORD: ci-only-admin # pragma: allowlist secret
@@ -256,6 +262,18 @@ jobs:
       - name: Install the API (locked)
         run: uv sync --frozen
 
+      # Throwaway values for this run only: a random pepper for the
+      # person-identifier hashes and a fresh Fernet key for the correction
+      # contacts, masked from the log and discarded with the runner.
+      - name: Generate the identifier pepper and the correction contact key
+        run: |
+          pepper="$(openssl rand -hex 32)"
+          key="$(uv run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          echo "::add-mask::$pepper"
+          echo "::add-mask::$key"
+          echo "JUDGEMETRICS_IDENTIFIER_PEPPER=$pepper" >> "$GITHUB_ENV"
+          echo "JUDGEMETRICS_CORRECTION_CONTACT_KEY=$key" >> "$GITHUB_ENV"
+
       - name: Create the database roles (same init scripts as Compose)
         run: |
           psql -v ON_ERROR_STOP=1 -h localhost -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
@@ -268,11 +286,18 @@ jobs:
       - name: Ingest the FJC fixture (ingest role)
         run: uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc
 
-      # The golden synthetic dataset (tests/fixtures/golden: manifest.json
-      # beside source/) gives the case flow a synthetic judge and case; the
-      # job's JUDGEMETRICS_IDENTIFIER_PEPPER hashes its participant ids.
-      - name: Ingest the golden synthetic fixture (ingest role)
-        run: uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden
+      # The demo-scale synthetic dataset (the default seed, generated into
+      # data/synthetic/ci) is what the first-milestone walkthrough runs
+      # over: its judges' cohorts clear the suppression threshold, which the
+      # golden fixture's mostly do not. Pipeline step 13 computes the metrics
+      # of every subject the ingest touched inside the run; the explicit
+      # compute afterwards is the operator's `bootstrap` sequence and
+      # publishes nothing new (idempotency, checked in the step's PR).
+      - name: Seed the demo synthetic dataset (ingest role)
+        run: uv run judgemetrics seed --out data/synthetic/ci
+
+      - name: Compute metrics (ingest role)
+        run: uv run judgemetrics metrics compute
 
       - name: Start the API in the background
         run: |
@@ -312,7 +337,7 @@ jobs:
         working-directory: web
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Playwright smoke test
+      - name: Playwright suites (smoke, metrics, first milestone)
         working-directory: web
         run: pnpm e2e
 

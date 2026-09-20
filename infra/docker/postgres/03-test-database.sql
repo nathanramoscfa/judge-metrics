@@ -62,3 +62,31 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_name" IN SCHEMA public
     GRANT ALL ON TABLES TO judgemetrics_admin;
 ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_name" IN SCHEMA public
     GRANT ALL ON SEQUENCES TO judgemetrics_admin;
+
+-- This script reruns on every `uv run poe up` (and so on every `bootstrap`),
+-- after the migrations on an existing volume, and the blanket grants above
+-- would re-open the restricted tables to the app role. Re-apply the
+-- migrations' revokes for every restricted table that exists (none exists on
+-- a fresh volume, where the migrations apply them later): the app role never
+-- reads person_identifier, correction_request (INSERT only, revision 0007),
+-- audit_log, or entity_resolution_candidate; the ingest role only appends
+-- to audit_log.
+DO $$
+DECLARE
+    restricted text;
+BEGIN
+    FOREACH restricted IN ARRAY ARRAY[
+        'person_identifier', 'correction_request', 'audit_log', 'entity_resolution_candidate'
+    ] LOOP
+        IF to_regclass('public.' || restricted) IS NOT NULL THEN
+            EXECUTE format('REVOKE ALL ON TABLE public.%I FROM judgemetrics_app', restricted);
+        END IF;
+    END LOOP;
+    IF to_regclass('public.correction_request') IS NOT NULL THEN
+        EXECUTE 'GRANT INSERT ON TABLE public.correction_request TO judgemetrics_app';
+    END IF;
+    IF to_regclass('public.audit_log') IS NOT NULL THEN
+        EXECUTE 'REVOKE ALL ON TABLE public.audit_log FROM judgemetrics_ingest';
+        EXECUTE 'GRANT SELECT, INSERT ON TABLE public.audit_log TO judgemetrics_ingest';
+    END IF;
+END $$;

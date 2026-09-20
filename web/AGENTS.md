@@ -34,3 +34,27 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Regenerate `lib/api/schema.d.ts` (`pnpm generate:api`) after any change
   to `docs/openapi.json`; `tests/unit/schema-freshness.test.ts` fails
   otherwise.
+- The one write path is the corrections form (`components/correction-form.tsx`)
+  posting JSON to the route handler `app/api/corrections/route.ts`
+  (`lib/corrections-handler.ts`), never to the API directly from the
+  browser. The handler validates against the limits in `lib/corrections.ts`
+  (mirrored from `CorrectionIn`), forwards the `ALLOWED_FIELDS` and
+  nothing else with the caller's `X-Forwarded-For`, returns `{id,
+  status}` or the API's error body under its status, sets no cookie, and
+  logs nothing — no `console.*` in that path, ever (the Vitest suite spies
+  every console method). No file upload anywhere: supporting material is
+  an http(s) URL field.
+- "Report a data error" is `components/report-error-link.tsx`
+  (`correctionHref` from `lib/corrections.ts`): on the judge, court, and
+  case headers with the entity's id, and on every `MetricPanel` through
+  `reportObservationId` (the panel's first observation, from
+  `firstObservationId`). A new entity page gets the link in its header.
+- The court page renders its own observations through `MetricStat`
+  (`COURT_PANELS` in `lib/metrics.ts`; the court-only counts belong to the
+  Pretrial panel) and the comparable-judge table through `CompareTable`
+  with `?metric=` and `?window=` in the query; the jurisdiction page reads
+  its sources and years through `lib/jurisdictions.ts`. Both keep their
+  page state in the URL like `/compare`.
+- `tests/e2e/first-milestone.spec.ts` is the brief's checklist, items
+  8–16, one test per item in order, sharing one judge discovered through
+  the API; keep the order and the numbering when a page changes.

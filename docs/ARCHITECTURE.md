@@ -444,10 +444,11 @@ their cause `failure`, `refusal`, or `because` so they survive the
 ## Web tier
 
 The web application (`web/`, Next.js App Router, TypeScript strict,
-Tailwind CSS, shadcn/ui, TanStack Table, `next-themes`) is a read-only
-presentation layer over API v1. It holds no data, sets no cookies, loads
-no third-party script, and reads exactly one variable,
-`NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8000`).
+Tailwind CSS, shadcn/ui, TanStack Table, `next-themes`) is a
+presentation layer over API v1 with one write path, the corrections
+form (below). It holds no data, sets no cookies, loads no third-party
+script, and reads exactly one variable, `NEXT_PUBLIC_API_BASE_URL`
+(default `http://localhost:8000`).
 
 ```
    browser ──GET /judges/<id>──▶ Next.js server (web/, port 3000)
@@ -512,8 +513,8 @@ no third-party script, and reads exactly one variable,
   table with the disposing actor; judge assignments; the disposition;
   attributed decisions with pretrial detail; the sentence; and the
   "Sources" panel through `ProvenancePanel`), `/courts/[courtId]`
-  (court, type, jurisdiction, a date form driving
-  `/judges?court_id=&active_on=`, paginated), `/compare` (below),
+  (below), `/jurisdictions/[jurisdictionId]` (below), `/corrections`
+  and `/corrections/received` (below), `/compare` (below),
   `/methodology` (below), `/coverage` (the "Snapshot" card — registry
   and methodology versions, the newest snapshot hash and time — and one
   card per source with a row-count table, the filing window, the
@@ -586,6 +587,72 @@ no third-party script, and reads exactly one variable,
   `<section id="<slug>">` per definition, "Suppression", "Known
   limitations" (verbatim list, `data-testid="known-limitations"`), the
   changelog, and the links; every string is a React text node.
+- **Court and jurisdiction pages (Phase 3 Step 5).** `/courts/[courtId]`
+  fetches `/courts/{id}`, `/metrics`, and `/courts/{id}/metrics`
+  together, then the jurisdiction, the judges serving on `?active_on=`,
+  and one `/metrics/compare?court_id=` for the selected metric
+  (`?metric=`, default `pretrial_release_share`; `?window=` for a
+  windowed one), and renders: the header with the jurisdiction link and
+  "Report a data error"; the association statement; the court's own
+  panels (`COURT_PANELS` in `lib/metrics.ts` — Cases, Pretrial with the
+  court-only `statutory_release_count` and `unknown_actor_pretrial_count`,
+  Outcomes after qualifying release with the window selector,
+  Disposition, Sentencing; windowed metrics placed by `index_event`
+  through `panelDefinitions`, every observation through `MetricStat`, a
+  not-observable outcome through `MetricNotObservable`); "Comparable
+  judges" (a `QuerySelect` over the compared judge-level definitions, the
+  window selector, `CompareTable` with the API's order, an "Open in
+  Compare" link to `/compare?court_id=…`, `EmptyState` for an empty
+  cohort); the judges-serving-on-a-date table; and the provenance
+  panel. `/jurisdictions/[jurisdictionId]` fetches `/jurisdictions/{id}`,
+  `/courts?jurisdiction_id=`, `/coverage`, and `/metrics` together, then
+  one `/metrics/compare?jurisdiction_id=`, and renders the name and type,
+  the courts table (linked), the available years and the data
+  completeness from the `/coverage` source rows that belong to the
+  jurisdiction (`lib/jurisdictions.ts`: the sources in its provenance,
+  plus every synthetic source when one of its courts is synthetic — a
+  court summary carries the flag, not its provenance; the years span
+  their declared coverage windows, and an FJC-only jurisdiction reads
+  "no case data"), the jurisdiction-level compare table with the same
+  controls, a trends placeholder (Phase 5), and the provenance panel.
+  The coverage page lists every jurisdiction (`/jurisdictions`, first
+  100) linked to its page, and the court header links its jurisdiction.
+- **Corrections (Phase 3 Step 5).** `/corrections` is a server page
+  reading `target_type`, `target_id`, and `label` from the query (the
+  "Report a data error" links prefill them —
+  `components/report-error-link.tsx` on the judge, court, and case
+  headers and on every `MetricPanel` with its first observation's id
+  through `firstObservationId`); when the type and id are valid it looks
+  the target up (`/judges/{id}`, `/courts/{id}`, `/cases/{id}`, or
+  `/metrics/{id}/provenance`) to show a summary, explains the correction
+  process (received → reviewed against the source → corrected or
+  suppressed → audited → answered), and hosts
+  `components/correction-form.tsx`, a client component: read-only target
+  fields when prefilled (a select and an id input otherwise), the reason
+  textarea and contact input with the API's limits from
+  `lib/corrections.ts` (`LIMITS`, mirrored from `CorrectionIn`), an
+  optional http(s) URL for supporting material (no file upload), the
+  consent line, submit disabled until `validateCorrection` passes,
+  pending and error states, per-field errors from the handler's map or
+  parsed out of the API's 422 message (`fieldErrorsFromMessage`), the
+  429 wait from `Retry-After`. The form posts JSON to the route handler
+  `app/api/corrections/route.ts` (`POST /api/corrections`;
+  `lib/corrections-handler.ts`), never to the API from the browser: one
+  origin for the browser (no CORS surface on the API's write path), one
+  validated shape, the API's limiter keyed on the web server unless
+  `JUDGEMETRICS_TRUST_PROXY` makes it key on the forwarded chain, and
+  no way for page JavaScript to post arbitrary fields. The handler
+  parses the body, validates it against the same limits, forwards
+  exactly `ALLOWED_FIELDS` (`allowListedBody`, never a spread) through
+  `submitCorrection(body, { forwardedFor })` with the request's
+  `X-Forwarded-For` (Next.js sets it from the socket when no proxy did),
+  and answers `202 {id, status}` or the API's error body under the API's
+  status (`422`, `429` with `Retry-After`, `503`; an unreachable API is
+  `503 network_error`), `Cache-Control: no-store`, no cookie, and no log
+  line: the reason and the contact never leave the handler except
+  towards the API. On success the form navigates to
+  `/corrections/received?id=…`, which shows the id, the status, and what
+  happens next, and never anything submitted.
 - **Coverage cache.** `lib/coverage-cache.ts` is a module-level,
   in-process, unkeyed cache (`createCoverageCache`; the process-wide
   `coverageCache`) the banner reads `/coverage` through: a successful
@@ -619,7 +686,14 @@ no third-party script, and reads exactly one variable,
   (profile `app`, port 3000) builds it with `http://api:8000` unless
   `WEB_API_BASE_URL` overrides it. CI builds, smokes, and Trivy-scans
   both images.
-- **Tests.** Vitest (client helpers with a stubbed `fetch`, the
+- **Tests.** Vitest (the corrections validator, link builder, and 422
+  parser; the route handler over a stubbed `submitCorrection` — the
+  allow-list, the forwarded chain, every status mapping, and a spy on
+  every console method asserting nothing is logged; the form — submit
+  disabled until valid, the read-only target, the consent line, no file
+  input, the posted body, the navigation, the API's field errors, 429
+  and 503; the jurisdiction helpers; `COURT_PANELS`, `panelDefinitions`,
+  `firstObservationId`, and the panel's report link; client helpers with a stubbed `fetch`, the
   provenance panel's truncation, copy, and synthetic label, the banner
   rendering only on `synthetic_present`, the badges, the timeline entry
   rendering, schema freshness, bundle scan; `lib/metrics.ts` helper by
@@ -635,7 +709,12 @@ no third-party script, and reads exactly one variable,
   → the window selector to 90 days → the compare link and the judge's
   row with its sample size → the methodology anchor with the formula;
   the compare page's validation and suppressed rows; the coverage v1
-  fields) and `web/tests/e2e/smoke.spec.ts` against a running web app and API (home
+  fields), `web/tests/e2e/first-milestone.spec.ts` (the brief's
+  checklist items 8–16, one test per item in order over one judge
+  discovered through `/metrics/compare` and `/judges/{id}/metrics` — a
+  synthetic circuit judge with an unsuppressed pretrial release share
+  and 365-day new-case rate and a closed case —, plus the corrections
+  submission through the form to the received page), and `web/tests/e2e/smoke.spec.ts` against a running web app and API (home
   and the `/` shortcut, search by a fixture surname, judge page service
   rows and source panel, theme toggle, court page by date, 404 and the
   methodology statement, the case flow — search a synthetic judge → the
@@ -647,12 +726,16 @@ no third-party script, and reads exactly one variable,
   through the API (a synthetic circuit court → its judges → a closed
   case with a prosecutor dismissal, a judicial decision, and a
   sentence) and holds on either dataset. The Playwright config starts
-  nothing: the `e2e` CI job migrates, ingests the FJC fixture and the
-  golden synthetic fixture (`tests/fixtures/golden`, with the job's
-  `JUDGEMETRICS_IDENTIFIER_PEPPER`), starts the API and the built web
-  app, and runs Chromium; locally the operator runs `uv run poe dev-api`
-  and `pnpm dev` (or `pnpm build && pnpm start`) over a database that
-  holds the FJC fixture (or live ingest) and `uv run poe seed` first.
+  nothing: the `e2e` CI job generates a throwaway identifier pepper and
+  correction contact key into `$GITHUB_ENV` (never stored in the
+  workflow), migrates, ingests the FJC fixture, seeds the demo-scale
+  synthetic dataset (`judgemetrics seed --out data/synthetic/ci`; its
+  judges' cohorts clear the suppression threshold, which the golden
+  fixture's mostly do not) and computes the metrics, starts the API
+  (with the key) and the built web app, and runs Chromium over the
+  three suites; locally the operator runs `uv run poe bootstrap`, then
+  `uv run poe dev-api` and `uv run poe dev-web` (or `pnpm build && pnpm
+  start`), then `pnpm e2e`.
 
 ## Metrics engine
 

@@ -150,6 +150,8 @@ uv run poe compute-metrics                       # judgemetrics metrics compute:
 uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
 uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
 uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role); exit 1 when incomplete
+uv run poe bootstrap                             # up → migrate → ingest-fjc → seed → compute-metrics: the one-command startup (idempotent; `make bootstrap` runs `uv sync` first)
+uv run judgemetrics seed --out data/synthetic/ci  # the seed into another directory (the CI e2e job)
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` (a real
@@ -159,7 +161,8 @@ Fernet key in `.env`) outside the test environment and refuses to start
 without one.
 
 In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
-`pnpm e2e`, `pnpm generate:api`. A later step adds `bootstrap`.
+`pnpm e2e` (smoke, metrics, first milestone; against `dev-api` and
+`dev-web` after `bootstrap`), `pnpm generate:api`.
 
 ## Architectural decisions that matter for future sessions
 
@@ -698,6 +701,53 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   synthetic dataset — the demo seed locally; Step 5 switches CI's `e2e`
   job to the seed — and the smoke test's coverage note now reads
   "Phase 5".
+- Corrections form, court and jurisdiction pages, `bootstrap`, and the
+  walkthrough (Phase 3 Step 5, docs/ARCHITECTURE.md "Web tier",
+  docs/API.md "Corrections", web/AGENTS.md): `bootstrap = ["up",
+  "migrate", "ingest-fjc", "seed", "compute-metrics"]` is a poe sequence
+  whose every stage is idempotent (a second run starts nothing, migrates
+  nothing, re-ingests nothing, regenerates nothing, publishes nothing);
+  `uv sync` is its documented prerequisite because poe runs inside the
+  environment (`make bootstrap` runs `install` first); `seed` fails
+  loudly without the pepper, and the contact key is checked when the
+  API starts (`dev-api`), not by `metrics compute`, which never needs
+  it. `judgemetrics seed --out DIR` is the CI form. The `e2e` job
+  generates a throwaway pepper and Fernet key into `$GITHUB_ENV`
+  (masked; never a workflow value), seeds the demo dataset into
+  `data/synthetic/ci`, runs `metrics compute` (a no-op after pipeline
+  step 13, kept because it is the operator's sequence), and runs every
+  Playwright suite; `verify_phase02.py` check 33 accepts the seed or the
+  golden fixture and the pepper as a variable or a `$GITHUB_ENV` line,
+  and the hygiene test asserts the generation lines. The web tier's one
+  write path is `POST /api/corrections`, a Next route handler
+  (`web/lib/corrections-handler.ts`) that validates the body against
+  the limits mirrored in `web/lib/corrections.ts`, forwards exactly
+  `ALLOWED_FIELDS` (never a spread) with the caller's `X-Forwarded-For`
+  through `submitCorrection(body, { forwardedFor })`, returns `{id,
+  status}` or the API's error body under the API's status (a transport
+  failure is 503), sets no cookie, and logs nothing — the API's limiter
+  keys on the forwarded chain only under `JUDGEMETRICS_TRUST_PROXY`,
+  which the Compose `web` service documents. The corrections page
+  never calls the API's write path from the browser. "Report a data
+  error" (`components/report-error-link.tsx`) sits on the judge, court,
+  and case headers and on every `MetricPanel` with its first
+  observation's id; the court page's panels are `COURT_PANELS` (the
+  court-only counts in Pretrial); the jurisdiction page derives its
+  sources from the jurisdiction's provenance plus the synthetic sources
+  when a court is synthetic (`web/lib/jurisdictions.ts`) because a court
+  summary carries no provenance. Playwright's `toHaveURL` takes a
+  predicate in the walkthrough because `eslint-plugin-security` flags a
+  `new RegExp` over a discovered id. Security finding fixed in-step:
+  `infra/docker/postgres/03-test-database.sql` reruns on every `uv run
+  poe up` (so on every `bootstrap`) and its blanket `GRANT SELECT ON ALL
+  TABLES … TO judgemetrics_app` re-opened `person_identifier`,
+  `correction_request`, `audit_log`, and `entity_resolution_candidate`
+  in the scratch database after the migrations had revoked them (the
+  grants test then failed until the migration round trip restored
+  them); the script now ends with a `DO` block re-applying the
+  migrations' revokes for every restricted table that exists. A script
+  that grants on `ALL TABLES` and can run after the migrations must do
+  the same.
 
 ## End-of-session report (from the brief)
 

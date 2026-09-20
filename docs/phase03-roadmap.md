@@ -5848,7 +5848,44 @@ hygiene.
       `[PASS] NN description` or
       `[FAIL] NN description —
       reason`, and never prints file
-      contents.
+      contents. Notes from Step 5:
+      `uv run poe bootstrap` took
+      249 s on the maintainer's
+      machine from a clean database
+      (206 s in `seed`, whose
+      pipeline step 13 publishes the
+      3,426 observations) and 48 s
+      on the idempotent rerun — the
+      probe's timeout must allow
+      five minutes; Step 5 ran it
+      against the scratch database
+      by overriding the three role
+      URLs with
+      `JUDGEMETRICS_TEST_DATABASE_URL`
+      and pointing
+      `JUDGEMETRICS_SNAPSHOT_DIR` at
+      a temporary directory, which
+      is the safe shape for the
+      `--post` probe too (the live
+      database keeps its ingest).
+      The `first-milestone.spec.ts`
+      corrections test submits one
+      request per run, and the
+      local API (`JUDGEMETRICS_ENV=local`)
+      allows five an hour per client
+      address, so `--e2e` run more
+      than five times within an hour
+      sees a 429 on that one test —
+      report it as the limiter, not
+      a failure of the page (CI runs
+      with the limiter off under
+      `JUDGEMETRICS_ENV=test`).
+      Check 42 should assert
+      `seed --out data/synthetic/ci`
+      and that the pepper and the
+      contact key are written to
+      `$GITHUB_ENV` rather than set
+      in the job's `env:`.
     </requirement>
 
     <requirement>

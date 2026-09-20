@@ -117,7 +117,6 @@ branch = true
 [tool.poe.tasks]
 # Cross-platform command interface: `uv run poe <task>`. The Makefile at the
 # repo root mirrors these targets for environments that have GNU make.
-# Later steps add: bootstrap.
 test = "pytest"
 lint = "ruff check ."
 fmt = "ruff format ."
@@ -158,3 +157,11 @@ seed = "judgemetrics seed"
 # registry metric for every judge and court, and publish the observations
 # as the ingest role (`judgemetrics metrics verify` recomputes them).
 compute-metrics = "judgemetrics metrics compute"
+# Bootstrap: the one-command startup (ROADMAP.md §5 "Command interface").
+# `uv sync` is the prerequisite because poe runs inside the environment
+# (`make bootstrap` runs `install` first). Every stage is idempotent, so a
+# second run starts nothing new, migrates nothing, re-ingests nothing,
+# re-seeds nothing, and publishes nothing. `seed` fails loudly without
+# JUDGEMETRICS_IDENTIFIER_PEPPER; JUDGEMETRICS_CORRECTION_CONTACT_KEY is
+# checked when the API starts (`dev-api`), which nothing here needs.
+bootstrap = ["up", "migrate", "ingest-fjc", "seed", "compute-metrics"]

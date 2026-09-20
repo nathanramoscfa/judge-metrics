@@ -462,6 +462,15 @@ def seed(
     scale: Annotated[
         SyntheticScale, typer.Option("--scale", help="World size: golden, demo, or tiny.")
     ] = SyntheticScale.demo,
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            "--out",
+            help="Dataset directory (default data/synthetic/<seed>); CI uses data/synthetic/ci.",
+            file_okay=False,
+            resolve_path=True,
+        ),
+    ] = None,
     force: Annotated[
         bool,
         typer.Option(
@@ -470,15 +479,16 @@ def seed(
         ),
     ] = False,
 ) -> None:
-    """Generate the synthetic dataset for SEED into data/synthetic/<seed> and ingest it.
+    """Generate the synthetic dataset for SEED into data/synthetic/<seed> (or OUT) and ingest it.
 
     Generation is skipped when the manifest there already records the same
     seed, scale, and generator version; a manifest from another generator
     version or scale is stale and is regenerated (``--force`` regenerates
-    and re-parses regardless). The ingest
-    runs the ``synthetic`` connector against that directory as the ingest
-    role and is refused, like any synthetic ingest, when
-    ``JUDGEMETRICS_ENV=production``.
+    and re-parses regardless). The ingest runs the ``synthetic`` connector
+    against that directory as the ingest role and is refused, like any
+    synthetic ingest, when ``JUDGEMETRICS_ENV=production``. A second run
+    over an unchanged dataset generates nothing and publishes nothing, which
+    is what makes ``uv run poe bootstrap`` idempotent.
     """
     from sqlalchemy.orm import Session
 
@@ -499,7 +509,7 @@ def seed(
     configure_logging(settings)
     _require_pepper(settings)
     log = get_logger("judgemetrics.seed")
-    target = (SYNTHETIC_DATA_DIR / str(seed)).resolve()
+    target = (SYNTHETIC_DATA_DIR / str(seed)).resolve() if out is None else out
     if settings.env == "production":
         # Nothing is generated: the runner records the refusal and that is all.
         log.warning("seed.skipped_generation", because="production environment", out=str(target))

@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { ActorBadge, DiscretionBadge, SyntheticBadge } from "@/components/badges";
 import { CaseTimeline } from "@/components/case-timeline";
 import { ProvenancePanel } from "@/components/provenance-panel";
+import { ReportErrorLink } from "@/components/report-error-link";
 import { EmptyState, ErrorState } from "@/components/states";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -182,6 +183,7 @@ export default async function CasePage({ params }: { params: Params }) {
             {titleCase(c.status)}
           </Badge>
           {c.synthetic ? <SyntheticBadge /> : null}
+          <ReportErrorLink targetType="case" targetId={c.id} label={`Case ${c.case_number}`} className="ml-auto" />
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
           <div className="flex gap-1.5">

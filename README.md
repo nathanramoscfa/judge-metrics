@@ -62,7 +62,13 @@ with numerator, denominator, date range, coverage, sample size,
 interval, suppression, and methodology link, the compare table,
 coverage v1), and the corrections intake (`POST /api/v1/corrections`,
 the contact encrypted at rest under a key the API can never read
-back). See:
+back); Step 4 the judge metric panels, the compare page, the
+registry-driven methodology page, and coverage v1; Step 5 the
+corrections form (`/corrections`, through a same-origin route handler),
+the court page's metric panels and comparable-judge table, the
+jurisdiction page, the one-command `uv run poe bootstrap`, and the
+first-milestone walkthrough (`web/tests/e2e/first-milestone.spec.ts`,
+run in CI over the seeded demo dataset). See:
 
 - [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -89,8 +95,89 @@ back). See:
 ## Quick start
 
 Requirements: [uv](https://docs.astral.sh/uv/) (Python 3.13 is fetched
-automatically) and Git. Docker and Node 22 with pnpm are needed from
-Phase 1 onward.
+automatically), Git, Docker (Compose v2), and Node 22 with pnpm via
+corepack for the web app.
+
+```sh
+git clone https://github.com/nathanramoscfa/judge-metrics && cd judge-metrics
+uv sync                 # the environment: .venv with the dev and planning groups
+cp .env.example .env    # then replace every change-me (the two generate: lines give the pepper and the key)
+uv run poe bootstrap    # up → migrate → ingest-fjc → seed → compute-metrics (idempotent; ~5 min the first time)
+uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs
+uv run poe dev-web      # http://localhost:3000 (first: cd web && corepack enable && pnpm install --frozen-lockfile)
+```
+
+`bootstrap` is one poe sequence (`make bootstrap` runs `uv sync` first,
+because poe runs inside the environment): start PostgreSQL 17 and MinIO
+and wait for them, apply every Alembic migration as the admin role, load
+the Federal Judicial Center's judges, courts, and service records into
+the immutable raw lake and the canonical tables, generate the
+deterministic demo dataset (`data/synthetic/20260916`: 5 courts, 24
+judges, 5,200 cases, 3,225 pseudonymous persons) and ingest it through
+the synthetic connector, and compute every registry metric for every
+judge and court. Every stage is idempotent: a second run starts nothing
+new, migrates nothing, re-ingests nothing (the FJC artifacts' hashes are
+already recorded), regenerates nothing (the manifest records the seed,
+scale, and generator version), and publishes nothing (every subject's
+observations already equal the recompute). It fails loudly at `seed`
+when `.env` lacks `JUDGEMETRICS_IDENTIFIER_PEPPER`;
+`JUDGEMETRICS_CORRECTION_CONTACT_KEY` is not needed until the API
+starts, where `dev-api` refuses to start without a valid key.
+
+### The first milestone
+
+The brief's seventeen-item checklist, each item mapped to the command,
+page, or test that satisfies it. Items 8–16 are automated in
+[`web/tests/e2e/first-milestone.spec.ts`](web/tests/e2e/first-milestone.spec.ts)
+(one test per item, in order, run by the CI `e2e` job over the seeded
+demo dataset and locally by `pnpm e2e` after `bootstrap`, `dev-api`, and
+`dev-web`); items 1–7 and 17 are the commands above and below.
+
+1. **Clone/open the project** — `git clone … && cd judge-metrics`.
+2. **Run one documented setup command** — `uv sync` (then `cp
+   .env.example .env` and fill in the placeholders).
+3. **Start PostgreSQL** — `uv run poe bootstrap` (its first stage is
+   `up`: PostgreSQL 17 and MinIO healthy; alone: `uv run poe up`).
+4. **Run migrations** — `bootstrap` (stage `migrate`; alone: `uv run
+   poe migrate`).
+5. **Seed the synthetic dataset** — `bootstrap` (stages `ingest-fjc`,
+   `seed`, `compute-metrics`; alone: `uv run poe seed` then `uv run poe
+   compute-metrics`).
+6. **Start the FastAPI backend** — `uv run poe dev-api`.
+7. **Start the Next.js frontend** — `uv run poe dev-web`.
+8. **Open the website** — `http://localhost:3000`: the demo-data banner
+   and the search box (test 8).
+9. **Search for a synthetic judge** — the search box, a synthetic judge's
+   surname → `/search?q=` with the judge's row and synthetic badge (test
+   9).
+10. **Open the judge's profile** — `/judges/[judgeId]`: the header, the
+    synthetic badge, the association statement (test 10).
+11. **View case volume and objective outcome metrics** — the Cases
+    panel's eligible-cases figure and an unsuppressed outcome
+    `MetricStat` with numerator, denominator, interval, period,
+    coverage, sample size, and methodology link (test 11).
+12. **Open an underlying synthetic case** — the Cases panel → the case
+    list → `/cases/[caseId]` (test 12).
+13. **View its event timeline and provenance** — the timeline's dated
+    entries and the Sources panel with each artifact's sha256 (test 13).
+14. **Return to the judge page** — the browser's back navigation (test
+    14).
+15. **Compare the same metric against the judge's defined comparison
+    cohort** — the court's pooled value beside the judge's, the cohort
+    selector (same court → jurisdiction), the compare link → `/compare`
+    with the judge's row and its sample-size cell (test 15).
+16. **Open the methodology page and see exactly how that metric was
+    calculated** — the metric's methodology link → `/methodology#<slug>`
+    with the formula and the known limitations (test 16).
+17. **Run the complete automated test suite successfully** — `uv run
+    poe check` (lint, format, types, the Python suite) and, in `web/`,
+    `pnpm lint && pnpm typecheck && pnpm test && pnpm build`.
+
+A data error found along the way is reported through "Report a data
+error" on the judge, court, case, and metric-panel surfaces (the
+walkthrough's last test submits one and reads the request id back).
+
+### The individual commands
 
 ```sh
 uv sync                 # creates .venv with the dev and planning groups
@@ -101,6 +188,8 @@ uv run poe migrate      # Alembic migrations: every canonical table, as the admi
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
 uv run poe seed         # generate data/synthetic/20260916 (demo scale) and ingest it through the synthetic connector
 uv run judgemetrics synthetic generate   # the generator alone → data/synthetic/20260916/{source,truth,manifest.json}
+uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
+uv run poe bootstrap    # the five stages above in order: up, migrate, ingest-fjc, seed, compute-metrics
 uv run poe dev-api      # http://127.0.0.1:8000/api/v1/docs (Swagger UI over the API below)
 uv run poe dev-web      # http://localhost:3000 (the web app, against the API above)
 uv run poe check        # lint, format check, type check, tests
@@ -108,10 +197,9 @@ uv run poe gate         # the fail-closed security gate, on demand
 uv run poe down         # stop the services
 uv run judgemetrics er run   # recompute person candidates and apply system merges (also: er review list|decide)
 uv run judgemetrics methodology render --check   # docs/METHODOLOGY.md equals the metric registry render (omit --check to rewrite it)
-uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
 uv run judgemetrics metrics verify   # recompute every current observation from its snapshot; exit 1 on any mismatch
 uv run judgemetrics provenance trace <observation id> [--json]   # the chain from a published number to the raw artifacts; exit 1 when incomplete
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed, er run|review, methodology render, metrics compute|verify, provenance trace
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
@@ -173,7 +261,17 @@ timeline, cases panel, source coverage panel with each artifact's
 sha256), `/judges/[judgeId]/cases` (filtered, paginated case list),
 `/cases/[caseId]` (timeline, charges, judge assignments, attributed
 decisions with actor badges, disposition, sentence, sources),
-`/courts/[courtId]` (judges serving on a chosen date), `/compare` (one
+`/courts/[courtId]` (the court's own metric panels — Cases, Pretrial
+with the court-only statutory-release and unknown-actor counts, Outcomes
+after qualifying release, Disposition, Sentencing —, the comparable-judge
+table for one metric with a link to `/compare`, and the judges serving on
+a chosen date), `/jurisdictions/[jurisdictionId]` (name and type, the
+courts, the available years and data completeness from the coverage
+windows of its sources, and the jurisdiction-level compare table),
+`/corrections` (the data-correction form, prefilled by the "Report a data
+error" link on every judge, court, case, and metric panel, posting through
+a same-origin route handler to the API's intake; the received page shows
+the request id and nothing submitted), `/compare` (one
 objective metric across the judges of a court or jurisdiction: a
 sortable table with numerator and denominator, interval, sample size,
 coverage warnings, suppressed rows marked, the state in the query
@@ -216,8 +314,8 @@ security gate, branch naming, and the step lifecycle.
 
 `uv run poe <task>` is the cross-platform command interface; the
 `Makefile` mirrors every target (`make check`, `make test`, …) where GNU
-make is installed. From Phase 3 a single `uv run poe bootstrap` brings
-up the database, migrates it, and seeds the synthetic demo dataset.
+make is installed, and `make bootstrap` runs `uv sync` before `uv run
+poe bootstrap`.
 
 ## Planning with roadmodel
 
@@ -258,7 +356,7 @@ judge-metrics/
 │   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
 │   ├── phaseNN-roadmap.md  executable per-phase plans
 │   └── brief/              the product specification, verbatim
-├── alembic/                migration environment and versions (0001–0005)
+├── alembic/                migration environment and versions (0001–0007)
 ├── data/                   reference tables (tracked: us_states, synthetic_offenses, case_vocabulary, entity_resolution_thresholds, metric_registry); raw lake and synthetic data (untracked)
 ├── alembic.ini             Alembic config (the URL comes from settings, never the ini)
 ├── infra/docker/           api.Dockerfile, web.Dockerfile, and postgres/ init scripts (extensions, roles)
