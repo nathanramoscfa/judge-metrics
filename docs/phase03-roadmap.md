@@ -5047,7 +5047,28 @@ phase-boundary hygiene.
       if its discovery assumptions
       depended on the golden fixture
       (it discovers through the API,
-      so it should not).
+      so it should not). Note from
+      Step 4: the golden ingest
+      already computes metrics at
+      pipeline step 13 (the job does
+      not disable
+      `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST`),
+      so `metrics.spec.ts` passed in
+      CI on PR #21 over the golden
+      fixture (J-0002 has 17
+      pretrial decisions); the
+      switch to the seed is for the
+      walkthrough's scale, not for
+      the metrics flow. Step 4's
+      `metric-stat`, `metric-panel`,
+      `compare-table`, and
+      `lib/metrics.ts` are the
+      components to reuse on the
+      court and jurisdiction pages;
+      `/compare` accepts `judge=` to
+      highlight a row and its court
+      chooser is two `/courts`
+      pages.
     </requirement>
 
     <requirement>
@@ -6358,6 +6379,17 @@ Additionally not in scope for this phase:
 - Server-side rendering caches for stable metric responses beyond the
   banner's coverage read; ROADMAP §5 "Performance rules" reserves them
   for measured expensive queries, none of which exist at demo scale.
+- A cohort filter on `/judges/{id}/cases` for the metric panels' case
+  drill-down (pretrial decision, disposition, sentence): the route
+  filters on filing dates, `status`, and `case_type` only, so Step 4's
+  "View eligible cases" links carry `status=closed` on the Disposition
+  and Sentencing panels and are unfiltered elsewhere; a per-cohort
+  filter needs a cases-route parameter and lands with the first real
+  case-level source (Phase 5), when the eligible cohort is worth
+  inspecting at scale.
+- A court search on `/compare`: the chooser lists two `/courts` pages
+  (164 courts today); a `q` filter on `/courts` arrives with the Phase 5
+  registries.
 
 ---
 
