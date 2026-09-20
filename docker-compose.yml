@@ -136,7 +136,12 @@ services:
     # The web image (infra/docker/web.Dockerfile), reachable on port 3000.
     # NEXT_PUBLIC_API_BASE_URL is inlined at build time; inside the Compose
     # network the API is `http://api:8000`, and WEB_API_BASE_URL in `.env`
-    # overrides it when the browser must reach the API another way.
+    # overrides it when the browser must reach the API another way. The
+    # corrections form posts to the web server's own route handler, which
+    # forwards the request to the API with the caller's X-Forwarded-For
+    # chain; the API keys its corrections limiter on that chain only when
+    # JUDGEMETRICS_TRUST_PROXY=true (otherwise every browser behind this
+    # service shares the web server's bucket).
     profiles: ["app"]
     build:
       context: web

@@ -72,6 +72,7 @@ SHARED_TARGETS = (
     "dev-web",
     "ingest-fjc",
     "seed",
+    "compute-metrics",
 )
 SHA_PIN = re.compile(r"@[0-9a-f]{40}$")
 
@@ -320,19 +321,32 @@ def test_ci_web_and_e2e_jobs() -> None:
         "postgresql+psycopg://judgemetrics_ingest:"
     )
     assert e2e["env"]["NEXT_PUBLIC_API_BASE_URL"] == "http://localhost:8000"
-    assert "JUDGEMETRICS_IDENTIFIER_PEPPER" in e2e["env"]
+    # The pepper and the contact key are generated in the job (Phase 3 Step 5),
+    # never stored in the workflow.
+    assert "JUDGEMETRICS_IDENTIFIER_PEPPER" not in e2e["env"]
+    assert "JUDGEMETRICS_CORRECTION_CONTACT_KEY" not in e2e["env"]
     e2e_runs = "\n".join(s.get("run", "") for s in e2e["steps"])
     for command in (
         "02-roles.sql",
         "uv sync --frozen",
+        'echo "JUDGEMETRICS_IDENTIFIER_PEPPER=$pepper" >> "$GITHUB_ENV"',
+        'echo "JUDGEMETRICS_CORRECTION_CONTACT_KEY=$key" >> "$GITHUB_ENV"',
         "uv run poe migrate",
         "uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc",
-        "uv run judgemetrics ingest run synthetic --from-fixture tests/fixtures/golden",
+        "uv run judgemetrics seed --out data/synthetic/ci",
+        "uv run judgemetrics metrics compute",
         "uv run judgemetrics serve",
         "pnpm exec playwright install --with-deps chromium",
         "pnpm e2e",
     ):
         assert command in e2e_runs, command
+    assert "tests/fixtures/golden" not in e2e_runs
+    # The seed and the compute follow the FJC ingest and precede the API.
+    order = [
+        e2e_runs.index(c)
+        for c in ("ingest run fjc", "judgemetrics seed", "metrics compute", "judgemetrics serve")
+    ]
+    assert order == sorted(order)
 
 
 def test_dependabot_covers_uv_actions_docker_and_npm() -> None:
@@ -381,6 +395,18 @@ def test_compose_defines_postgres_and_minio() -> None:
     assert "WHERE NOT EXISTS (SELECT 1 FROM pg_database" in test_database
     assert "CREATE EXTENSION IF NOT EXISTS pg_trgm;" in test_database
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA public TO judgemetrics_app;" in test_database
+    # The script reruns after the migrations on an existing volume, so it must
+    # re-apply the migrations' revokes on the restricted tables (Phase 3 Step 5).
+    revokes = test_database[test_database.index("DO $$") :]
+    for table in (
+        "person_identifier",
+        "correction_request",
+        "audit_log",
+        "entity_resolution_candidate",
+    ):
+        assert f"'{table}'" in revokes, table
+    assert "REVOKE ALL ON TABLE public.%I FROM judgemetrics_app" in revokes
+    assert "GRANT INSERT ON TABLE public.correction_request TO judgemetrics_app" in revokes
     assert "PASSWORD" not in test_database
     for key in ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"):
         assert key in postgres["environment"]
@@ -517,6 +543,12 @@ def test_command_interface_targets_present() -> None:
     assert tasks["dev-web"] == "pnpm --dir web dev"
     assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
     assert tasks["seed"] == "judgemetrics seed"
+    assert tasks["compute-metrics"] == "judgemetrics metrics compute"
+    # The one-command startup (Phase 3 Step 5): a sequence of idempotent stages;
+    # `make bootstrap` runs `install` first because poe runs inside the environment.
+    assert tasks["bootstrap"] == ["up", "migrate", "ingest-fjc", "seed", "compute-metrics"]
+    assert "bootstrap" in make_targets and "bootstrap" in phony.group(1).split()
+    assert re.search(r"^bootstrap: install\n\tuv run poe bootstrap$", makefile, flags=re.MULTILINE)
     assert _pyproject()["project"]["scripts"]["judgemetrics"] == "judgemetrics.cli:main"
 
 

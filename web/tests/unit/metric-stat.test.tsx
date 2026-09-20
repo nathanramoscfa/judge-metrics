@@ -169,6 +169,23 @@ describe("MetricPanel and MetricRow", () => {
     expect(within(position).getByTestId("cohort-median")).toHaveTextContent("65.0%");
     expect(within(position).getByTestId("cohort-rank")).toHaveTextContent("1 of 3, highest first");
     expect(within(position).getByTestId("compare-link")).toHaveAttribute("href", "/compare?metric=pretrial_release_share&court_id=c");
+    // No report link without an observation id.
+    expect(within(panel).queryByTestId("report-data-error")).toBeNull();
+  });
+
+  it("carries the 'Report a data error' link targeting its first observation", () => {
+    render(
+      <MetricPanel id="pretrial" title="Pretrial" reportObservationId={SHARE.id}>
+        <MetricStat observation={SHARE} label="Pretrial release share" />
+      </MetricPanel>,
+    );
+    const link = within(screen.getByTestId("metric-panel")).getByTestId("report-data-error");
+    expect(link).toHaveTextContent("Report a data error");
+    expect(link).toHaveAttribute(
+      "href",
+      `/corrections?target_type=metric_observation&target_id=${SHARE.id}&label=Pretrial`,
+    );
+    expect(link).toHaveAttribute("data-target-type", "metric_observation");
   });
 
   it("says when no pooled value exists and formats a median cohort in days", () => {

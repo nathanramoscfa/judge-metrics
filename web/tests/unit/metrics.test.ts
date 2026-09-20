@@ -7,7 +7,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   COHORTS,
+  COURT_PANELS,
+  DEFAULT_COMPARE_METRIC,
   DEFAULT_WINDOW_DAYS,
+  JUDGE_PANELS,
   cohortLabel,
   cohortPosition,
   compareHref,
@@ -15,6 +18,7 @@ import {
   definitionsFor,
   dimensionValues,
   eligibleCasesHref,
+  firstObservationId,
   formatCount,
   formatCoverage,
   formatDays,
@@ -26,6 +30,7 @@ import {
   isSuppressed,
   isWindowed,
   methodologyHref,
+  panelDefinitions,
   parseCohort,
   pickObservation,
   pickWindow,
@@ -36,6 +41,7 @@ import {
 
 import {
   COUNT,
+  DEFINITIONS,
   DISTRIBUTION,
   JUDGE_ID,
   MEDIAN,
@@ -212,5 +218,43 @@ describe("cohortPosition", () => {
     ];
     expect(cohortPosition(medians, JUDGE_ID, 3, "drug")).toEqual({ judges: 2, published: 2, median: 200, rank: 1 });
     expect(cohortPosition([], JUDGE_ID, 0)).toEqual({ judges: 0, published: 0, median: null, rank: null });
+  });
+});
+
+describe("panels (Phase 3 Step 5)", () => {
+  it("names the court-only counts on the court's Pretrial panel and shares the judge panels' anchors", () => {
+    const pretrial = COURT_PANELS.find((spec) => spec.id === "pretrial");
+    expect(pretrial?.slugs).toEqual(expect.arrayContaining(["statutory_release_count", "unknown_actor_pretrial_count"]));
+    expect(COURT_PANELS.map((spec) => spec.id)).toEqual(JUDGE_PANELS.map((spec) => spec.id));
+    expect(DEFAULT_COMPARE_METRIC).toBe("pretrial_release_share");
+  });
+
+  it("places named slugs in order and windowed metrics by index event, grouped by outcome", () => {
+    const { named, windowed } = panelDefinitions(
+      { slugs: ["pretrial_release_share", "not_in_registry", "eligible_cases"], indexEvent: "pretrial_release" },
+      DEFINITIONS,
+    );
+    expect(named.map((d) => d.slug)).toEqual(["pretrial_release_share", "eligible_cases"]);
+    expect(windowed.length).toBeGreaterThan(0);
+    expect(windowed.every((d) => d.index_event === "pretrial_release")).toBe(true);
+    const outcomes = windowed.map((d) => d.outcome);
+    // Every metric of one outcome is adjacent to the others of that outcome.
+    for (let i = 1; i < outcomes.length; i += 1) {
+      if (outcomes[i] !== outcomes[i - 1]) expect(outcomes.slice(i)).not.toContain(outcomes[i - 1]);
+    }
+    expect(panelDefinitions({ slugs: [], indexEvent: null }, DEFINITIONS)).toEqual({ named: [], windowed: [] });
+  });
+
+  it("finds the first observation of a panel in slug order, at any window or dimension", () => {
+    const grouped = groupObservations({
+      new_case_rate: [RATE],
+      pretrial_release_share: [SHARE],
+      disposition_distribution: [DISTRIBUTION],
+    });
+    expect(firstObservationId(grouped, ["pretrial_release_share", "new_case_rate"])).toBe(SHARE.id);
+    expect(firstObservationId(grouped, ["missing", "new_case_rate"])).toBe(RATE.id);
+    expect(firstObservationId(grouped, ["disposition_distribution"])).toBe(DISTRIBUTION.id);
+    expect(firstObservationId(grouped, ["missing"])).toBeNull();
+    expect(firstObservationId({}, ["new_case_rate"])).toBeNull();
   });
 });

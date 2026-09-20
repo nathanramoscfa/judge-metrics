@@ -75,7 +75,7 @@ from judgemetrics.ingest.synthetic.schema import SOURCE_FILES
 from judgemetrics.logging import configure_logging
 from judgemetrics.security.identifiers import hash_identifier, name_dob_value
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.conftest import FJC_FIXTURES, purge_source
+from tests.integration.conftest import FJC_FIXTURES, purge_source, purge_synthetic
 
 pytestmark = pytest.mark.integration
 
@@ -828,6 +828,49 @@ def test_seed_is_refused_in_production_and_generates_nothing(
             with Session(migrated_database) as session:
                 session.execute(delete(IngestRun).where(IngestRun.id == run_id.group(1)))
                 session.commit()
+
+
+def test_seed_out_generates_ingests_and_is_idempotent(
+    test_settings: Settings,
+    migrated_database: Engine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``seed --out DIR`` (the CI job's form) writes the dataset to DIR and ingests it;
+    a second run generates nothing and creates or updates no row, which is what
+    makes ``uv run poe bootstrap`` rerunnable (Phase 3 Step 5)."""
+    settings = test_settings
+    monkeypatch.chdir(tmp_path)
+    purge_synthetic(migrated_database)
+    out = tmp_path / "ci"
+    env = {
+        "JUDGEMETRICS_ENV": "test",
+        "JUDGEMETRICS_DATABASE_URL": settings.database_url,
+        "JUDGEMETRICS_INGEST_DATABASE_URL": settings.effective_ingest_database_url
+        if settings.ingest_database_url
+        else settings.effective_admin_database_url,
+        "JUDGEMETRICS_RAW_STORE_URL": f"file://{(tmp_path / 'lake').as_posix()}",
+        "JUDGEMETRICS_SNAPSHOT_DIR": (tmp_path / "snapshots").as_posix(),
+        "JUDGEMETRICS_LOG_FORMAT": "json",
+        "JUDGEMETRICS_IDENTIFIER_PEPPER": TEST_IDENTIFIER_PEPPER,
+    }
+    try:
+        first = CliRunner().invoke(app, ["seed", "--scale", "tiny", "--out", str(out)], env=env)
+        assert first.exit_code == 0, first.output
+        assert f"generated {out.resolve()}" in first.output
+        assert (out / "manifest.json").is_file()
+        assert not (tmp_path / "data").exists(), "the default directory was not written"
+        created = re.search(r"status=succeeded seen=(\d+) created=(\d+)", first.output)
+        assert created is not None and int(created.group(2)) > 0, first.output
+
+        second = CliRunner().invoke(app, ["seed", "--scale", "tiny", "--out", str(out)], env=env)
+        assert second.exit_code == 0, second.output
+        assert f"dataset up to date at {out.resolve()}" in second.output
+        assert re.search(r"status=succeeded seen=\d+ created=0 updated=0", second.output), (
+            second.output
+        )
+    finally:
+        purge_synthetic(migrated_database)
 
 
 def test_seed_needs_the_pepper(

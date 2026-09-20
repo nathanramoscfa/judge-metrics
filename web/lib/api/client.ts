@@ -328,7 +328,21 @@ export function getObservationProvenance(
   );
 }
 
-/** The one write path: a correction request; the contact is encrypted by the API. */
-export function submitCorrection(body: CorrectionIn): Promise<ApiResult<CorrectionAccepted>> {
-  return call(() => client.POST("/api/v1/corrections", { body }));
+/** The rightmost entry of a forwarded-for chain is the address the last hop appended. */
+export const FORWARDED_FOR_HEADER = "X-Forwarded-For";
+
+/**
+ * The one write path: a correction request; the contact is encrypted by the
+ * API. Called from the route handler (`app/api/corrections/route.ts`), never
+ * from the browser: the handler passes the caller's `X-Forwarded-For` chain
+ * through so the API's limiter can key on the client when it trusts its
+ * proxy (`JUDGEMETRICS_TRUST_PROXY`); without that setting the API ignores
+ * the header and keys on the web server's address.
+ */
+export function submitCorrection(
+  body: CorrectionIn,
+  options: { forwardedFor?: string | null } = {},
+): Promise<ApiResult<CorrectionAccepted>> {
+  const headers = options.forwardedFor ? { [FORWARDED_FOR_HEADER]: options.forwardedFor } : undefined;
+  return call(() => client.POST("/api/v1/corrections", { body, headers }));
 }

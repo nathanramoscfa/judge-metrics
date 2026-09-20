@@ -725,9 +725,17 @@ def check_33() -> str | None:
     block = _yaml_job_block(_read(".github/workflows/ci.yml"), "e2e")
     if block is None:
         return "ci.yml has no `e2e` job"
-    if re.search(r"ingest run synthetic --from-fixture tests/fixtures/golden\b", block) is None:
-        return "the `e2e` job does not ingest tests/fixtures/golden"
-    if re.search(r"^\s+JUDGEMETRICS_IDENTIFIER_PEPPER:", block, re.MULTILINE) is None:
+    # Phase 2 ingested the golden fixture; Phase 3 Step 5 switched the job to
+    # the seeded demo dataset (`judgemetrics seed`), the same synthetic
+    # connector at demo scale. Either satisfies this check.
+    if (
+        re.search(r"ingest run synthetic --from-fixture tests/fixtures/golden\b", block) is None
+        and re.search(r"uv run judgemetrics seed\b", block) is None
+    ):
+        return "the `e2e` job ingests neither tests/fixtures/golden nor the demo seed"
+    # The pepper is a fixed job variable (Phase 2) or generated into $GITHUB_ENV
+    # in a step (Phase 3 Step 5); either way the job names it.
+    if re.search(r"JUDGEMETRICS_IDENTIFIER_PEPPER[:=]", block) is None:
         return "the `e2e` job sets no JUDGEMETRICS_IDENTIFIER_PEPPER"
     return None
 
@@ -934,7 +942,7 @@ STATIC_CHECKS: tuple[tuple[int, str, CheckFn], ...] = (
     (32, "web/tests/e2e/smoke.spec.ts contains a case-page scenario", check_32),
     (
         33,
-        "ci.yml e2e job ingests tests/fixtures/golden and sets JUDGEMETRICS_IDENTIFIER_PEPPER",
+        "ci.yml e2e job ingests a synthetic dataset and sets JUDGEMETRICS_IDENTIFIER_PEPPER",
         check_33,
     ),
     (34, "docs/API.md documents the case, timeline, judge cases, and coverage endpoints", check_34),

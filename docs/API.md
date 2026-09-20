@@ -389,6 +389,21 @@ answers 503 `corrections_unavailable` with a fixed message — and the
 API refuses to start without one outside the test environment.
 Requests are rate limited per client (below).
 
+The web app's `/corrections` form never calls this route from the
+browser: it posts JSON to the web server's own route handler
+(`web/app/api/corrections/route.ts`, `POST /api/corrections`), which
+validates the same limits, forwards exactly the five fields above (an
+allow-list, never a spread of the caller's body) to `POST
+/api/v1/corrections` with the caller's `X-Forwarded-For` chain when the
+request carried one, and answers with `{id, status}` under the API's
+`202`, or the API's error body under its status — `422`, `429` with
+`Retry-After`, `503` (also for an unreachable API). The handler logs
+nothing; the received page shows the request id and never the contact.
+Because the API's TCP peer is then the web server, the corrections
+limiter keys on the forwarded chain only under
+`JUDGEMETRICS_TRUST_PROXY=true`; otherwise every browser behind one web
+server shares one bucket (`docker-compose.yml`, the `web` service).
+
 ## Caching
 
 List and detail responses (`/judges`, `/courts`, `/jurisdictions`,

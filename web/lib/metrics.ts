@@ -377,6 +377,54 @@ export const JUDGE_PANELS: readonly JudgePanelSpec[] = [
   },
 ];
 
+export interface CourtPanelSpec {
+  id: "cases" | "pretrial" | "outcomes" | "disposition" | "sentencing";
+  title: string;
+  slugs: readonly string[];
+  indexEvent: IndexEvent | null;
+}
+
+/**
+ * The court page's panels: the judge panels' slugs plus the court-only
+ * counts the registry publishes for a court subject (`statutory_release_count`,
+ * `unknown_actor_pretrial_count`: the pretrial rows no judge's metric may
+ * count). Windowed metrics are placed by `index_event` as on the judge page.
+ */
+export const COURT_PANELS: readonly CourtPanelSpec[] = [
+  { id: "cases", title: "Cases", slugs: ["eligible_cases", "eligible_defendants"], indexEvent: null },
+  {
+    id: "pretrial",
+    title: "Pretrial",
+    slugs: [
+      "pretrial_decisions",
+      "pretrial_released",
+      "pretrial_detained",
+      "pretrial_release_share",
+      "statutory_release_count",
+      "unknown_actor_pretrial_count",
+    ],
+    indexEvent: null,
+  },
+  { id: "outcomes", title: "Outcomes after qualifying release", slugs: [], indexEvent: "pretrial_release" },
+  {
+    id: "disposition",
+    title: "Disposition",
+    slugs: ["disposition_distribution", "judicial_dismissal_rate", "median_days_to_disposition"],
+    indexEvent: "disposition",
+  },
+  {
+    id: "sentencing",
+    title: "Sentencing",
+    slugs: [
+      "sentence_count",
+      "incarceration_days_median",
+      "probation_days_median",
+      "incarceration_days_median_by_offense_category",
+    ],
+    indexEvent: "sentence",
+  },
+];
+
 /** The kinds a cohort comparison (`/metrics/compare`) is fetched for on the judge page. */
 export const COMPARED_KINDS: ReadonlySet<MetricDefinition["kind"]> = new Set([
   "share",
@@ -384,6 +432,45 @@ export const COMPARED_KINDS: ReadonlySet<MetricDefinition["kind"]> = new Set([
   "survival",
   "median",
 ]);
+
+/** The metric the court and jurisdiction compare tables open on. */
+export const DEFAULT_COMPARE_METRIC = "pretrial_release_share";
+
+/**
+ * The id of the first observation a panel shows, in slug order (any window
+ * or dimension): the target of the panel's "Report a data error" link.
+ */
+export function firstObservationId(grouped: GroupedObservations, slugs: readonly string[]): string | null {
+  for (const slug of slugs) {
+    for (const window of Object.values(grouped[slug] ?? {})) {
+      for (const rows of Object.values(window)) {
+        if (rows[0]) return rows[0].id;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The definitions a panel shows: the named slugs in order, then the windowed
+ * metrics of the panel's index event grouped by outcome in registry order of
+ * first appearance (a fixed-window rate beside the Kaplan–Meier estimate of
+ * the same outcome).
+ */
+export function panelDefinitions(
+  spec: { slugs: readonly string[]; indexEvent: IndexEvent | null },
+  definitions: MetricDefinition[],
+): { named: MetricDefinition[]; windowed: MetricDefinition[] } {
+  const bySlug = new Map(definitions.map((d) => [d.slug, d]));
+  const outcomeOrder = [...new Set(definitions.map((d) => d.outcome ?? ""))];
+  const named = spec.slugs.map((slug) => bySlug.get(slug)).filter((d): d is MetricDefinition => !!d);
+  const windowed = spec.indexEvent
+    ? definitions
+        .filter((d) => d.index_event === spec.indexEvent)
+        .sort((a, b) => outcomeOrder.indexOf(a.outcome ?? "") - outcomeOrder.indexOf(b.outcome ?? ""))
+    : [];
+  return { named, windowed };
+}
 
 /** The judge's case list with a panel's filter, when the cases route supports one. */
 export function eligibleCasesHref(judgeId: string, filter: Record<string, string> | null): string {

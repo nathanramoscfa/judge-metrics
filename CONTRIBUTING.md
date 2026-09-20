@@ -40,13 +40,18 @@ mirrors every target for environments with GNU make (`make check`).
 | `dev-api`       | the API with auto-reload                               |
 | `ingest-fjc`    | `judgemetrics ingest run fjc`: the FJC connector, as the ingest role, into the raw lake and canonical tables |
 | `seed`          | `judgemetrics seed`: generate the demo-scale synthetic dataset into `data/synthetic/20260916` (skipped when its manifest is current) and ingest it through the `synthetic` connector, as the ingest role; refused in production |
+| `compute-metrics` | `judgemetrics metrics compute`: export a snapshot and publish every registry metric for every judge and court, as the ingest role |
+| `bootstrap`     | `up`, `migrate`, `ingest-fjc`, `seed`, `compute-metrics` in order — the one-command startup; idempotent (`make bootstrap` runs `uv sync` first) |
 
 `ingest run` and `seed` refuse to start without
 `JUDGEMETRICS_IDENTIFIER_PEPPER` (see `.env.example`): it peppers the
-hashes under which person identifiers are stored. Later steps add
-`compute-metrics` and `bootstrap`. The web
-app has its own scripts (`pnpm lint|typecheck|test|build|e2e`, see
-`web/package.json`); `uv run poe dev-web` starts its dev server.
+hashes under which person identifiers are stored. The web app has its
+own scripts (`pnpm lint|typecheck|test|build|e2e`, see
+`web/package.json`); `uv run poe dev-web` starts its dev server. The
+Playwright suites (`pnpm e2e`: smoke, metrics, first milestone) start no
+server: run them after `uv run poe bootstrap`, `uv run poe dev-api`, and
+`uv run poe dev-web` (or `pnpm build && pnpm start`), which is what the
+CI `e2e` job does over the seeded demo dataset.
 
 ## The security gate
 

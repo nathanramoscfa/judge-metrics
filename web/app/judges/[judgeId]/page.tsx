@@ -20,6 +20,7 @@ import { CohortSelector, WindowSelector } from "@/components/cohort-selector";
 import { CohortPositionLine, MetricPanel, MetricRow } from "@/components/metric-panel";
 import { MetricNotObservable } from "@/components/metric-stat";
 import { ProvenancePanel } from "@/components/provenance-panel";
+import { ReportErrorLink } from "@/components/report-error-link";
 import { ServiceTable } from "@/components/service-table";
 import { EmptyState, ErrorState } from "@/components/states";
 import {
@@ -51,8 +52,10 @@ import {
   definitionsFor,
   dimensionValues,
   eligibleCasesHref,
+  firstObservationId,
   groupObservations,
   isWindowed,
+  panelDefinitions,
   parseCohort,
   pickObservation,
   resolveWindow,
@@ -217,22 +220,16 @@ function Panel({
   data: PanelData;
   controls?: ReactNode;
 }) {
-  const bySlug = new Map(definitions.map((d) => [d.slug, d]));
-  const outcomeOrder = [...new Set(definitions.map((d) => d.outcome ?? ""))];
-  const named = spec.slugs.map((slug) => bySlug.get(slug)).filter((d): d is MetricDefinition => !!d);
   // Windowed metrics grouped by outcome, in registry order of first appearance,
   // so a fixed-window rate sits beside the Kaplan–Meier estimate of the same outcome.
-  const windowed = spec.indexEvent
-    ? definitions
-        .filter((d) => d.index_event === spec.indexEvent)
-        .sort((a, b) => outcomeOrder.indexOf(a.outcome ?? "") - outcomeOrder.indexOf(b.outcome ?? ""))
-    : [];
+  const { named, windowed } = panelDefinitions(spec, definitions);
   const shown = [...named, ...windowed];
   const error = comparisonErrors(shown.map((d) => d.slug), data);
   return (
     <MetricPanel
       id={spec.id}
       title={spec.title}
+      reportObservationId={firstObservationId(data.judge, shown.map((d) => d.slug))}
       description={
         spec.id === "outcomes"
           ? `Fixed-window rates and Kaplan–Meier cumulative incidence after an attributed pretrial release, at the selected window. ${COHORTS[data.cohort]}: the court's pooled value beside the judge's, and where the judge falls among the cohort's judges.`
@@ -363,6 +360,7 @@ export default async function JudgePage({
           </h1>
           <StatusBadge status={judge.status} />
           {judge.synthetic ? <SyntheticBadge /> : null}
+          <ReportErrorLink targetType="judge" targetId={judge.id} label={judge.canonical_name} className="ml-auto" />
         </div>
         <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
           {current.length > 0 ? (
@@ -449,7 +447,12 @@ export default async function JudgePage({
               />
             ))}
             {uncovered.length > 0 ? (
-              <MetricPanel id="other" title="Other metrics" casesHref={eligibleCasesHref(judgeId, null)}>
+              <MetricPanel
+                id="other"
+                title="Other metrics"
+                casesHref={eligibleCasesHref(judgeId, null)}
+                reportObservationId={firstObservationId(data.judge, uncovered.map((d) => d.slug))}
+              >
                 <div className="flex flex-col gap-2">
                   {uncovered.map((definition) => definitionRows(definition, data))}
                 </div>
