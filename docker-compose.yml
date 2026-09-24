@@ -56,9 +56,11 @@ services:
     restart: "no"
 
   minio:
-    # MinIO publishes its official images on Quay (the Docker Hub repository
-    # is no longer served).
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # MinIO no longer serves its images anonymously (Docker Hub repository
+    # removed, Quay now answers 401), so this uses Chainguard's free MinIO
+    # build, pinned by digest. It ships `mc` (used by the health check) and a
+    # world-writable /data.
+    image: cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
@@ -81,8 +83,9 @@ services:
     # object versioning enabled (the brief's "object-store versioning for
     # raw data") and, when JUDGEMETRICS_S3_ACCESS_KEY_ID differs from the
     # root user, the application user the ingest runner connects as
-    # (readwrite policy). Idempotent; then exits.
-    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    # (readwrite policy). Idempotent; then exits. The `-dev` variant of
+    # Chainguard's MinIO client carries the shell the script needs.
+    image: cgr.dev/chainguard/minio-client:latest-dev@sha256:614e083a12c6dc779f13f97e01b13afda4021a8ce3f4021a2fcf23ec86f46837
     depends_on:
       minio:
         condition: service_healthy
