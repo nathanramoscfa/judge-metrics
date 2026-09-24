@@ -40,7 +40,16 @@ STYLE RULES (the AI MUST follow)
     and for the XML <task> prompts handed to coding agents.
   - Numbered steps (## Step N — Title). Each step is a
     self-contained Cursor / Claude Code session.
-  - Every step carries: Goal blockquote, Branch line
+  - Every step carries, in this order: a Status line
+    DIRECTLY under its `## Step N — Title` heading, before
+    anything else (`**Status:**` — `Not started` when this
+    roadmap is written; the step's OWN PR flips it to
+    `Complete — PR #n (YYYY-MM-DD)` at Stage 3 and appends
+    ` ✅` to the heading, so the roadmap on `main` marks a step
+    complete exactly when its PR merges and the completion
+    shows in the rendered preview, the outline, and the table
+    of contents; see the Overview "Status rule"), Goal
+    blockquote, Branch line
     (`feature/phaseNN-stepM-<slug>` — see the Overview
     "Branch strategy", "Branch-first execution rule",
     "Worktree rule", and "Step lifecycle" paragraphs; the
@@ -50,11 +59,12 @@ STYLE RULES (the AI MUST follow)
     the next step in a fresh conversation), Deploys line
     (`**Deploys:**` — the surface and environment the step's
     merge reaches, or `nothing beyond merge`; see the Overview
-    "Deploy-and-verify rule"), Settings table, Model rationale
-    paragraph, XML <task> prompt (which MUST carry a <security>
-    block alongside its <lifecycle> block — see below), and an
-    Acceptance Criteria bullet list that carries a "Deployed &
-    verified" bullet whenever the Deploys line names a surface
+    "Deploy-and-verify rule"), Settings
+    table, Model rationale paragraph, XML <task> prompt (which
+    MUST carry a <security> block alongside its <lifecycle>
+    block — see below), and an Acceptance Criteria bullet list
+    that carries a "Deployed & verified" bullet whenever the
+    Deploys line names a surface
     and whose FINAL bullet is always a security check. The
     Settings table is
     PLATFORM-specific so it mirrors the actual surface the
@@ -104,6 +114,12 @@ STYLE RULES (the AI MUST follow)
     High/Max/Ultracode for the effort level). Never justify
     a dial the table does not carry — no effort level for
     Cursor, no Max Mode for Claude Code or Codex.
+  - The document opens with a phase-level Status line
+    directly under its `# Phase N Roadmap` title (`Not
+    started` → `In progress` from Step 1's PR → `Complete —
+    <YYYY-MM-DD>` from the final step's PR), and its Summary
+    Table carries a Status column mirroring each step's
+    Status line. Same Status rule, same Stage-3 commits.
   - Findings surfaced while executing a step are classified
     per the Overview "Triage rule" before they are acted on;
     a step's PR contains the step plus blocking fixes only.
@@ -129,9 +145,14 @@ STYLE RULES (the AI MUST follow)
     names what is outstanding, and omits the completion line.
     "Done" means done. This is Stage 6 of the Step lifecycle and
     is binding; see the Overview "Step lifecycle" paragraph and
-    each step's XML `<lifecycle>` block. The same rule applies to
+    each step's XML `<lifecycle>` block. The completion line also
+    presupposes the Status rule: the merged PR carried this
+    step's `**Status:** Complete — PR #n (…)` line, so the
+    roadmap on `main` already records what the chat declares.
+    The same rule applies to
     the phase-level line "Phase N is complete. You can now move
-    on to Phase N+1." emitted by the final QA step.
+    on to Phase N+1." emitted by the final QA step, which marks
+    the phase in the parent project roadmap the same way.
   - End the document with a Post-Implementation Verification
     section (V1-Vn check tables), a Summary Table, optional
     Model-selection blocks, and a Not-in-scope section.
@@ -146,6 +167,8 @@ STYLE RULES (the AI MUST follow)
 -->
 
 # Phase {{N}} Roadmap — {{Phase Title}}
+
+**Status:** Not started
 
 ## Overview
 
@@ -327,6 +350,40 @@ a gap remains. `docs/phase{{N}}-qa-findings.md` is the rollup:
 every finding, its class, and the guard added so the class cannot
 recur.
 
+**Status rule.** Every step carries a `**Status:**` line directly
+under its `## Step N — …` heading, before the Goal, and this file
+on `main` is the ledger of what is done — never a chat
+transcript, never a later conversation reconstructing history
+from `git log`. The line reads `Not started` when this roadmap is
+written and is flipped by the step's OWN pull request: at Stage 3,
+right after `gh pr create` returns the PR number, the agent sets
+it to `Complete — PR #<n> (<YYYY-MM-DD>)`, appends ` ✅` to the
+step's heading (`## Step 3 — {{Step Title}} ✅`) so the completion
+shows in the rendered preview, the outline, and the table of
+contents, sets the step's Summary Table Status cell to `Complete
+— PR #<n>`, commits that edit on the step branch, and pushes. The
+PR therefore carries its own completion mark, and the roadmap on
+`main` says a step is complete exactly when that step's PR merges
+— never before. This file's phase-level `**Status:**` line (under
+the title) and the parent project roadmap are marked the same
+way, in the same commit: Step 1's PR flips both from `Not
+started` to `In progress` (the parent's `### Phase {{N}}` line
+reads `In progress — phase{{N}}-roadmap.md`), and the final
+step's PR flips both to `Complete — …` (the parent's with its row
+in the "Phase Complexity Summary" table and the header
+`> **Status:**` line). There is no separate
+"update the roadmaps" chore: a step whose PR merged without its
+Status line is a lifecycle violation, and the next step's Stage 1
+(and `/roadmap-step`) refuses to start until the previous step
+reads `Complete`. If a post-merge check fails — a Deployed &
+verified bullet, an alarm that never fired — the step is NOT
+complete despite the merged line; say so, and the `hotfix/` PR
+that completes it appends its own number to the line. If this
+roadmap is git-excluded (e.g. `private/`), the edit itself is the
+mark and there is nothing to commit. `grep -n '^\*\*Status:\*\*'`
+on this file is the phase's progress report, and the ✅ headings
+are the same report at a glance.
+
 **Step lifecycle.** Every step in this phase follows the exact
 same six-stage lifecycle, in order, with no exceptions. Each
 stage is a hard checkpoint — if a stage is skipped, branch
@@ -352,10 +409,23 @@ before declaring a step complete.
    so a security issue in this step's work is caught here, before
    the PR and before `main`.
 
-3. **Open the PR.** `gh pr create --base main --head <branch>`
-   with a Conventional Commits title and a body that references
-   this roadmap step and its acceptance criteria. One PR per
-   step; never bundle two steps into one PR.
+3. **Open the PR, then mark the step.** `gh pr create --base
+   main --head <branch>` with a Conventional Commits title and a
+   body that references this roadmap step and its acceptance
+   criteria. One PR per step; never bundle two steps into one
+   PR. Then, with the PR number in hand, set this step's
+   `**Status:**` line (directly under its heading) to
+   `Complete — PR #<n> (<YYYY-MM-DD>)`, append ` ✅` to the step's
+   `## Step` heading, set its Summary Table Status cell to
+   `Complete — PR #<n>`, commit that edit on the step branch
+   (`docs: mark Phase {{N}} Step {{M}} complete`), and push — the
+   PR now carries its own completion mark, so the roadmap on
+   `main` will say the step is complete exactly when the PR
+   merges (Status rule). On the phase's first step, the same
+   commit sets this roadmap's phase-level `**Status:**` (under its
+   title) and the parent project roadmap's Phase {{N}}
+   `**Status:**` to `In progress`; on the final step, both to
+   `Complete`.
 
 4. **Wait for green checks, then squash-merge.** Every required
    status check (lint, type-check, test-matrix, package-smoke,
@@ -409,7 +479,8 @@ before declaring a step complete.
    body; a process lesson is written where the next conversation
    reads it. A finding you can only *describe* has not been
    disposed of, and an undisposed finding is an unmet acceptance
-   criterion. Only once the PR is merged, every acceptance
+   criterion. Only once the PR is merged — and `main` therefore
+   carries this step's `Complete` Status line — every acceptance
    criterion is affirmatively met, and every finding has a
    destination, say so plainly: end your final response with an
    explicit, unhedged completion line — verbatim shape
@@ -604,6 +675,8 @@ arrows:
 
 ## Step 1 — {{Step Title}}
 
+**Status:** Not started
+
 > **Goal:** {{One dense paragraph (4-8 sentences) describing
 > the concrete deliverable of this step. Reference every
 > file path that gets added or edited (use backticks).
@@ -658,13 +731,22 @@ that owns it.}}
      MUST mirror what the operator will actually see in
      that surface so reviewers can audit the choice
      1:1 against the panel. Every table carries Model /
-     Platform / Conversation plus ONLY the dials that
-     surface has; a dial the surface lacks gets NO ROW at
+     Backup / Platform / Conversation plus ONLY the dials
+     that surface has; a dial the surface lacks gets NO ROW at
      all — do not write "N/A", "Off", or "--" for a
      control that does not exist. There are exactly THREE
      shapes — one per dial set a surface can expose, and
      they line up 1:1 with the three branches of
      `roadmodel.recommend._structured_settings`:
+
+     BACKUP row (every variant): the selector's BACKUP —
+     the model to run when the primary is unavailable, from
+     a different provider family — written as ONE cell
+     carrying its own platform and dial in that surface's
+     vocabulary, because the backup usually runs somewhere
+     else: `GPT-5.6 Terra — Codex · Intelligence Medium`,
+     `Claude Opus 5.5 — Claude Code · Effort Medium`. When
+     the selector returns no backup, write `None`.
 
      EFFORT + THINKING variant (use when PLATFORM is
      "Claude Code" or any other surface exposing a
@@ -673,8 +755,8 @@ that owns it.}}
      DeepSeek API, etc.). The Settings panel exposes Model,
      Effort, and a Thinking on/off toggle — there is NO Max
      Mode dial and NO Intelligence dial on these surfaces.
-     Table rows: Model / Platform / Effort / Thinking /
-     Conversation.
+     Table rows: Model / Backup / Platform / Effort /
+     Thinking / Conversation.
      EFFORT values: Low / Medium / High / Extra High /
      Max — plus Ultracode, which is CLAUDE CODE ONLY (it is
      set with `/effort ultracode`, so no other surface has
@@ -700,7 +782,8 @@ that owns it.}}
      picks the surface at task time. It labels its
      reasoning dial "Intelligence" and exposes no separate
      thinking toggle, and it has no Max Mode dial. Table
-     rows: Model / Platform / Intelligence / Conversation.
+     rows: Model / Backup / Platform / Intelligence /
+     Conversation.
      INTELLIGENCE values: Low / Medium / High / Extra High.
      Map from overall complexity per `<thinking-context>`:
      Low → Low, Medium → Medium, High → High, S-tier
@@ -715,8 +798,8 @@ that owns it.}}
 
      CURSOR variant (use when PLATFORM is "Cursor" —
      single Platform covering both Composer mode and Chat
-     mode). Table rows: Model / Platform / Max Mode /
-     Conversation. MAX MODE values: ON / OFF. Max Mode is
+     mode). Table rows: Model / Backup / Platform / Max
+     Mode / Conversation. MAX MODE values: ON / OFF. Max Mode is
      a CURSOR-ONLY dial and must not appear on any other
      platform's table. Cursor exposes NO reasoning-level
      control in either UI mode, so this variant has NO
@@ -738,6 +821,7 @@ when Platform is Claude Code}}):
 | Setting      | Value                          |
 | ------------ | ------------------------------ |
 | Model        | {{Model name}}                 |
+| Backup       | {{Backup model — its platform · its dial, or None}} |
 | Platform     | {{Claude Code or other reasoning-dial access method}} |
 | Effort       | {{Low/Medium/High/Extra High/Max — or Ultracode, Claude Code only}} |
 | Thinking     | {{On or Off}}                  |
@@ -753,6 +837,7 @@ rows}}):
 | Setting      | Value                          |
 | ------------ | ------------------------------ |
 | Model        | {{Model name}}                 |
+| Backup       | {{Backup model — its platform · its dial, or None}} |
 | Platform     | Codex                          |
 | Intelligence | {{Low/Medium/High/Extra High}} |
 | Conversation | **{{New or Continue}}**        |
@@ -767,6 +852,7 @@ row and no Thinking row}}):
 | Setting      | Value                       |
 | ------------ | --------------------------- |
 | Model        | {{Model name}}              |
+| Backup       | {{Backup model — its platform · its dial, or None}} |
 | Platform     | Cursor                      |
 | Max Mode     | {{ON or OFF}}               |
 | Conversation | **{{New or Continue}}**     |
@@ -829,13 +915,38 @@ hygiene").}}
        direct pushes will be
        rejected.
 
-    3. OPEN THE PR. `gh pr create
-       --base main --head <branch>`
-       with a Conventional Commits
-       title and a body that
-       references this roadmap step
-       and its acceptance criteria.
-       One PR per step.
+    3. OPEN THE PR, THEN MARK THE
+       STEP. `gh pr create --base
+       main --head <branch>` with a
+       Conventional Commits title
+       and a body that references
+       this roadmap step and its
+       acceptance criteria. One PR
+       per step. Then, in this
+       roadmap file: set this
+       step's `**Status:**` line
+       (directly under its heading)
+       to `Complete — PR #<n>
+       (<YYYY-MM-DD>)`, append ` ✅`
+       to the step's `## Step`
+       heading, and set its
+       Summary Table Status cell to
+       `Complete — PR #<n>`. Commit
+       that edit on the step
+       branch and push — the PR
+       carries its own completion
+       mark, so the roadmap on
+       `main` marks this step
+       complete exactly when the PR
+       merges (Status rule). Same
+       commit: on the phase's first
+       step, set this roadmap's
+       phase-level `**Status:**`
+       (under its title) and the
+       parent project roadmap's
+       Phase {{N}} `**Status:**` to
+       `In progress`; on the final
+       step, both to `Complete`.
 
     4. WAIT FOR GREEN CHECKS, THEN
        SQUASH-MERGE. Every required
@@ -887,7 +998,10 @@ hygiene").}}
        only describe is NOT
        disposed of, and counts as
        an unmet criterion. Only
-       once the PR is merged, every
+       once the PR is merged — and
+       `main` therefore carries
+       this step's `Complete`
+       Status line — every
        acceptance criterion is
        affirmatively met, and every
        finding has a destination,
@@ -1087,6 +1201,8 @@ hygiene").}}
 
 ## Step 2 — {{Step Title}}
 
+**Status:** Not started
+
 > **Goal:** One paragraph.
 
 **Branch:** `feature/phase{{N}}-step2-{{slug}}`
@@ -1108,6 +1224,7 @@ the surface does not have.}}
 | Setting      | Value                          |
 | ------------ | ------------------------------ |
 | Model        | {{Model name}}                 |
+| Backup       | {{Backup model — its platform · its dial, or None}} |
 | Platform     | {{Access method name}}         |
 | Effort       | {{Low/Medium/High/Extra High/Max/Ultracode}} |
 | Thinking     | {{On or Off}}                  |
@@ -1199,16 +1316,20 @@ Repeat the Step pattern for Step 3, Step 4, ... as many as
 the phase requires. Typical phase has 4-7 steps. The final
 step is ALWAYS "QA + verify-phaseN.sh".
 
-EVERY step, without exception, carries: a `**Deploys:**` line,
-the <lifecycle> and <security> blocks in its <task> (both
-copied from Step 1), a "Deployed & verified" bullet whenever
-the Deploys line names a surface, and a final "Security gate
-clean" acceptance-criterion bullet. This is how "security at
-every step" and "merged is not deployed" are enforced
+EVERY step, without exception, carries: a `**Status:** Not
+started` line directly under its heading, a `**Deploys:**` line,
+the <lifecycle> and
+<security> blocks in its <task> (both copied from Step 1), a
+"Deployed & verified" bullet whenever the Deploys line names a
+surface, and a final "Security gate clean" acceptance-criterion
+bullet. This is how "security at every step", "merged is not
+deployed", and "the roadmap on main is the ledger" are enforced
 mechanically rather than left to memory.
 -->
 
 ## Step {{N}} — QA & Verification Script
+
+**Status:** Not started
 
 > **Goal:** Package the verification matrix into
 > `scripts/verify-phase{{N}}.sh` (with `--fast`, `--swift`,
@@ -1238,6 +1359,7 @@ The shape below is the Effort + Thinking variant.}}
 | Setting      | Value                          |
 | ------------ | ------------------------------ |
 | Model        | {{Model}}                      |
+| Backup       | {{Backup model — its platform · its dial, or None}} |
 | Platform     | {{Access method name}}         |
 | Effort       | {{Low/Medium/High/Extra High/Max/Ultracode}} |
 | Thinking     | {{On or Off}}                  |
@@ -1429,8 +1551,10 @@ that surface has neither dial.
       obvious secret pattern is
       committed under the phase's
       paths (grep for private-key
-      headers, `AKIA`, `-----BEGIN`,
-      etc.). This is the CI-side
+      PEM headers — the five-dash
+      BEGIN line — `AKIA` key
+      prefixes, etc.). This is the
+      CI-side
       backstop to the per-commit
       gate.
     </requirement>
@@ -1509,16 +1633,40 @@ that surface has neither dial.
     </requirement>
 
     <requirement>
-      Update docs/ROADMAP.md:
-      - Verify the Phase {{N}}
-        entry's "Acceptance
-        criteria" section matches
-        this roadmap's V1-V{{N}}
-        checks (consistency
-        audit).
-      - Update the closing-
-        paragraph status line
-        after Phase {{N}} ships.
+      Mark the phase complete in
+      the parent project roadmap
+      (docs/ROADMAP.md, or
+      wherever this project keeps
+      it) in the SAME Stage-3
+      commit that marks this step
+      (Status rule):
+      - `### Phase {{N}}` gets
+        `**Status:** Complete —
+        <YYYY-MM-DD>; PR #<n>;
+        {{milestone tag}};
+        phase{{N}}-roadmap.md`.
+      - Its row in the "Phase
+        Complexity Summary" table
+        reads `Complete` (Step 1's
+        PR set it to `In
+        progress`).
+      - The header `> **Status:**`
+        line names Phase {{N}} as
+        shipped and Phase {{N+1}}
+        as next.
+      - Consistency audit: the
+        Phase {{N}} "Acceptance
+        criteria" there match this
+        roadmap's V1-V{{N}} checks.
+      And in THIS roadmap, same
+      commit: its phase-level
+      `**Status:**` line (under the
+      title) reads `Complete —
+      <YYYY-MM-DD>`, every step
+      heading ends in ✅, and every
+      step's Summary Table Status
+      cell reads `Complete — PR
+      #<n>`.
     </requirement>
 
     <requirement>
@@ -1578,7 +1726,13 @@ that surface has neither dial.
   `docs/phase{{N}}-qa-findings.md` has a destination (fixed,
   an issue number, or a named phase that owns it), the "Not in
   scope" section below is current, and no un-tracked item
-  remains. This step's final response ends with two lines and
+  remains. Every step of this roadmap, this one included,
+  reads `**Status:** Complete — PR #…` on `main` under a ✅
+  heading, the Summary Table's Status column and this roadmap's
+  phase-level Status line say `Complete`, and the parent
+  project roadmap's Phase {{N}} entry, its summary-table row,
+  and its header status line say `Complete` — all landed in
+  this step's PR. This step's final response ends with two lines and
   nothing after them: "Step {{N}} is complete. You can now move
   on to Step {{N+1}}." is replaced by "Step {{N}} is complete.
   Phase {{N}} is complete. You can now move on to Phase
@@ -1717,18 +1871,23 @@ corresponding row below.
        • Cursor → "Max ON" or "Max OFF" (and the Thinking
          column is "--"; Cursor exposes no reasoning
          dial). Max is a CURSOR-ONLY value in this
-         column. -->
+         column.
 
-| Step    | Scope                     | Model       | Platform     | Reasoning dial  | Thinking         | Conv |
-| ------- | ------------------------- | ----------- | ------------ | --------------- | ---------------- | ---- |
-| 1       | {{Step 1 short scope}}    | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  |
-| 2       | {{Step 2 short scope}}    | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  |
-| ...     | ...                       | ...         | ...          | ...             | ...              | ...  |
-| {{N}}   | QA + verify-phase{{N}}.sh | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  |
-| V1      | {{Step 1 scope}}          | CI: {{wf}}  | --           | --              | --               | --   |
-| V2      | {{Step 2 scope}}          | CI: {{wf}}  | --           | --              | --               | --   |
-| ...     | ...                       | ...         | --           | --              | --               | --   |
-| V{{N}}  | CI integration            | CI: phase-verify.yml | --  | --              | --               | --   |
+     Column "Status" mirrors each step's `**Status:**`
+     line: `Not started` when this roadmap is written, set
+     to `Complete — PR #<n>` by the step's own Stage-3
+     commit (Status rule). Verification rows read "--". -->
+
+| Step    | Scope                     | Model       | Platform     | Reasoning dial  | Thinking         | Conv | Status      |
+| ------- | ------------------------- | ----------- | ------------ | --------------- | ---------------- | ---- | ----------- |
+| 1       | {{Step 1 short scope}}    | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  | Not started |
+| 2       | {{Step 2 short scope}}    | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  | Not started |
+| ...     | ...                       | ...         | ...          | ...             | ...              | ...  | ...         |
+| {{N}}   | QA + verify-phase{{N}}.sh | {{Model}}   | {{Platform}} | {{Effort Low/Med/High/XHigh/Max/Ultracode or Intelligence Low/Med/High/XHigh or Max ON/OFF (Cursor only)}} | {{On / Off / --}} | New  | Not started |
+| V1      | {{Step 1 scope}}          | CI: {{wf}}  | --           | --              | --               | --   | --          |
+| V2      | {{Step 2 scope}}          | CI: {{wf}}  | --           | --              | --               | --   | --          |
+| ...     | ...                       | ...         | --           | --              | --               | --   | ...         |
+| V{{N}}  | CI integration            | CI: phase-verify.yml | --  | --              | --               | --   | --          |
 
 ---
 
@@ -1874,8 +2033,10 @@ Additionally not in scope for this phase:
 
 ---
 
-_This roadmap is the execution plan for Phase {{N}}. Update
-step status as each is completed. After all steps and
+_This roadmap is the execution plan for Phase {{N}}. Each
+step's `**Status:**` line is flipped by that step's own PR
+(Status rule), so this file on `main` is the phase's ledger —
+`grep -n '^\*\*Status:\*\*'` reports progress. After all steps and
 verification pass, and every finding has a destination, Phase
 {{N}} is complete — declared with the line "Phase {{N}} is
 complete. You can now move on to Phase {{N+1}}." and nothing

@@ -31,14 +31,18 @@ table and surface material cost / availability / capability constraints.
 ### Cursor Models Pool
 
 
-| Model               | Input | Cache Write | Cache Read | Output | Tier   | Notes |
-| ------------------- | ----- | ----------- | ---------- | ------ | ------ | ----- |
-| Composer 2.5        | $0.50 | –           | $0.20      | $2.50  | Low    | -     |
-| Composer 2.5 (Fast) | $3.00 | –           | $0.50      | $15.00 | High   | -     |
-| Grok 4.5            | $2.00 | –           | $0.50      | $6.00  | Low    | Jointly trained by Cursor and SpaceXAI |
-| Grok 4.5 (Fast)     | $4.00 | –           | $1.00      | $18.00 | High   | Jointly trained by Cursor and SpaceXAI |
-| Grok 4.6            | $2.00 | –           | $0.50      | $6.00  | Low    | Jointly trained by Cursor and SpaceXAI |
-| Grok 4.6 (Fast)     | $4.00 | –           | $1.00      | $12.00 | Medium | Jointly trained by Cursor and SpaceXAI |
+| Model                | Input | Cache Write | Cache Read | Output | Tier   | Notes |
+| -------------------- | ----- | ----------- | ---------- | ------ | ------ | ----- |
+| Composer 2.5         | $0.50 | –           | $0.20      | $2.50  | Low    | -     |
+| Composer 2.5 (Fast)  | $3.00 | –           | $0.50      | $15.00 | High   | -     |
+| Grok 4.5             | $2.00 | –           | $0.50      | $6.00  | Low    | Jointly trained by Cursor and SpaceXAI |
+| Grok 4.5 (Fast)      | $4.00 | –           | $1.00      | $18.00 | High   | Jointly trained by Cursor and SpaceXAI |
+| Grok 4.6             | $2.00 | –           | $0.50      | $6.00  | Low    | Jointly trained by Cursor and SpaceXAI |
+| Grok 4.6 (Fast)      | $4.00 | –           | $1.00      | $12.00 | Medium | Jointly trained by Cursor and SpaceXAI |
+| Grok 4.7             | $2.00 | –           | $0.50      | $6.00  | Low    | Jointly trained by Cursor and SpaceXAI; Long context (>256k input tokens) is billed at 2x standard rates, up to 500k; Fast mode is available at 2x pricing; Fast mode for long context (>256k) is billed at 3x standard rates |
+| Grok 4.7 (Fast)      | $4.00 | –           | $1.00      | $12.00 | Medium | Jointly trained by Cursor and SpaceXAI; Long context (>256k input tokens) is billed at 2x standard rates, up to 500k; Fast mode is available at 2x pricing; Fast mode for long context (>256k) is billed at 3x standard rates |
+| Grok 4.7 500k        | $4.00 | –           | $1.00      | $12.00 | Medium | Jointly trained by Cursor and SpaceXAI; Long context (>256k input tokens) is billed at 2x standard rates, up to 500k; Fast mode is available at 2x pricing; Fast mode for long context (>256k) is billed at 3x standard rates |
+| Grok 4.7 500k (Fast) | $6.00 | –           | $1.50      | $18.00 | High   | Jointly trained by Cursor and SpaceXAI; Long context (>256k input tokens) is billed at 2x standard rates, up to 500k; Fast mode is available at 2x pricing; Fast mode for long context (>256k) is billed at 3x standard rates |
 
 
 ### API Pool — Anthropic (Claude)
@@ -55,20 +59,20 @@ table and surface material cost / availability / capability constraints.
 | Claude 4.6 Sonnet           | $3.00  | $3.75       | $0.30      | $15.00  | High      | Hidden by default; Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
 | Claude 4.7 Opus             | $5.00  | $6.25       | $0.50      | $25.00  | Very High | Hidden by default; Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
 | Claude Fable 5              | $10.00 | $12.50      | $1.00      | $50.00  | Very High | Hidden by default; Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; About 2x the cost of Claude Opus 5; Requires Max Mode on legacy request-based plans |
-| Claude Fable 5.1            | $10.00 | $12.50      | $0.25      | $50.00  | Very High | Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; Prompt-cache reads are $0.25/M, 75% below the standard cache-read rate; About 2x the cost of Claude Opus 5 on input and output; Requires Max Mode on legacy request-based plans |
+| Claude Fable 5.1            | $10.00 | $12.50      | $0.25      | $50.00  | Very High | Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; Prompt-cache reads are $0.25/M, 75% below the standard cache-read rate; About 2.5x the cost of Claude Opus 5.5 on input and output; Requires Max Mode on legacy request-based plans |
 | Claude Opus 4.7 (fast mode) | $30.00 | $37.50      | $3.00      | $150.00 | Very High | Hidden by default; Requires Max Mode on legacy request-based plans; Limited research preview; Up to 1M tokens with extended context at the same per-token rates as shorter context |
 | Claude Opus 4.8             | $5.00  | $6.25       | $0.50      | $25.00  | Very High | Hidden by default; Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-4-8-fast`) requires Max Mode on legacy request-based plans; Fast mode is 3x lower per-token pricing than Opus 4.7 fast mode; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
-| Claude Opus 5               | $5.00  | $6.25       | $0.50      | $25.00  | Very High | Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-fast`) requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
+| Claude Opus 5               | $5.00  | $6.25       | $0.50      | $25.00  | Very High | Hidden by default; Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-fast`) requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
+| Claude Opus 5.5             | $4.00  | $5.00       | $0.20      | $20.00  | High      | Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-5-fast`) requires Max Mode on legacy request-based plans; 20% cheaper than Claude Opus 5 on input and output; Prompt-cache reads are $0.20/M (0.05x input), down from 0.10x input on Claude Opus 5; Regional and US-only endpoints are priced 10% higher ($4.40/M input, $22/M output); Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge) |
 | Claude Sonnet 5             | $2.00  | $2.50       | $0.20      | $10.00  | Medium    | Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge); Uses an updated tokenizer, so the same input can map to more tokens |
 
 
 ### API Pool — Cursor Composer
 
 
-| Model        | Input | Cache Write | Cache Read | Output | Tier   | Notes             |
-| ------------ | ----- | ----------- | ---------- | ------ | ------ | ----------------- |
-| Composer 1   | $1.25 | –           | $0.125     | $10.00 | Medium | Hidden by default |
-| Composer 2.5 | $0.50 | –           | $0.20      | $2.50  | Low    | -                 |
+| Model        | Input | Cache Write | Cache Read | Output | Tier   | Notes |
+| ------------ | ----- | ----------- | ---------- | ------ | ------ | ----- |
+| Composer 2.5 | $0.50 | –           | $0.20      | $2.50  | Low    | -     |
 
 
 ### API Pool — Google (Gemini)
@@ -138,7 +142,7 @@ table and surface material cost / availability / capability constraints.
 
 ---
 
-<!-- subscription-tiers-reviewed: 2026-09-10 -->
+<!-- subscription-tiers-reviewed: 2026-09-23 -->
 
 ## Subscription Tiers and Access Methods
 
@@ -194,7 +198,7 @@ and adjust the rebuild rules in [`update/prompt.md`](../update/prompt.md).
 | ChatGPT Go             | $8      | —       | OpenAI    | chatgpt-app, codex-cli  | Budget tier with GPT-5.3 Instant unlimited and GPT-5.3 quota, more uploads and image generation than Free; ads still shown; lacks advanced reasoning models, Sora, Codex full access, Agent Mode, and Deep Research. |
 | ChatGPT Plus           | $20     | —       | OpenAI    | chatgpt-app, codex-cli  | GPT-5.6 Sol default model with full feature suite — Deep Research, Sora video, Codex, Agent Mode; GPT-5.6 Terra and GPT-5.6 Luna also available. |
 | ChatGPT Pro ($100)     | $100    | —       | OpenAI    | chatgpt-app, codex-cli  | Same model suite as Pro $200 (GPT-5.6 Sol, GPT-5.5, o1 Pro mode) at 5x Plus usage limits; Codex access included with promotional 10x multiplier through May 31, 2026. |
-| ChatGPT Pro ($200)     | $200    | —       | OpenAI    | chatgpt-app, codex-cli  | Same coverage as Pro $100 with much higher caps (20x Plus limits), 1M-token context window, unlimited Sora video, Operator agent, and priority access to top-tier models. |
+| ChatGPT Pro ($200)     | $200    | —       | OpenAI    | chatgpt-app, codex-cli  | Same coverage as Pro $100 with much higher caps (20x Plus limits), 1M-token context window, unlimited Sora video, Operator agent, and priority access to top-tier models; new sign-ups paused as of 2026-09-10 (existing subscriptions unaffected). |
 | Google AI Plus         | $4.99   | —       | Google    | gemini-app, gemini-cli  | Entry-paid Google AI tier with 2x higher usage limits than Free in the Gemini app, access to Gemini 3.1 Pro / Nano Banana Pro / Daily Brief / Gemini Omni video generation, 200 Google Flow Credits, and 400 GB of cloud storage (price cut from $7.99 to $4.99 on 2026-06-08; storage doubled from 200 GB to 400 GB). |
 | Google AI Pro          | $19.99  | $199.99 | Google    | gemini-app, gemini-cli  | Gemini 3.1 Pro and supporting multimodal features in the Gemini app and Gemini CLI, plus Deep Research, Nano Banana Pro, Veo 3.1 access, 1,000 monthly AI credits, and 5 TB of Google One storage; includes YouTube Premium Lite; 50% off the first year for new subscribers. |
 | Google AI Ultra ($100) | $99.99  | —       | Google    | gemini-app, gemini-cli  | Developer-focused Ultra tier (May 2026): 5x Pro usage limits in Gemini app and Google Antigravity, Gemini 3.5 Flash integration, priority access to Antigravity, 20 TB cloud storage, and YouTube Premium individual plan. |
@@ -225,6 +229,7 @@ appear here.
 | opus-4.7         | $25.00  | Very High    | Very High    | ✓      |
 | opus-4.8         | $25.00  | Very High    | Very High    | ✓      |
 | claude-opus-5    | $25.00  | Very High    | Very High    | ✓      |
+| claude-opus-5-5  | $20.00  | High         | High         | ✓      |
 | claude-fable-5   | $50.00  | Very High    | Very High    | ✓      |
 | claude-fable-5.1 | $50.00  | Very High    | Very High    | ✓      |
 | gpt-5.5          | $30.00  | Very High    | Very High    | ✓      |
@@ -249,6 +254,7 @@ appear here.
 | mistral-medium-3.5 | $7.50 | Low          | Low          | ✓      |
 | grok-4.5         | $6.00   | Low          | Low          | ✓      |
 | grok-4.6         | $6.00   | Low          | Low          | ✓      |
+| grok-4.7         | $6.00   | Low          | Low          | ✓      |
 | gpt-5.6-luna     | $1.20   | Low          | Low          | ✓      |
 | claude-4.5-haiku | $5.00   | Low          | Low          | ✓      |
 | gpt-5.4-mini     | $4.50   | Low          | Low          | ✓      |
@@ -264,11 +270,11 @@ appear here.
 | gpt-5.4-nano     | $1.25   | Low          | Low          | ✓      |
 | glm-4.5-air      | $1.10   | Low          | Low          | ✓      |
 | codestral        | $0.90   | Low          | Low          | ✓      |
-| deepseek-v4-pro  | $0.87   | Low          | Low          | ✓      |
+| deepseek-v4-pro  | $1.98   | Low          | Low          | ✓      |
 | gpt-oss-120b     | $0.60   | Low          | Low          | ✓      |
 | mistral-small-4  | $0.30   | Low          | Low          | ✓      |
 | gpt-oss-20b      | $0.30   | Low          | Low          | ✓      |
-| deepseek-v4-flash | $0.28  | Low          | Low          | ✓      |
+| deepseek-flash   | $0.60   | Low          | Low          | ✓      |
 
 
 Routing meta-models (Cursor's "Auto" / "Premium" modes; analogous
@@ -280,15 +286,25 @@ the selector's per-model tier ratings and the jurisdiction filter
 (see `<jurisdiction-context>` in `docs/model-selector.txt` for the
 rationale). The "Cursor Models Pool" table at the top of this
 document continues to document Cursor's first-party model pricing for
-reference (Grok 4.5, Grok 4.6, Composer 2.5, plus their Fast variants),
-but the `auto` and `premium` model ids no longer appear as recommendable
-engines.
+reference (Grok 4.5, Grok 4.6, Grok 4.7, Composer 2.5, plus their Fast
+variants), but the `auto` and `premium` model ids no longer appear as
+recommendable engines.
 
 ## Recently Added / Updated Models
 
 
 | Model id           | Output | Tier | Change                                                                                                                     |
 | ------------------ | ------ | ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| Claude Opus 5.5    | $20.00 | High | New 2026-09-23 on Cursor's pricing page — Anthropic's Opus 5 successor at $4/$20 (20% cheaper than Opus 5 on input and output); prompt-cache reads $0.20/M (0.05x input, down from 0.10x on Opus 5); regional and US-only endpoints priced 10% higher ($4.40/$22); visible by default (not Hidden). Selector-pass will add to `<model-options>` per the Anthropic Federation rule (input/output owned by `catalog-anthropic.json`) |
+| Claude Fable 5.1   | $50.00 | Very High | Notes refreshed 2026-09-23 — Cursor updated the Fable 5.1 hovertext from "About 2x the cost of Claude Opus 5" to "About 2.5x the cost of Claude Opus 5.5 on input and output" following the Opus 5.5 launch (Fable 5.1 pricing itself unchanged at $10/$50) |
+| Grok 4.7           | $6.00  | Low  | New 2026-09-22 in the Cursor Models pool — xAI/SpaceXAI released Grok 4.7 on 2026-09-21 as a same-price, same-speed upgrade over Grok 4.6 at $2/$6 (2.1T parameters, 500K context, xhigh reasoning). Fast variant $4/$12 (Medium tier); 500k long-context variant $4/$12 (Medium tier); 500k Fast variant $6/$18 (High tier). Not yet added to `<model-options>` (selector-pass will handle) |
+| Grok 4.7 (Fast)    | $12.00 | Medium | New 2026-09-22 Cursor first-party Fast variant of Grok 4.7 (2x standard rates for higher output speed)                     |
+| Grok 4.7 500k      | $12.00 | Medium | New 2026-09-22 Cursor first-party long-context (>256k) variant of Grok 4.7 (2x standard rates apply to all tokens)         |
+| Grok 4.7 500k (Fast) | $18.00 | High | New 2026-09-22 Cursor first-party long-context Fast variant of Grok 4.7 (3x standard rates for combined fast + long context) |
+| deepseek-flash     | $0.60  | Low  | New 2026-09-21 (editorial, closes #583 / #606) — DeepSeek-V4.1-Flash under the API name `deepseek-flash`, the provider-direct successor to `deepseek-v4-flash`: $0.15/$0.60 off-peak ($0.30/$1.20 peak), 1M context, native image input (V4-Flash-Vision-Exp folded in), AA Intelligence Index 39.5 (v4.3). Tier ratings inherited from V4-Flash except multimodal D→C; MIT weights on Hugging Face |
+| deepseek-v4-flash  | —      | —    | RETIRED 2026-09-21 from `<model-options>` — DeepSeek retired DeepSeek-V4-Flash-0731 (and -Vision-Exp) from its pricing page 2026-09-17; the legacy API names are still accepted but served by DeepSeek-V4.1-Flash at the Flash price, so the element is replaced by `deepseek-flash` rather than kept |
+| deepseek-v4-pro    | $1.98  | Low  | Price basis made explicit 2026-09-21 — DeepSeek's pricing page splits every rate into OFF-PEAK / PEAK (peak = 2×, 01:00–04:00 and 06:00–10:00 UTC Mon–Fri only); the catalog lists the OFF-PEAK rate for both DeepSeek models (~79% of the week, all US/EU working hours) and the snapshot records `price_basis` + the peak figures. Aggregators such as OpenRouter list the PEAK rate ($1.32/$3.96) |
+| Composer 1         | —      | —    | REMOVED 2026-09-17 from cost scale — Cursor's pricing page no longer lists Composer 1 in any pool (Composer 2.5 supersedes it in the Cursor Models pool) |
 | Muse Spark 1.3     | $4.25  | Low  | New 2026-09-10 on Cursor's pricing page — Meta's Muse Spark 1.3 at $1.25/$4.25 (first Meta-provider entry in the cost scale); requires Max Mode on legacy request-based plans with 1M context available in Max Mode |
 | GPT-5.1 Codex Mini | $2.00  | Low  | New 2026-09-10 on Cursor's pricing page — smaller/cheaper GPT-5.1 Codex variant at $0.25/$2.00 (4x rate limits vs GPT-5.1 Codex, Hidden by default) |
 | Grok 4.6           | $6.00  | Low       | New 2026-09-04 on Cursor's pricing page — Cursor first-party model at $2/$6 (mirrors Grok 4.5 pricing), jointly trained by Cursor and SpaceXAI. Fast variant $4/$12 (Medium tier). Not yet added to `<model-options>` (selector-pass will handle) |
@@ -355,7 +371,7 @@ this table.
 | Cursor (San Francisco, US)    | `us`              | composer-2, composer-2.5 — note: base weights for these Composer models derive from Moonshot's Kimi K2 series; Cursor's operator status determines the jurisdiction code per `<jurisdiction-context>` (data flow governed by Cursor's privacy policy and US law) |
 | Meta (Menlo Park, US)         | `us`              | (Muse Spark 1.3 auto-added to `<model-options>` 2026-09-10 with placeholder B tiers pending editorial review)                                                       |
 | Moonshot AI (Beijing, CN)     | `cn`              | kimi-k2.5                                                                                                               |
-| DeepSeek (Hangzhou, CN)       | `cn`              | deepseek-v4-pro, deepseek-v4-flash                                                                                      |
+| DeepSeek (Hangzhou, CN)       | `cn`              | deepseek-v4-pro, deepseek-flash                                                                                         |
 | z.ai / Zhipu AI (Beijing, CN) | `cn`              | glm-5.2, glm-4.6, glm-4.5-air                                                                                           |
 | Mistral AI (Paris, FR/EU)     | `eu`              | mistral-medium-3.5, mistral-small-4, mistral-large-3, codestral                                                         |
 | Groq (Mountain View, US)      | `us`              | gpt-oss-120b, gpt-oss-20b (hosts OpenAI's open-weight gpt-oss; pinned host that defines per-token price + access)        |

@@ -43,8 +43,8 @@ Concretely, for each roadmap step:
    given the operator's active subscriptions (a Claude pick → "Claude Code"
    funded by Max; a GPT pick → "Codex" funded by ChatGPT Pro; etc.).
 4. **Emit** the step's Settings table using the **platform-specific variant**
-   the template defines. Every table carries Model / Platform / Conversation
-   plus **only the dials the chosen surface actually exposes** — Claude Code →
+   the template defines. Every table carries Model / Backup / Platform /
+   Conversation plus **only the dials the chosen surface actually exposes** — Claude Code →
    Effort + Thinking(On/Off); Codex and the other reasoning-dial surfaces
    (ChatGPT app, provider APIs, Gemini CLI) → the effort dial under that
    surface's own label (Codex calls it Intelligence) + Thinking where it has a
@@ -53,8 +53,10 @@ Concretely, for each roadmap step:
    `N/A`; Max Mode in particular is a Cursor-only row and must not appear on a
    Claude Code or Codex table. Add a Model-rationale paragraph that names the
    funding source and justifies each emitted dial in the surface's native
-   vocabulary, and a **backup** model in case the primary is unavailable to the
-   operator.
+   vocabulary. The **Backup** row names the model to run in case the primary is
+   unavailable to the operator — from a different provider family, with its
+   own platform and dial in one cell (`GPT-5.6 Terra — Codex · Intelligence
+   Medium`).
 
 ## Paste-prompt
 
@@ -64,8 +66,10 @@ everything below its rule into a **new** chat in this project, and submit.
 
 Each prompt starts with a Step 0 that refreshes this kit
 (`pip install -U roadmodel && roadmodel export-kit . --force`) and checks the
-template's Stage 6 is current before anything is written, so a stale kit fails
-loudly instead of baking an old step lifecycle into every step. The ask itself
+template's step lifecycle is current (Stage 3 marks the step's `**Status:**`
+line, directly under its heading, in its own PR; Stage 6 disposes of every finding before the completion
+line) before anything is written, so a stale kit fails loudly instead of baking
+an old step lifecycle into every step. The ask itself
 is the one below — the prompt files carry it with the placeholders filled:
 
 > Write the Phase N roadmap `.md` using `@planning/templates/phase-roadmap-template.md`
