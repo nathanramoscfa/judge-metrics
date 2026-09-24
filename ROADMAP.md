@@ -260,6 +260,8 @@ lake into canonical tables, out through a versioned API, and onto a web
 judge page — with CI that builds and scans containers, a fail-closed
 security gate, branch protection, and the command interface.
 
+**Status:** Complete — 2026-09-17
+
 **Complexity:** High · **Risk:** Low · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — local secrets in env files only;
 public judicial biographies, no defendant data
@@ -383,6 +385,8 @@ resolve entities with an auditable framework and review queue, and
 expose case timelines — so the whole pipeline is demonstrable and
 golden-testable before any real case data exists.
 
+**Status:** Complete — 2026-09-19
+
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** No real defendant data — synthetic records
 labelled as such on every surface
@@ -483,6 +487,8 @@ a versioned registry with exact golden expectations, a provenance trace
 from any published number back to raw artifacts, and every remaining
 public page — so the brief's seventeen-item first milestone passes end
 to end on synthetic data.
+
+**Status:** In progress — [`docs/phase03-roadmap.md`](docs/phase03-roadmap.md)
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — correction requester contacts
@@ -585,6 +591,8 @@ observed/expected ratios with intervals and partial pooling, and
 document validation before any adjusted statistic appears on a judge
 page.
 
+**Status:** Not started
+
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — synthetic sensitive attributes
 exercise the restricted-schema and fairness-analysis machinery
@@ -649,6 +657,8 @@ County, IL State's Attorney datasets) end to end with actor attribution,
 conservative person resolution, real timelines, coverage statistics, and
 the first real metrics, while completing the Florida source inventory
 and a lawful acquisition plan.
+
+**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — real defendant-level records
@@ -745,6 +755,8 @@ assuming correctness, ship the administrative surface behind
 authentication, complete the corrections and rapid-suppression process,
 and pass an external legal review.
 
+**Status:** Not started
+
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local);
 external legal review cost TBD · **Handles sensitive data:** Yes —
 admin credentials, correction requester contacts, suppression lists
@@ -814,6 +826,8 @@ layer through the same connector framework, introduce probabilistic
 entity resolution across sources, and ship jurisdiction pages with a
 coverage map and a repeatable jurisdiction-add playbook.
 
+**Status:** Not started
+
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none beyond
 metered PACER requests under a hard cap (TBD) · **Handles sensitive
 data:** Yes — source credentials, defendant-level records
@@ -877,6 +891,8 @@ managed infrastructure, observability with owned alarms, edge rate
 limits and caching, a codebase-wide security and accessibility audit, a
 rehearsed release and rollback path, a readiness gate, and a staged
 public launch.
+
+**Status:** Not started
 
 **Complexity:** Medium · **Risk:** High · **Cloud cost:** TBD (managed
 PostgreSQL, object storage, hosting, CDN, error tracking) · **Handles
@@ -947,6 +963,8 @@ each source's redistribution terms, versioned research snapshots, a
 keyed API tier, a priced jurisdiction-onboarding service, and grant,
 sponsorship, and donation channels — with the free website and every
 judge-level aggregate unchanged and never paywalled.
+
+**Status:** Not started
 
 **Complexity:** Medium · **Risk:** Medium · **Cloud cost:** payment
 processor fees and snapshot storage egress (TBD) · **Handles sensitive
@@ -1601,17 +1619,17 @@ court-level comparison arrive with Phase 7.
 
 ## 8. Phase Complexity Summary
 
-| Phase | Description                                          | Complexity | Default model (platform)                                        |
-|-------|------------------------------------------------------|------------|-----------------------------------------------------------------|
-| 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step |
-| 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere |
-| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere |
-| 4     | Risk adjustment and validation                       | High       | Fable 5.1 (Claude Code) for methodology and validation; Opus 5 implementation |
-| 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    |
-| 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   |
-| 7     | Florida pilot, federal dockets, coverage map         | High       | Claude Opus 5 (Claude Code)                                     |
-| 8     | Production hardening and launch                      | Medium     | Claude Opus 5 (Claude Code); Fable 5.1 at Ultracode for the codebase-wide audit |
-| 9     | Sustainability and data products (post-launch)       | Medium     | Claude Opus 5 (Claude Code); operator for entity, funder, and pricing decisions |
+| Phase | Description                                          | Complexity | Default model (platform)                                        | Status |
+|-------|------------------------------------------------------|------------|-----------------------------------------------------------------|--------|
+| 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
+| 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
+| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/phase03-roadmap.md |
+| 4     | Risk adjustment and validation                       | High       | Fable 5.1 (Claude Code) for methodology and validation; Opus 5 implementation | Not started |
+| 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
+| 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |
+| 7     | Florida pilot, federal dockets, coverage map         | High       | Claude Opus 5 (Claude Code)                                     | Not started |
+| 8     | Production hardening and launch                      | Medium     | Claude Opus 5 (Claude Code); Fable 5.1 at Ultracode for the codebase-wide audit | Not started |
+| 9     | Sustainability and data products (post-launch)       | Medium     | Claude Opus 5 (Claude Code); operator for entity, funder, and pricing decisions | Not started |
 
 Model selections come from the roadmodel planning kit in `planning/`
 (selector algorithm, catalog, cost scale) run against the operator's

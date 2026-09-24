@@ -1,6 +1,8 @@
 <!-- docs/phase02-roadmap.md -->
 # Phase 2 Roadmap — Synthetic Justice Dataset, Entity Resolution, and Case Timelines
 
+**Status:** Complete — 2026-09-19
+
 ## Overview
 
 Phase 2 opens the gate to every analytic the platform will ever publish:
@@ -630,7 +632,9 @@ parallel.
 
 ---
 
-## Step 1 — Deterministic Synthetic Generator
+## Step 1 — Deterministic Synthetic Generator ✅
+
+**Status:** Complete — PR #12 (2026-09-17)
 
 > **Goal:** Land the generator with truth: `src/judgemetrics/synthetic/`
 > (`config.py` with the `ScaleSpec` for `golden` and `demo`, `rng.py`
@@ -1483,7 +1487,9 @@ Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 2 — Synthetic Connector, Case-Level Publishing, and `seed`
+## Step 2 — Synthetic Connector, Case-Level Publishing, and `seed` ✅
+
+**Status:** Complete — PR #13 (2026-09-18)
 
 > **Goal:** Load the generated dataset through the same path real data
 > will use: extend `src/judgemetrics/ingest/base.py` with the nine
@@ -2354,7 +2360,9 @@ per phase-boundary hygiene.
 
 ---
 
-## Step 3 — Entity-Resolution Framework v0, Review Queue, and Audit Log
+## Step 3 — Entity-Resolution Framework v0, Review Queue, and Audit Log ✅
+
+**Status:** Complete — PR #14 (2026-09-18)
 
 > **Goal:** Land the brief's staged resolution for persons as pipeline
 > step 10: `src/judgemetrics/entity_resolution/` (`config.py` with
@@ -3107,7 +3115,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 4 — Case API, Case Pages, and Coverage v0
+## Step 4 — Case API, Case Pages, and Coverage v0 ✅
+
+**Status:** Complete — PR #15 (2026-09-18)
 
 > **Goal:** Expose cases end to end: `api/routes/cases.py`
 > (`GET /api/v1/cases/{case_id}` and `/cases/{case_id}/timeline`),
@@ -3772,7 +3782,9 @@ hygiene.
 
 ---
 
-## Step 5 — Property Tests, Golden Suite, and the Scratch Test Database
+## Step 5 — Property Tests, Golden Suite, and the Scratch Test Database ✅
+
+**Status:** Complete — PR #16 (2026-09-18)
 
 > **Goal:** Turn the phase's invariants into the permanent regression
 > harness: add `hypothesis` to the dev group and `tests/property/`
@@ -4340,7 +4352,9 @@ is New per phase-boundary hygiene.
 
 ---
 
-## Step 6 — QA & Verification Script
+## Step 6 — QA & Verification Script ✅
+
+**Status:** Complete — PR #17 (2026-09-19)
 
 > **Goal:** Package the verification matrix into
 > `scripts/verify_phase02.py` (with `--fast`, `--py`, `--node`, `--e2e`,
@@ -5283,20 +5297,20 @@ any workflow above maps directly to the corresponding row below.
 
 ## Summary Table
 
-| Step | Scope                                 | Model          | Platform     | Reasoning dial | Thinking | Conv |
-| ---- | ------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- |
-| 1    | Deterministic synthetic generator     | Fable 5.1      | Claude Code  | Effort Max     | On       | New  |
-| 2    | Synthetic connector, publishing, seed | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 3    | Entity resolution v0, queue, audit    | Fable 5.1      | Claude Code  | Effort Max     | On       | New  |
-| 4    | Case API, case pages, coverage v0     | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 5    | Property tests, golden suite, test DB | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 6    | QA + verify_phase02.py                | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| V1   | Generator scope                       | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V2   | Connector and seed scope              | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V3   | Entity-resolution scope               | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V4   | API and pages scope                   | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V5   | Property and golden scope             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V6   | CI integration                        | CI: phase-verify.yml | --   | --             | --       | --   |
+| Step | Scope                                 | Model          | Platform     | Reasoning dial | Thinking | Conv | Status                  |
+| ---- | ------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- | ----------------------- |
+| 1    | Deterministic synthetic generator     | Fable 5.1      | Claude Code  | Effort Max     | On       | New  | Complete — PR #12 |
+| 2    | Synthetic connector, publishing, seed | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #13 |
+| 3    | Entity resolution v0, queue, audit    | Fable 5.1      | Claude Code  | Effort Max     | On       | New  | Complete — PR #14 |
+| 4    | Case API, case pages, coverage v0     | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #15 |
+| 5    | Property tests, golden suite, test DB | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #16 |
+| 6    | QA + verify_phase02.py                | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #17 |
+| V1   | Generator scope                       | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V2   | Connector and seed scope              | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V3   | Entity-resolution scope               | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V4   | API and pages scope                   | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V5   | Property and golden scope             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V6   | CI integration                        | CI: phase-verify.yml | --   | --             | --       | --   | -- |
 
 Backups (same platform rules, different provider): GPT-5.6 Sol on
 Codex at Intelligence Extra High for Steps 1 and 3; GPT-5.3 Codex on
