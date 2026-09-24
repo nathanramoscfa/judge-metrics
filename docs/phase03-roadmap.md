@@ -1,6 +1,8 @@
 <!-- docs/phase03-roadmap.md -->
 # Phase 3 Roadmap — Metrics Engine and the Complete Local Demo (First Milestone)
 
+**Status:** In progress
+
 ## Overview
 
 Phase 3 opens the gate to every published number: it turns the seeded
@@ -742,7 +744,9 @@ parallel.
 
 ---
 
-## Step 1 — Metric Registry, Analytic Frame, and Generated Methodology
+## Step 1 — Metric Registry, Analytic Frame, and Generated Methodology ✅
+
+**Status:** Complete — PR #18 (2026-09-19)
 
 > **Goal:** Land the contract every published number is computed
 > against: `data/reference/metric_registry.yaml` (registry `version`,
@@ -1848,7 +1852,9 @@ provider. Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 2 — Snapshot, Computation Engine, and Golden Metric Tests
+## Step 2 — Snapshot, Computation Engine, and Golden Metric Tests ✅
+
+**Status:** Complete — PR #19 (2026-09-19)
 
 > **Goal:** Make the registry compute and prove it:
 > `src/judgemetrics/metrics/snapshot.py` exports the canonical tables a
@@ -2827,7 +2833,9 @@ Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 3 — Provenance Trace, Metrics API, and Corrections Intake
+## Step 3 — Provenance Trace, Metrics API, and Corrections Intake ✅
+
+**Status:** Complete — PR #20 (2026-09-19)
 
 > **Goal:** Expose what Step 2 stores and prove the chain: `judgemetrics
 > provenance trace <observation_id> [--json]` and `GET
@@ -3741,7 +3749,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 4 — Judge Metric Panels, Compare, Methodology, and Coverage
+## Step 4 — Judge Metric Panels, Compare, Methodology, and Coverage ✅
+
+**Status:** Complete — PR #21 (2026-09-20)
 
 > **Goal:** Put the numbers on the pages under the brief's presentation
 > rules: `web/components/metric-stat.tsx` (a `MetricStat` that always
@@ -4500,7 +4510,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 5 — Corrections Form, Remaining Pages, `bootstrap`, and Walkthrough
+## Step 5 — Corrections Form, Remaining Pages, `bootstrap`, and Walkthrough ✅
+
+**Status:** Complete — PR #23 (2026-09-20)
 
 > **Goal:** Close the brief's page list and prove the milestone from one
 > command: `/corrections` (`app/corrections/page.tsx` with a client form
@@ -5193,6 +5205,8 @@ phase-boundary hygiene.
 
 ## Step 6 — QA & Verification Script
 
+**Status:** Not started
+
 > **Goal:** Package the verification matrix into
 > `scripts/verify_phase03.py` (with `--fast`, `--py`, `--node`, `--e2e`,
 > `--security`, `--all`, and `--post` modes, mirroring
@@ -5214,28 +5228,32 @@ merge; the tag is pushed after the merge.
 
 Settings table — Effort + Thinking variant (Claude Code):
 
-| Setting      | Value                          |
-| ------------ | ------------------------------ |
-| Model        | Claude Opus 5                  |
-| Platform     | Claude Code                    |
-| Effort       | Max                            |
-| Thinking     | On                             |
-| Conversation | **New**                        |
+| Setting      | Value                                          |
+| ------------ | ---------------------------------------------- |
+| Model        | Opus 5.5                                       |
+| Backup       | GPT-5.6 Terra — Codex · Intelligence Medium    |
+| Platform     | Claude Code                                    |
+| Effort       | Medium (Claude Code's default — no change, run as opened) |
+| Thinking     | On                                             |
+| Conversation | **New**                                        |
+
+> Settings updated 2026-09-24 (refresh): was Claude Opus 5 · Max (backup GPT-5.3 Codex · Intelligence High). The operator's Max weekly pool is now `capped`, so the flat-funding gate is closed and effort follows the complexity ladder; this Medium-complexity step takes the `balanced` anchor Opus 5.5 at Claude Code's default Medium, and the backup moves to GPT-5.6 Terra because `*-codex` variants answer 400 on the operator's ChatGPT-account Codex sign-in.
 
 **Model rationale:** This is the mechanical translation of
 `verify_phase02.py` into Phase 3's deliverables — numbered static checks,
 mode dispatch, subprocess suites, the V-matrix, the findings rollup, a
-one-line matrix edit, and the tag: PRIMARY `coding`, a known pattern with
-no novel reasoning (roadmodel's "standard implementation, multi-file
-changes, and roadmap execution" default). Claude Opus 5 is rated S in
-coding (Terminal-Bench 2.1 89.1); the open flat-funding gate suspends
-tier-down for routine work, so the funded frontier model takes it at
-zero marginal cost. The Platform is Claude Code on the flat claude.ai Max
-subscription: Effort `Max` (this script gates every later phase's CI and
-its `--post` mode drives the milestone probe), Thinking `On`. Backup:
-GPT-5.3 Codex on Codex (ChatGPT Plus; Intelligence High), S-tier in
-coding from a different provider. Conversation is New per phase-boundary
-hygiene.
+one-line matrix edit, and the tag: PRIMARY `coding`, Medium complexity (a
+bounded, well-specified, multi-file task following a known pattern with
+no novel reasoning). Opus 5.5 is S-tier in coding and the operator's
+`balanced` anchor under the `capped` posture — 20% cheaper per token than
+Opus 5 and superseding it. The Platform is Claude Code on the claude.ai
+Max subscription (weekly pool at `headroom`): Effort `Medium`, which is
+Claude Code's default for Opus 5.5, so the session runs as opened;
+Thinking `On`. Nothing in the step earns a raise — the pattern is fixed
+by `verify_phase02.py`, and the CI matrix and `--post` probes catch any
+slip. Backup: GPT-5.6 Terra on Codex (ChatGPT Pro 5x; Intelligence
+Medium), S-tier in coding from a different provider. Conversation is New
+per phase-boundary hygiene.
 
 ```xml
 <task>
@@ -6238,20 +6256,20 @@ any workflow above maps directly to the corresponding row below.
 
 ## Summary Table
 
-| Step | Scope                                     | Model          | Platform     | Reasoning dial | Thinking | Conv |
-| ---- | ----------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- |
-| 1    | Registry, analytic frame, methodology     | Fable 5.1      | Claude Code  | Effort Max     | On       | New  |
-| 2    | Snapshot, engine, compute/verify, golden  | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 3    | Provenance trace, metrics API, corrections | Claude Opus 5 | Claude Code  | Effort Max     | On       | New  |
-| 4    | Judge panels, compare, methodology, coverage | Claude Opus 5 | Claude Code | Effort Max     | On       | New  |
-| 5    | Corrections form, pages, bootstrap, walkthrough | Claude Opus 5 | Claude Code | Effort Max  | On       | New  |
-| 6    | QA + verify_phase03.py                    | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| V1   | Registry and frame scope                  | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V2   | Engine scope                              | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V3   | API scope                                 | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V4   | Pages scope                               | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V5   | Corrections, bootstrap, walkthrough scope | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V6   | CI integration                            | CI: phase-verify.yml | --   | --             | --       | --   |
+| Step | Scope                                     | Model          | Platform     | Reasoning dial | Thinking | Conv | Status                  |
+| ---- | ----------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- | ----------------------- |
+| 1    | Registry, analytic frame, methodology     | Fable 5.1      | Claude Code  | Effort Max     | On       | New  | Complete — PR #18 |
+| 2    | Snapshot, engine, compute/verify, golden  | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #19 |
+| 3    | Provenance trace, metrics API, corrections | Claude Opus 5 | Claude Code  | Effort Max     | On       | New  | Complete — PR #20 |
+| 4    | Judge panels, compare, methodology, coverage | Claude Opus 5 | Claude Code | Effort Max     | On       | New  | Complete — PR #21 |
+| 5    | Corrections form, pages, bootstrap, walkthrough | Claude Opus 5 | Claude Code | Effort Max  | On       | New  | Complete — PR #23 |
+| 6    | QA + verify_phase03.py                    | Opus 5.5       | Claude Code  | Effort Medium  | On       | New  | Not started |
+| V1   | Registry and frame scope                  | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V2   | Engine scope                              | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V3   | API scope                                 | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V4   | Pages scope                               | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V5   | Corrections, bootstrap, walkthrough scope | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V6   | CI integration                            | CI: phase-verify.yml | --   | --             | --       | --   | -- |
 
 Backups (same platform rules, different provider): GPT-5.6 Sol on
 Codex at Intelligence Extra High for Step 1; GPT-5.3 Codex on Codex at
@@ -6348,14 +6366,14 @@ CONVERSATION: New
 RATIONALE: TASK: multi-file TypeScript, CI, and task-runner coding reusing fixed components with long end-to-end loops, secondary agentic. PICK: Claude Opus 5 is S-tier in coding and S-tier in agentic (Terminal-Bench 2.1 89.1) and supersedes Opus 4.8. EFFORT: Max effort with thinking on because the walkthrough is the phase's exit test and effort is free under the open gate; orchestration None.
 
 PROMPT: Step 6 — QA + verify_phase03.py
-MODEL: Claude Opus 5
-BACKUP: GPT-5.3 Codex
+MODEL: Opus 5.5
+BACKUP: GPT-5.6 Terra — Codex · Intelligence Medium
 PLATFORM: Claude Code
-EFFORT: Max
+EFFORT: Medium
 THINKING: On
 ORCHESTRATION: None
 CONVERSATION: New
-RATIONALE: TASK: mechanical translation of the Steps 1–5 deliverables into numbered static checks, mode dispatch, probes, and a CI matrix entry. PICK: Claude Opus 5 is S-tier in coding (Terminal-Bench 2.1 89.1); the open flat-funding gate suspends tier-down for routine work, so the funded frontier model takes it at zero marginal cost. EFFORT: Max effort with thinking on because effort is free here and this script gates every later phase's CI and drives the milestone probe; orchestration None.
+RATIONALE: TASK: Medium-complexity mechanical translation of the Steps 1–5 deliverables into numbered static checks, mode dispatch, probes, and a CI matrix entry, following verify_phase02.py. PICK: Opus 5.5 is S-tier in coding and the balanced anchor under the capped posture (flat-funding gate closed), superseding Opus 5. EFFORT: Medium (Claude Code's default, run as opened) with thinking on, because the pattern is fixed and CI catches slips; orchestration None. BACKUP: GPT-5.6 Terra on Codex, S-tier coding from a different provider; no *-codex variant on the operator's ChatGPT-account Codex.
 ```
 
 ---

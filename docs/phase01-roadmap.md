@@ -1,6 +1,8 @@
 <!-- docs/phase01-roadmap.md -->
 # Phase 1 Roadmap — Foundation, Canonical Schema, and the FJC Judge Slice
 
+**Status:** Complete — 2026-09-17
+
 ## Overview
 
 Phase 1 opens the gate every later phase walks through: a repository
@@ -491,7 +493,9 @@ in parallel.
 
 ---
 
-## Step 1 — Repository Bootstrap, Command Interface, Security Gate, and CI
+## Step 1 — Repository Bootstrap, Command Interface, Security Gate, and CI ✅
+
+**Status:** Complete — PR #1 (2026-09-16)
 
 > **Goal:** Turn the scaffold into a governed repository: land the
 > `LICENSE` (Apache-2.0, operator confirms in the PR), `CONTRIBUTING.md`,
@@ -1100,7 +1104,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 2 — Application Core, Canonical Schema, and the API Image
+## Step 2 — Application Core, Canonical Schema, and the API Image ✅
+
+**Status:** Complete — PR #2 (2026-09-16)
 
 > **Goal:** Land the application chassis: `src/judgemetrics/config.py`
 > (`pydantic-settings`, `JUDGEMETRICS_` prefix, `.env` loaded only when
@@ -1787,7 +1793,9 @@ Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 3 — Ingest Framework and the FJC Connector
+## Step 3 — Ingest Framework and the FJC Connector ✅
+
+**Status:** Complete — PR #4 (2026-09-16)
 
 > **Goal:** Land the ingest chassis and its first real connector:
 > `src/judgemetrics/ingest/base.py` (`SourceArtifact`, `RawArtifact`,
@@ -2388,7 +2396,9 @@ hygiene.
 
 ---
 
-## Step 4 — Public API v1
+## Step 4 — Public API v1 ✅
+
+**Status:** Complete — PR #5 (2026-09-16)
 
 > **Goal:** Expose the ingested data through the versioned read-only
 > API: `api/routes/judges.py` (`GET /api/v1/judges` with `q`,
@@ -2846,7 +2856,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 5 — Web Foundation
+## Step 5 — Web Foundation ✅
+
+**Status:** Complete — PR #6 (2026-09-17)
 
 > **Goal:** Stand up the web application in `web/`: a Next.js
 > (current stable, App Router) TypeScript project with Tailwind CSS,
@@ -3323,7 +3335,9 @@ New per phase-boundary hygiene.
 
 ---
 
-## Step 6 — QA & Verification Script
+## Step 6 — QA & Verification Script ✅
+
+**Status:** Complete — PR #10 (2026-09-17)
 
 > **Goal:** Package the verification matrix into
 > `scripts/verify_phase01.py` (with `--fast`, `--py`, `--node`, `--e2e`,
@@ -4085,20 +4099,20 @@ any workflow above maps directly to the corresponding row below.
 
 ## Summary Table
 
-| Step | Scope                                 | Model          | Platform     | Reasoning dial | Thinking | Conv |
-| ---- | ------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- |
-| 1    | Bootstrap, interface, gate, CI        | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 2    | Core, canonical schema, API image     | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 3    | Ingest framework + FJC connector      | Fable 5.1      | Claude Code  | Effort Max     | On       | New  |
-| 4    | Public API v1                         | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 5    | Web foundation                        | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| 6    | QA + verify_phase01.py                | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  |
-| V1   | Bootstrap scope                       | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V2   | Core and schema scope                 | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V3   | Ingest scope                          | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V4   | API scope                             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V5   | Web scope                             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   |
-| V6   | CI integration                        | CI: phase-verify.yml | --   | --             | --       | --   |
+| Step | Scope                                 | Model          | Platform     | Reasoning dial | Thinking | Conv | Status                  |
+| ---- | ------------------------------------- | -------------- | ------------ | -------------- | -------- | ---- | ----------------------- |
+| 1    | Bootstrap, interface, gate, CI        | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #1 |
+| 2    | Core, canonical schema, API image     | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #2 |
+| 3    | Ingest framework + FJC connector      | Fable 5.1      | Claude Code  | Effort Max     | On       | New  | Complete — PR #4 |
+| 4    | Public API v1                         | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #5 |
+| 5    | Web foundation                        | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #6 |
+| 6    | QA + verify_phase01.py                | Claude Opus 5  | Claude Code  | Effort Max     | On       | New  | Complete — PR #10 |
+| V1   | Bootstrap scope                       | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V2   | Core and schema scope                 | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V3   | Ingest scope                          | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V4   | API scope                             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V5   | Web scope                             | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
+| V6   | CI integration                        | CI: phase-verify.yml | --   | --             | --       | --   | -- |
 
 Backups (same platform rules, different provider): GPT-5.6 Sol on
 Codex at Intelligence Extra High for Steps 2 and 3; GPT-5.3 Codex on

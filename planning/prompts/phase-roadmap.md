@@ -21,11 +21,15 @@ Step 0 — refresh the planning kit so the templates and catalog are
 current. Run `pip install -U roadmodel && roadmodel export-kit . --force`
 (where roadmodel is not installed, run
 `scripts/export-planning-kit.sh .` instead). Then open
-`planning/templates/phase-roadmap-template.md` and confirm its Stage 6
-reads "DISPOSE OF EVERY FINDING, DECLARE COMPLETION, THEN NEW
-CONVERSATION". If it instead tells you to put findings in a
-"Follow-ups (non-blocking)" note after the completion line, STOP and
-tell me the kit is stale — do not write the roadmap from it.
+`planning/templates/phase-roadmap-template.md` and confirm its Stage 3
+reads "OPEN THE PR, THEN MARK THE STEP", its Stage 6 reads "DISPOSE
+OF EVERY FINDING, DECLARE COMPLETION, THEN NEW CONVERSATION", and its
+Step 1 has `**Status:** Not started` directly under the `## Step 1`
+heading. If Stage 3 is a bare "OPEN THE PR", Stage 6 tells you to put
+findings in a "Follow-ups (non-blocking)" note after the completion
+line, a step's Status line sits after its `**Deploys:**` line, or its
+Settings tables have no `Backup` row, STOP
+and tell me the kit is stale — do not write the roadmap from it.
 
 Step 1 — write `{{OUTPUT}}` from
 `@planning/templates/phase-roadmap-template.md`, expanding the
@@ -39,13 +43,17 @@ selector in `@planning/model-selector.txt` (prices from
 `@planning/model-tier-cost-scale.md`, display rules from
 `@planning/settings-display.md`) against `@planning/user-context.md`.
 You are the engine — do not call any external API. Honor every
-availability exclusion in the selector, and include a backup model per
-step.
+availability exclusion in the selector, and write each step's backup
+model into its Settings table's Backup row, with the backup's own
+platform and dial.
 
 Honor the template's style rules: 80-column prose, zero `{{...}}`
-tokens left, every `<task>` block carrying the full `<lifecycle>` and
-`<security>` blocks verbatim, and a Post-Implementation Verification
-section.
+tokens left, `**Status:** Not started` directly under the title and
+directly under every `## Step` heading (the step's own PR flips it and
+adds ✅ to the heading — Status rule), a Status column in the Summary
+Table, every `<task>` block
+carrying the full `<lifecycle>` and `<security>` blocks verbatim, and
+a Post-Implementation Verification section.
 
 When the file is written, reply with its path and a one-paragraph
 summary of the steps and their models. Do not start Step 1 of the

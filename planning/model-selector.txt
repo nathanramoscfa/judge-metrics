@@ -49,10 +49,15 @@
     decision; only the settings vocabulary differs):
     - Frontier Claude model on Claude Code — the surface exposes a discrete
       effort dial and an extended-thinking toggle, so recommend the model at
-      `EFFORT: Max` (or `Ultracode` when the task warrants it) with
-      `THINKING: On`. Emit NO Max Mode line: Claude Code has no such control.
+      the EFFORT the `<thinking-context>` complexity ladder yields (e.g.
+      `EFFORT: High` for a High-complexity task; `Max` only for ceiling-class
+      work or under an `uncapped` consumption-headroom posture; `Ultracode`
+      only when the task warrants it) with `THINKING: On`. Emit NO Max Mode
+      line: Claude Code has no such control.
     - Frontier GPT model on Codex — the surface exposes reasoning effort only,
-      so recommend the model at `EFFORT: XHigh`. Emit no Max Mode line.
+      so recommend the model at the ladder's level (e.g. `EFFORT: High`, or
+      `XHigh` for the novel-problem / multi-step-proof conditions). Emit no
+      Max Mode line.
     - Frontier model on Cursor — the surface exposes Max Mode and NO thinking
       dial, so recommend the model with `MAX MODE: On` and emit no EFFORT line.
     In every case the rule is identical: name the best-fit model, then emit
@@ -78,6 +83,14 @@
       lowest-tier model that is still an ADEQUATE fit for the task (a mid-tier
       Sonnet-class model over a frontier Opus-/Fable-class one when the mid-tier
       clears the bar), and the LOWEST reasoning effort that still clears it.
+      A model the user has pulled onto their OWN hardware (a FUNDED `local`
+      access method — docs/user-context.md "Local models (Ollama)") is the
+      minimum-resource path of all: $0, no subscription budget, no provider
+      tokens, no data leaving the machine. Under this posture an ADEQUATE
+      locally-pulled model beats every hosted candidate, funded or not, and
+      the gate below is CLOSED whenever such a candidate exists (condition
+      (d)); judge "adequate" one tier below the listed ratings and carry the
+      quantization caveat clause in the RATIONALE.
       Only drop to a cheaper-tier model the user pays per-token for when it is
       genuinely cheaper in real dollars AND adequate; on a quality tie a
       $0-funded model still beats new per-token spend. This is the ONE case
@@ -102,15 +115,27 @@
     worth doing when it SAVES the user something. It does not always. Apply
     this gate FIRST, before the posture rules:
 
-    Gate condition — ALL THREE must hold:
+    Gate condition — ALL FOUR must hold:
       (a) the chosen PLATFORM is subscription-funded (its `billing` is
           `subscription-included`, `subscription-pool`, or `subscription-or-key`
           satisfied by an ACTIVE subscription, not by an API key), AND
       (b) the model family under consideration is COVERED by that same
           subscription (so every candidate tier is reached at the same $0
           marginal price), AND
-      (c) the user-context does not report that subscription's budget as
-          exhausted or near-exhausted.
+      (c) the appended user-context declares a "Consumption headroom" posture
+          of `uncapped` (one declaration, covering the operator's flat
+          subscriptions) — the operator does NOT exhaust their usage pools, so
+          drawing on them costs nothing. A `capped` posture,
+          NO declared posture (the default), or a "Usage-pool status" entry
+          that reports the pool `tight` or `exhausted` all CLOSE the gate:
+          the pool is then a real budget the operator can run out of, and
+          every token a bigger model or a higher effort spends draws it down
+          faster (usage is metered by model and by effort level), AND
+      (d) NO FUNDED `local` access method reaches a model that is ADEQUATE
+          for the task — see "LOCAL MODELS AND THE GATE" below. A locally-
+          pulled model is $0 with no usage pool behind it, a different
+          funding class; when one is adequate the set is not flat and the
+          gate is CLOSED.
 
     When the gate is OPEN: out-of-pocket price is FLAT across the candidates and
     therefore CANNOT differentiate them. Tiering down buys the user NOTHING and
@@ -153,10 +178,34 @@
         Cost and Quality converge here"). NEVER manufacture an artificial
         spread by recommending a model the task does not warrant.
 
-    When the gate is CLOSED — any per-token path, an exhausted subscription
-    budget, or a candidate set that straddles funded and unfunded models — the
-    three posture rules above apply UNCHANGED. Tiering down and effort-down are
-    correct there, because they save real dollars.
+    When the gate is CLOSED — any per-token path, a `capped` (or undeclared)
+    consumption headroom, a pool reported `tight` or `exhausted`, or a
+    candidate set that straddles funded and unfunded models — the three
+    posture rules above apply UNCHANGED. Tiering down and effort-down are
+    correct there, because they save something real: dollars on a per-token
+    path, or weekly usage-pool budget on a flat subscription whose cap the
+    operator can hit. Under a binding cap and a `cheap` or `balanced`
+    posture, task SIMPLICITY IS the primary reason to down-tier AND
+    down-effort — a bounded, well-specified step on a mid-tier model at a
+    moderate effort leaves pool for the steps that genuinely need the
+    frontier model at a high effort. Under `best` the frontier model is
+    still held and only EFFORT follows the ladder.
+
+    LOCAL MODELS AND THE GATE. A FUNDED `local` access method (billing `local`
+    in `<access-methods>`: weights the operator has pulled onto their own
+    hardware, declared in docs/user-context.md) is NOT subscription funding —
+    it is $0 with no usage pool behind it, a DIFFERENT funding class. A
+    candidate set that contains an ADEQUATE locally-pulled model therefore
+    straddles two funding classes, and the gate is CLOSED for it: tiering
+    down to that model does save something (every subscription or per-token
+    token the task would otherwise consume, and the data never leaves the
+    machine). So under `cheap`, an adequate locally-pulled model reached via
+    its funded `local` method IS the minimum-resource pick and wins over a
+    subscription-funded model of a higher tier; under `balanced` it competes
+    as a $0-funded model per that bullet; under `best` quality wins as usual.
+    Every local pick carries the quantization caveat clause
+    (`<access-selection>` Step C) — "adequate" is judged one tier below the
+    listed ratings.
 
     Across the three priorities, when the gate is CLOSED and the chosen model is
     HELD, reasoning effort is the cost-vs-quality axis: Cost = lowest-adequate,
@@ -191,10 +240,25 @@
       IS a real cost (a usage cap the user can hit, or per-token spend), so effort
       stays the cost-vs-quality lever exactly as the budget-priority rules above
       define it: Cost = lowest-adequate, Balanced = sensible, Quality =
-      highest-useful.
-    This posture NEVER changes WHICH model is picked (that remains the
-    budget-priority + `<access-selection>` decision) — it only sets how much
-    reasoning effort each already-chosen pick runs at.
+      highest-useful. Concretely, the `<thinking-context>` complexity ladder
+      is the FINAL value, not a floor: Low → `Low`, Medium → `Medium`, High →
+      `High`, novel-problem / multi-step-proof → `XHigh`; `Max` is reserved
+      for ceiling-class tasks (or a Quality posture on a max-capable model),
+      and `Ultracode` stays gated on task warrant. A flat subscription is
+      `capped` whenever its operator has hit, or projects to hit, its weekly
+      or session cap in the current period — a top-price tier does NOT by
+      itself make a user `uncapped`; only their actual consumption does.
+      `capped` also CLOSES the FLAT-FUNDING GATE (condition (c)), because a
+      pool the operator can exhaust is drawn down faster by a bigger model
+      just as it is by a higher effort.
+    The headroom posture governs the EFFORT axis directly. It touches WHICH
+    model is picked only through the FLAT-FUNDING GATE: `uncapped` satisfies
+    gate condition (c), so on a covered subscription the gate may open and HOLD
+    the capability tier on every posture (the Cost and Quality picks may then
+    legitimately converge on the frontier model); `capped` closes the gate so
+    the ordinary budget-priority tier ladder applies. Neither posture picks a
+    model by itself — that remains the budget-priority + `<access-selection>`
+    decision.
   </objective>
 
   <pricing-context>
@@ -300,22 +364,22 @@
       `/effort` level with documented values `low`, `medium`, `high`,
       `xhigh`, `max` (shown in the UI as Low / Medium / High / Extra
       High / Max). Not every model supports every level — Opus 5,
-      Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, and Fable 5.1 expose the
-      full low/medium/high/xhigh/max range; Opus 4.6 and Sonnet 4.6 top
-      out at `max` without an `xhigh` step. An effort level a model does
-      not support falls back to the highest supported level at or
-      below it. Default effort is `high` on every model that supports
-      effort (Opus 4.7's default is `xhigh`). Extended thinking can
-      also be toggled with Option+T / Alt+T, `alwaysThinkingEnabled`,
-      or `MAX_THINKING_TOKENS=0`. Claude Code 2.1.257 ships Claude
-      Fable 5.1 as the new default Fable model (1M context, $10/$50
-      per Mtok with $0.25/Mtok cache reads); 2.1.258 is a hotfix for
-      a launch crash on macOS 12. 2.1.259 adds `managedMcpServers`
-      policy, `--permission-prompts none` for unattended headless
-      hosts, and GitLab MR recognition. 2.1.260 adds an inline
-      `/diff` panel, prompt-cache-miss diagnostics in `/cost`, and a
-      text form of `/advisor` for headless sessions. 2.1.261 adds
-      `/skill-doctor` for skill context accounting,
+      Opus 5.5, Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, and Fable 5.1
+      expose the full low/medium/high/xhigh/max range; Opus 4.6 and
+      Sonnet 4.6 top out at `max` without an `xhigh` step. An effort
+      level a model does not support falls back to the highest
+      supported level at or below it. Default effort is `high` on every
+      model that supports effort, except Opus 4.7 (`xhigh`) and Opus 5.5
+      (`medium`). Extended thinking can also be toggled with Option+T /
+      Alt+T, `alwaysThinkingEnabled`, or `MAX_THINKING_TOKENS=0`. Claude
+      Code 2.1.257 ships Claude Fable 5.1 as the new default Fable model
+      (1M context, $10/$50 per Mtok with $0.25/Mtok cache reads);
+      2.1.258 is a hotfix for a launch crash on macOS 12. 2.1.259 adds
+      `managedMcpServers` policy, `--permission-prompts none` for
+      unattended headless hosts, and GitLab MR recognition. 2.1.260
+      adds an inline `/diff` panel, prompt-cache-miss diagnostics in
+      `/cost`, and a text form of `/advisor` for headless sessions.
+      2.1.261 adds `/skill-doctor` for skill context accounting,
       `bashOutputMaxChars` and `taskOutputMaxChars` settings, and
       organization-policy load diagnostics in `/status`. 2.1.263 is a
       bug-fix / reliability release with no effort/thinking surface
@@ -337,18 +401,43 @@
       effort/thinking surface changes. 2.1.270 is a bug-fix release
       restoring correct permission handling for read-only git commands
       in long-running sessions; no effort/thinking surface changes.
-      2.1.271–2.1.273 are reliability / bug-fix releases (Remote
-      cloud/self-hosted fast mode, `/config` mouse support, per-command
-      Bash `allowed_domains`, LLM-gateway request-hint headers via
-      `CLAUDE_CODE_GATEWAY_HINT_HEADERS`, and assorted fixes) with no
-      changes to the `/effort` vocabulary or extended-thinking controls.
-      The `/effort` vocabulary itself is unchanged.
+      2.1.271–2.1.278 are reliability / bug-fix / plugin-safety /
+      LLM-gateway / VS Code / Claude apps / Code Review / AGENTS.md /
+      auto-mode-classifier-billing releases (Remote cloud/self-hosted
+      fast mode, `/config` mouse support, per-command Bash
+      `allowed_domains`, LLM-gateway request-hint headers via
+      `CLAUDE_CODE_GATEWAY_HINT_HEADERS`, memory-pressure warnings,
+      `CLAUDE_CODE_MCP_STARTUP_WAIT_MS`, `effort` attribute on the
+      `claude_code.llm_request` OTel trace span, syncing of claude.ai
+      skills/plugins into terminal sessions, a send-now key
+      (ctrl+enter, or ctrl+x ctrl+s) that flushes queued messages,
+      a 2.1.276 hotfix for a proxy/gateway 400 error on the
+      `advisor_20260301` input tag introduced in 2.1.275, 2.1.277
+      adding AGENTS.md fallback support in projects with no CLAUDE.md
+      plus assorted gateway/proxy/plugin/reliability fixes, and
+      2.1.278 changing auto mode on Claude API / Enterprise / Bedrock
+      / Vertex / Foundry / gateways to default to the server-side
+      classifier that does not charge for classifier overhead — with
+      an `Auto mode server` row in `/status` and a
+      `CLAUDE_CODE_AUTO_MODE_SERVER=0` opt-out on Bedrock, Vertex,
+      Foundry and gateways) with no changes to the `/effort`
+      vocabulary or extended-thinking controls. Claude Code 2.1.280
+      adds Claude Opus 5.5 (`claude-opus-5-5`) as the new default
+      Opus model (1M context, $4/$20 per Mtok with $0.20/Mtok cache
+      reads); Opus 5.5 exposes the full low/medium/high/xhigh/max
+      effort range with default effort `medium` (below the `high`
+      default of every other effort-capable model, Opus 4.7's `xhigh`
+      aside). 2.1.280 also stops carrying a saved pre-per-model
+      `/effort` onto newly released models (they start at the
+      documented default until you pick a level) and stops Opus 4.7,
+      Opus 4.8 and Fable 5 from holding their launch-default effort
+      over an explicit `/effort`, `effortLevel`, project or managed
+      setting; the `/effort` vocabulary itself is unchanged.
     - OpenAI (Codex, OpenAI API, ChatGPT advanced controls):
-      `reasoning_effort` knob — `minimal`, `low`, `medium`, `high`,
-      `xhigh` (the top "Extra High" tier; model-dependent). Higher
-      effort spends more reasoning tokens before visible output.
-      Codex's plan-mode reasoning-effort variant additionally accepts
-      `none` (plan-mode-only, off).
+      `reasoning_effort` knob — `low`, `medium`, `high`, `xhigh`, `max`,
+      `ultra`. Codex's plan-mode `plan_mode_reasoning_effort` variant
+      accepts the same six values. Higher effort spends more reasoning
+      tokens before visible output.
     - Gemini (Google API, Gemini CLI): a discrete thinking-level
       knob — `minimal`, `low`, `medium`, `high` — shared across the
       3.x and 2.5 model generations. Not every model supports every
@@ -416,29 +505,30 @@
 
     - Claude Code `/effort`: `low` → `Low`; `medium` → `Medium`;
       `high` → `High` (the docs' default effort on every model that
-      supports effort); `xhigh` → `XHigh` (the "Extra High" UI
-      label); `max` → `Max` (the top "Max" UI level, ABOVE "Extra
-      High") ONLY on models whose documented row exposes a `max` step
-      above `xhigh` — Opus 5, Opus 4.7, Opus 4.8, Sonnet 5, Fable 5,
-      and Fable 5.1. On models that reach `max` with NO `xhigh` step
-      (Opus 4.6, Sonnet 4.6), `max` is their Extra-High top and maps
-      to `XHigh`, not `Max`. Extended thinking disabled (Option+T /
-      Alt+T, `MAX_THINKING_TOKENS=0`, or `alwaysThinkingEnabled`
-      false) → `Off`.
-    - OpenAI `reasoning_effort`: `minimal` → `Off`; `low` → `Low`;
-      `medium` → `Medium`; `high` → `High`; `xhigh` / `extra-high`
-      (the top "Extra High" tier, model-dependent — the UI synonym
-      `extra-high` and the config token `xhigh` are the same tier) →
-      `XHigh`. OpenAI's scale tops out at `xhigh`, so no OpenAI level
-      maps to `Max` (the `Max` slot is reserved for the above-`xhigh`
-      step that only the Claude `max`-capable models reach).
+      supports effort, Opus 4.7 and Opus 5.5 aside); `xhigh` → `XHigh`
+      (the "Extra High" UI label); `max` → `Max` (the top "Max" UI
+      level, ABOVE "Extra High") ONLY on models whose documented row
+      exposes a `max` step above `xhigh` — Opus 5, Opus 5.5, Opus 4.7,
+      Opus 4.8, Sonnet 5, Fable 5, and Fable 5.1. On models that reach
+      `max` with NO `xhigh` step (Opus 4.6, Sonnet 4.6), `max` is their
+      Extra-High top and maps to `XHigh`, not `Max`. Extended thinking
+      disabled (Option+T / Alt+T, `MAX_THINKING_TOKENS=0`, or
+      `alwaysThinkingEnabled` false) → `Off`.
+    - OpenAI `reasoning_effort`: `low` → `Low`; `medium` → `Medium`;
+      `high` → `High`; `xhigh` / `extra-high` (the "Extra High" tier —
+      the UI synonym `extra-high` and the config token `xhigh` are the
+      same tier) → `XHigh`; `max` → `Max` (the top step above `xhigh`
+      on the Codex `reasoning_effort` scale, on par with the Claude
+      `max`-capable models); `ultra` → `Ultracode` (the above-`max` top
+      rung on the Codex scale, session-wide multi-agent orchestration
+      analogous to Claude Code's `ultracode`).
     - Gemini thinking levels: `minimal` → `Off`; `low` → `Low`;
       `medium` → `Medium`; `high` → `High` (Gemini tops out at `high`
       — no `xhigh` or `max` tier). `minimal` maps to `Off` for the
-      same reason OpenAI's `minimal` does: it sits BELOW the lowest
-      EFFORT rung, so reporting it as `Low` would overstate the
-      reasoning the operator actually gets. Thinking turned off, on
-      models that allow it (e.g. Gemini 2.5 Flash-Lite), → `Off`.
+      same reason it sits BELOW the lowest EFFORT rung: reporting it
+      as `Low` would overstate the reasoning the operator actually
+      gets. Thinking turned off, on models that allow it (e.g. Gemini
+      2.5 Flash-Lite), → `Off`.
     - DeepSeek: thinking `disabled` → `Off`; `enabled` + effort
       `low` → `Low`; `enabled` + effort
       `high` → `High`; `enabled` + effort `max` → `XHigh` (DeepSeek has
@@ -513,31 +603,35 @@
       (`Low` → `Medium`, `Medium` → `High`, `High` → `XHigh`).
     - Ceiling — `Max`: the top per-call level, used ONLY on models whose
       `<model-options>` row exposes a `max` step ABOVE `xhigh` (Opus 5,
-      Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, Fable 5.1). On such a model,
-      prefer `Max` over `XHigh` when the appended user-context declares a
-      Quality (`best`) budget posture, or for the most demanding tasks
-      (the `XHigh` conditions above taken to their limit). Under a Cost
-      (`cheap`) budget posture, never emit `Max` and do not exceed the
-      lowest level that clears the task — UNLESS the `<objective>`
-      FLAT-FUNDING GATE is OPEN or the CONSUMPTION-HEADROOM posture is
-      `uncapped`, EITHER of which suspends that floor and makes the top
-      useful rung the default on every posture. Absent any budget
+      Opus 5.5, Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, Fable 5.1). On such
+      a model, prefer `Max` over `XHigh` when the appended user-context
+      declares a Quality (`best`) budget posture, or for the most demanding
+      tasks (the `XHigh` conditions above taken to their limit). Under a
+      Cost (`cheap`) budget posture, never emit `Max` and do not exceed the
+      lowest level that clears the task — UNLESS the CONSUMPTION-HEADROOM
+      posture is `uncapped` (which is also the only thing that OPENS the
+      `<objective>` FLAT-FUNDING GATE), in which case that floor is
+      suspended and the top useful rung is the default on every posture.
+      Under `capped` (the default) the floor stands even when the platform
+      is subscription-funded: the weekly pool is what is being spent, and
+      effort is metered against it. Absent any budget
       posture, `XHigh` stays the default ceiling and `Max` is reserved
       for the genuinely hardest tasks on max-capable models. Never emit
       `Max` for a model whose row lacks a `max`-above-`xhigh` step.
     - Top rung — `Ultracode`: above `Max`, Claude Code only, per the
       `<orchestration-context>` decision rule.
-    - FLAT-FUNDING / UNCAPPED OVERRIDE (apply LAST, and apply it every time —
-      do not stop at the complexity bullets above). When the `<objective>`
-      FLAT-FUNDING GATE is OPEN, or the CONSUMPTION-HEADROOM posture is
-      `uncapped`, RAISE the level selected above to the TOP USEFUL rung the
+    - UNCAPPED OVERRIDE (apply LAST, and ONLY when the appended user-context
+      declares a CONSUMPTION-HEADROOM posture of `uncapped`). Under that
+      posture RAISE the level selected above to the TOP USEFUL rung the
       chosen model and surface support (`Max`, or the surface's top step where
-      there is no `Max`). Under either condition the complexity ladder above
-      sets only a FLOOR, never the final value: effort costs the operator
-      nothing, so there is no reason to stop at `High` on a High-complexity
-      task. Ultracode remains gated on task warrant (see
-      `<orchestration-context>`) rather than on funding, so this override
-      raises to `Max`, not automatically to `Ultracode`.
+      there is no `Max`): the complexity ladder above is then only a FLOOR,
+      because effort costs that operator nothing. Under `capped`, or when no
+      posture is declared, the ladder value above IS the final value — do not
+      raise it, even when the FLAT-FUNDING GATE's other conditions hold and
+      even on a subscription-funded platform: the gate is CLOSED there and
+      the weekly pool is metered by effort. Ultracode remains gated on task
+      warrant (see `<orchestration-context>`) rather than on funding, so this
+      override raises to `Max`, not automatically to `Ultracode`.
     - THINKING follows: emit `THINKING: On` whenever the surface has a
       toggle and reasoning is wanted (every case above). Emit
       `THINKING: Off` only when the task genuinely wants extended
@@ -551,7 +645,7 @@
     EFFORT, THINKING, and Max Mode are orthogonal, and each is emitted
     only where its surface has it: a Cursor call carries `MAX MODE: On`
     and NO effort or thinking line (Cursor exposes no dial); a Claude
-    Code call carries `EFFORT: Max` + `THINKING: On` and NO Max Mode
+    Code call carries `EFFORT: High` + `THINKING: On` and NO Max Mode
     line (Anthropic's surface exposes effort and thinking, not Max
     Mode).
   </thinking-context>
@@ -674,6 +768,12 @@
       Newly-auto-added models receive this code until the maintainer
       fills it in; the auto-add rule in `update/prompt.md` emits a
       warning so these don't ship silently.
+    - `local` — valid on a `<method>`'s `provider-jurisdiction` ONLY,
+      never on a `<model>`: the weights run on the operator's own
+      hardware and no data leaves the machine, so the method passes
+      every allowed-jurisdictions list (`<access-selection>` Step A0).
+      The MODEL keeps its maker's jurisdiction and Step 0b still
+      applies to it.
 
     Default allowed list (assumed when `docs/user-context.md` carries
     no `<allowed-jurisdictions>` section):
@@ -701,7 +801,11 @@
     2026-05-21 roadmodel exposes only fixed-engine models. Users
     who want routing behavior should pick a specific fixed engine
     directly and accept that the underlying provider may pool-route
-    among models of the same family.
+    among models of the same family. An aggregator as an ACCESS METHOD
+    (the `openrouter` entry in `<access-methods>`) is a different
+    matter: the MODEL is still a fixed catalogued engine chosen by
+    `<selection-algorithm>`, only the endpoint that serves it is the
+    aggregator's, so the model-level filter keeps its meaning.
   </jurisdiction-context>
 
   <availability-context>
@@ -742,8 +846,9 @@
 
     - LMArena — human-preference Elo across general chat (chatbot-arena.com)
     - Artificial Analysis Intelligence Index — composite of 10 evaluations
-      including GPQA Diamond, Humanity's Last Exam, SciCode,
-      Terminal-Bench Hard, and AA-Omniscience
+      (v4.3: Humanity's Last Exam, SciCode, Terminal-Bench 4.0,
+      AA-Omniscience, AA-LCR, AA-Briefcase, GDPval-AA, AutomationBench-AA,
+      GDP.pdf, CritPt); scores are NOT comparable across index versions
     - Aider polyglot — coding across C++, Go, Java, JavaScript, Python, Rust
     - SWE-bench Verified — real GitHub issues, 500-instance human-filtered
       subset; gold standard for software-engineering capability
@@ -790,7 +895,9 @@
     sources above, and a free-text best-for description.
 
     Tier ratings:
-    - S — top-1 or top-2 globally in this category
+    - S — frontier-class: at or within reach of the best in this category
+      on the benchmarks in `<benchmark-sources>`; a class several models
+      share, never a single winner
     - A — strong, reliable, near-frontier
     - B — competent for the category
     - C — limited; usable only for trivial work in the category
@@ -800,177 +907,186 @@
       <model id="opus-4.7" name="Opus 4.7"
              input-price-per-1m="$5.00" output-price-per-1m="$25.00"
              jurisdiction="us"
-             tier-coding="S" tier-planning="S" tier-agentic="A"
-             tier-multimodal="A" tier-long-context="S" tier-knowledge="S"
+             tier-coding="A" tier-planning="S" tier-agentic="A"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 53.5 (#2); LMArena Text #5 (Elo 1481.7); LMArena WebDev #5 (Elo 1556.9); AA-Omniscience 26.2 (#2)"
+             headline-benchmarks="AA Intelligence Index 40.7 (max); LMArena Text #12 (Elo 1483.4); LMArena WebDev #5 (Elo 1556.9); AA-Omniscience 26.2 (#2)"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
              best-for="Deepest abstract and scientific reasoning, highest coherence on long unsupervised multi-step agent chains, best long-context recall at 1M tokens, 128K output ceiling for large single-shot deliverables, and novel problem-solving where high ambiguity demands creative judgment over pattern-matching" />
       <model id="opus-4.8" name="Opus 4.8"
              input-price-per-1m="$5.00" output-price-per-1m="$25.00"
              jurisdiction="us"
-             tier-coding="S" tier-planning="S" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="S" tier-knowledge="S"
+             tier-coding="A" tier-planning="S" tier-agentic="A"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 55.7 (#1); HLE 45.7%; Terminal-Bench Hard 58.3 (top-tier); τ²-bench retail pass_1 94.4%"
+             headline-benchmarks="AA Intelligence Index 41.8 (max); HLE 48.7%; Terminal-Bench 2.1 84.6 (top-tier); τ²-bench retail pass_1 94.4%"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-4-8-fast`) requires Max Mode on legacy request-based plans; Fast mode is 3x lower per-token pricing than Opus 4.7 fast mode; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
              best-for="Anthropic's Opus 4.7 successor at the same very-high tier pricing — placeholder tier ratings inherited from opus-4.7 pending benchmark coverage; the 3x cheaper fast-mode per-token rate (vs opus-4.7 fast mode) is the headline cost-structure change to surface in the next editorial pass" />
-      <model id="claude-opus-5" name="Claude Opus 5"
+      <model id="claude-opus-5" name="Opus 5"
              input-price-per-1m="$5.00" output-price-per-1m="$25.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="S" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="S" tier-knowledge="S"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 60.7 (max); HLE 52.6% (max); Terminal-Bench 2.1 89.1 (max); τ²-bench banking pass_1 48.7%"
-             pricing-notes="Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-fast`) requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
-             best-for="Anthropic's Opus 4.8 successor at the same very-high tier pricing — the new default Opus in Claude Code 2.1.219+ (1M context, fast mode at $10/$50 per Mtok) that Anthropic positions as approaching Fable 5's frontier intelligence at half the price; placeholder tier ratings inherited from opus-4.8 with benchmark-grounded confirmation from AA Intelligence Index (60.7 max), HLE (52.6% max), Terminal-Bench 2.1 (89.1), and τ²-bench banking (48.7% pass_1). Pick over opus-4.8 when both are available since Opus 5 supersedes 4.8 in the same series per the equal-output-price replacement rule." />
+             headline-benchmarks="AA Intelligence Index 50.8 (max); HLE 54.9% (max); Terminal-Bench 2.1 89.1 (max); τ²-bench banking pass_1 42.1%"
+             pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-fast`) requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
+             best-for="Anthropic's Opus 4.8 successor at the same very-high tier pricing — the new default Opus in Claude Code 2.1.219+ (1M context, fast mode at $10/$50 per Mtok) that Anthropic positions as approaching Fable 5's frontier intelligence at half the price; placeholder tier ratings inherited from opus-4.8 with benchmark-grounded confirmation from AA Intelligence Index (50.8 max), HLE (54.9% max), Terminal-Bench 2.1 (89.1), and τ²-bench banking (42.1% pass_1). Pick over opus-4.8 when both are available since Opus 5 supersedes 4.8 in the same series per the equal-output-price replacement rule." />
       <model id="claude-fable-5" name="Fable 5"
              input-price-per-1m="$10.00" output-price-per-1m="$50.00"
              jurisdiction="us"
-             tier-coding="S" tier-planning="S" tier-agentic="S"
-             tier-multimodal="S" tier-long-context="S" tier-knowledge="S"
+             tier-coding="A" tier-planning="S" tier-agentic="A"
+             tier-multimodal="S" tier-long-context="A" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 59.9 (#1); HLE 53.3% (#1); Terminal-Bench Hard 62.9 (#1)"
+             headline-benchmarks="AA Intelligence Index 49.6 (max); HLE 55.5% (max); Terminal-Bench Hard 62.9 (top-tier); τ²-bench retail pass_1 98.5%"
              pricing-notes="Hidden by default; Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; About 2x the cost of Claude Opus 5; Requires Max Mode on legacy request-based plans"
-             best-for="Anthropic's new top-of-line Fable family flagship (no predecessor) — S-tier across coding, planning, agentic, multimodal, long-context, and knowledge, leading HLE (53.3%) and Terminal-Bench Hard (62.9) with state-of-the-art vision and a 1M default context; about 2x the cost of Opus 5 and latency-slow (output ~64 tokens/s), so reserve for the hardest reasoning, agentic, and vision work where maximum capability outweighs cost and speed; security-guardrail trips auto-route to Opus. Tier profile sourced from the catalog cron's 2026-06-11 dry-run reconciliation against the live benchmark sources (τ²-bench retail not yet published for this model), pending editorial confirmation in the next refresh." />
+             best-for="Anthropic's new top-of-line Fable family flagship (no predecessor) — S-tier across coding, planning, agentic, multimodal, long-context, and knowledge, leading HLE (55.5%) and Terminal-Bench Hard (62.9) with state-of-the-art vision and a 1M default context; about 2x the cost of Opus 5 and latency-slow (output ~69 tokens/s), so reserve for the hardest reasoning, agentic, and vision work where maximum capability outweighs cost and speed; security-guardrail trips auto-route to Opus. Tier profile sourced from the catalog cron's 2026-06-11 dry-run reconciliation against the live benchmark sources (τ²-bench retail not yet published for this model), pending editorial confirmation in the next refresh." />
       <model id="claude-fable-5.1" name="Fable 5.1"
              input-price-per-1m="$10.00" output-price-per-1m="$50.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="S" tier-agentic="S"
              tier-multimodal="S" tier-long-context="S" tier-knowledge="S"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 56.8 (max); HLE 59.1% (max); Terminal-Bench 2.1 91.4 (max); τ²-bench banking pass_1 47.2%"
-             pricing-notes="Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; Prompt-cache reads are $0.25/M, 75% below the standard cache-read rate; About 2x the cost of Claude Opus 5 on input and output; Requires Max Mode on legacy request-based plans"
-             best-for="Anthropic's Fable 5 successor at the same very-high tier pricing ($10/$50) — placeholder S-tier ratings inherited from fable-5 pending broader editorial review, with benchmark-grounded confirmation from AA Intelligence Index (56.8 max), HLE (59.1% max), and Terminal-Bench 2.1 (91.4 max). The headline cost-structure change is a 75% reduction in prompt-cache-read pricing ($0.25/M vs Fable 5's $1/M), making sustained-context sessions materially cheaper; pick over fable-5 when both are available since 5.1 supersedes 5 in the same series per the equal-output-price replacement rule." />
+             headline-benchmarks="AA Intelligence Index 53.4 (max); HLE 59.1% (max); Terminal-Bench 2.1 91.4 (max); τ²-bench banking pass_1 47.2%"
+             pricing-notes="Requires data retention approval for Enterprise customers, Teams and individual customers with Privacy Mode enabled; Anthropic stores agent input and output data for harm-prevention processes; this data is not used to train or improve Anthropic models or products; Requests that trip a security guardrail are automatically routed to Claude Opus; Prompt-cache reads are $0.25/M, 75% below the standard cache-read rate; About 2.5x the cost of Claude Opus 5.5 on input and output; Requires Max Mode on legacy request-based plans"
+             best-for="Anthropic's Fable 5 successor at the same very-high tier pricing ($10/$50) — placeholder S-tier ratings inherited from fable-5 pending broader editorial review, with benchmark-grounded confirmation from AA Intelligence Index (53.4 max), HLE (59.1% max), and Terminal-Bench 2.1 (91.4 max). The headline cost-structure change is a 75% reduction in prompt-cache-read pricing ($0.25/M vs Fable 5's $1/M), making sustained-context sessions materially cheaper; pick over fable-5 when both are available since 5.1 supersedes 5 in the same series per the equal-output-price replacement rule." />
       <model id="gpt-5.5" name="GPT-5.5"
              input-price-per-1m="$5.00" output-price-per-1m="$30.00"
              jurisdiction="us"
-             tier-coding="S" tier-planning="S" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
+             tier-coding="A" tier-planning="S" tier-agentic="A"
+             tier-multimodal="A" tier-long-context="S" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 54.8 (#1); LMArena Text Elo 1465.4 (#22); HLE 44.3%; AA-Omniscience 20.1 (#3)"
+             headline-benchmarks="AA Intelligence Index 38.4 (xhigh); LMArena Text Elo 1465.6 (#31); HLE 45.8%; AA-Omniscience 20.1 (#3)"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Agentic and reasoning capabilities; More token-efficient than GPT-5.4 on comparable tasks; Improved persistence on long-running tasks; Fast mode is available at higher rates; Long context supports up to 1M tokens with 2x input pricing"
              best-for="OpenAI's most capable frontier model and highest-cost GPT offering, best suited for the most demanding reasoning, long-horizon planning, and tasks where maximum intelligence is required regardless of cost — strongest single model for hard coding, agentic execution, and reasoning, but verify factual claims due to elevated hallucination" />
     </tier>
     <tier cost="high">
+      <model id="claude-opus-5-5" name="Opus 5.5"
+             input-price-per-1m="$4.00" output-price-per-1m="$20.00"
+             jurisdiction="us"
+             tier-coding="S" tier-planning="S" tier-agentic="S"
+             tier-multimodal="A" tier-long-context="S" tier-knowledge="S"
+             tier-speed="D"
+             headline-benchmarks="AA Intelligence Index 57.6 (max); HLE 61.4% (max); SciCode 66.9 (max); AA-LCR 0.847"
+             pricing-notes="Requires Max Mode on legacy request-based plans; Fast mode (`claude-opus-5-5-fast`) requires Max Mode on legacy request-based plans; 20% cheaper than Claude Opus 5 on input and output; Prompt-cache reads are $0.20/M (0.05x input), down from 0.10x input on Claude Opus 5; Regional and US-only endpoints are priced 10% higher ($4.40/M input, $22/M output); Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
+             best-for="Anthropic's Opus 5 successor at high-tier pricing ($4/$20, 20% cheaper than Opus 5) — the new default Opus in Claude Code 2.1.280+ (1M context, $0.20/M cache reads). Placeholder S-tier ratings inherited from opus-5 with benchmark-grounded confirmation from AA Intelligence Index (57.6 max, currently the highest-scoring Anthropic model at max effort), HLE (61.4% max), and SciCode (66.9); pick over opus-5 when both are available since 5.5 supersedes 5 in the same series at a lower output price per the equal-or-lower-output-price replacement rule." />
       <model id="gpt-5.6-sol" name="GPT-5.6 Sol"
              input-price-per-1m="$4.00" output-price-per-1m="$20.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="S" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="S"
+             tier-multimodal="A" tier-long-context="S" tier-knowledge="A"
              tier-speed="D"
-             headline-benchmarks="AA Intelligence Index 58.9 (max) / 57.7 (xhigh); HLE 47.2% (max); Terminal-Bench 2.1 88.0; τ²-bench banking pass_1 33.0%"
+             headline-benchmarks="AA Intelligence Index 47.0 (max) / 44.0 (xhigh); HLE 49.5% (max); Terminal-Bench 2.1 88.0; τ²-bench banking pass_1 44.3%"
              pricing-notes="Requires Max Mode on legacy request-based plans; Agentic and reasoning capabilities; Fast mode is available at 2x pricing; Long context supports up to 1M tokens with 2x input pricing; Fast mode is available for long context (>272k) at 2x Fast input pricing; Cache writes are billed at 1.25x the uncached input rate; Promotional pricing through November 21, 2026"
-             best-for="OpenAI's GPT-5.6 Sol flagship — now at high-tier pricing ($4/$20) under promotional pricing through November 21, 2026 (was $5/$30 at initial listing), leading Artificial Analysis Intelligence Index (58.9) and posting Terminal-Bench 2.1 88.0 and HLE 47.2% at max effort; pick for the most demanding reasoning, agentic execution, and knowledge work at the high tier when a GPT-family top model is preferred over Anthropic's Opus/Fable lineage." />
+             best-for="OpenAI's GPT-5.6 Sol flagship — now at high-tier pricing ($4/$20) under promotional pricing through November 21, 2026 (was $5/$30 at initial listing), leading Artificial Analysis Intelligence Index (47.0 max) and posting Terminal-Bench 2.1 88.0 and HLE 49.5% at max effort; pick for the most demanding reasoning, agentic execution, and knowledge work at the high tier when a GPT-family top model is preferred over Anthropic's Opus/Fable lineage." />
       <model id="sonnet-4.6" name="Sonnet 4.6"
              input-price-per-1m="$3.00" output-price-per-1m="$15.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="B"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 47.2; LMArena Text Elo 1457.0 (#29); AA-Omniscience 12.4; top-ranked tool-calling on Anthropic lineage"
+             headline-benchmarks="AA Intelligence Index 30.1; LMArena Text Elo 1458.3 (#35); AA-Omniscience 12.4; top-ranked tool-calling on Anthropic lineage"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge)"
              best-for="Top-ranked tool-calling and agentic execution globally, near-Opus coding quality at 2-3x the speed, strong mathematical reasoning (89% MATH), and complex but well-structured tasks needing reliable high-throughput multi-step implementation" />
 
       <model id="gpt-5.4" name="GPT-5.4"
              input-price-per-1m="$2.50" output-price-per-1m="$15.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="S"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 51.4 (#4); LMArena Text Elo 1451.9 (#34); HLE 41.6% (xhigh); τ²-bench banking pass_1 30.3%"
+             headline-benchmarks="AA Intelligence Index 39.0 (xhigh); LMArena Text Elo 1452.6 (#41); HLE 43.7% (xhigh); τ²-bench banking pass_1 39.6%"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Agentic and reasoning capabilities; 90% discount on cached input tokens; Fast mode is 15% faster with 2x pricing; Long context supports up to 1M tokens with 2x input pricing"
              best-for="Broadest professional domain expertise (outperforms human specialists in 83% of occupations), native computer-use capability surpassing human baselines, lowest factual error rate among GPT models, and cross-domain knowledge work requiring deep real-world accuracy and grounding" />
       <model id="kimi-k3" name="Kimi K3"
              input-price-per-1m="$3.00" output-price-per-1m="$15.00"
              jurisdiction="cn"
              tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="D" tier-long-context="A" tier-knowledge="A"
+             tier-multimodal="D" tier-long-context="S" tier-knowledge="A"
              tier-speed="C"
-             headline-benchmarks="AA Intelligence Index 57.1 (max); HLE 44.3% (max); Terminal-Bench 2.1 85.0; τ²-bench banking pass_1 37.1%"
+             headline-benchmarks="AA Intelligence Index 43.6 (max); HLE 46.9% (max); Terminal-Bench 2.1 85.0; τ²-bench banking pass_1 45.9%"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge); No separate cache-write fee"
-             best-for="Moonshot's Kimi K3 flagship at high-tier pricing ($3/$15) — a strong near-frontier reasoning + coding model with 1M extended-context support at flat per-token rates and AA Intelligence Index 57.1 (max), competitive with GPT-5.6 Sol and Opus 5 on knowledge/coding indices; text-only (no multimodal) and notably slow (~37 tokens/s). Routed via Cursor's pool only; cn-jurisdiction excluded by the default allowed-jurisdictions list unless the user opts into cn." />
+             best-for="Moonshot's Kimi K3 flagship at high-tier pricing ($3/$15) — a strong near-frontier reasoning + coding model with 1M extended-context support at flat per-token rates and AA Intelligence Index 43.6 (max), competitive with GPT-5.6 Sol and Opus 5 on knowledge/coding indices; text-only (no multimodal) and notably slow (~38 tokens/s). Routed via Cursor's pool only; cn-jurisdiction excluded by the default allowed-jurisdictions list unless the user opts into cn." />
     </tier>
     <tier cost="medium">
-      <model id="claude-sonnet-5" name="Claude Sonnet 5"
+      <model id="claude-sonnet-5" name="Sonnet 5"
              input-price-per-1m="$2.00" output-price-per-1m="$10.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="S"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="A" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 53.4 (adaptive max); Terminal-Bench 2.1 80.5; τ²-bench banking pass_1 28.2%; native 1M context"
+             headline-benchmarks="AA Intelligence Index 38.2 (adaptive max); Terminal-Bench 2.1 80.5; τ²-bench banking pass_1 37.3%; native 1M context"
              pricing-notes="Requires Max Mode on legacy request-based plans; Up to 1M tokens with extended context at the same per-token rates (no long-context surcharge); Uses an updated tokenizer, so the same input can map to more tokens"
              best-for="Anthropic's Sonnet 4.6 successor at the same high-tier pricing — placeholder tier ratings inherited from sonnet-4.6 pending editorial refresh; native 1M context, updated tokenizer, and a launch promotion pricing ($2/$10) through Aug 31, 2026 that makes it a strong value pick for near-frontier coding and agentic work at the mid-cost tier when the Anthropic lineage is preferred." />
       <model id="gpt-5.3-codex" name="GPT-5.3 Codex"
              input-price-per-1m="$1.75" output-price-per-1m="$14.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="B" tier-agentic="S"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="A"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 44.3 (xhigh); HLE 39.9%; Codex lineage retains strong Terminal-Bench and SWE-bench Verified performance for autonomous coding"
+             headline-benchmarks="AA Intelligence Index 32.5 (xhigh); HLE 42.5%; Codex lineage retains strong Terminal-Bench and SWE-bench Verified performance for autonomous coding"
              pricing-notes="Hidden by default; Requires Max Mode on legacy request-based plans; Agentic and reasoning capabilities; Available reasoning effort variant is gpt-5.3-codex-high"
              best-for="Highest terminal and tool-use proficiency at the medium tier, most token-efficient autonomous coding, excels at long-running agentic sessions spanning debugging through deployment, and hard algorithmic problems requiring sustained code reasoning across languages — the cost-efficient pick for pure coding and agentic execution when an S-tier coding rating is needed" />
       <model id="gpt-5.2" name="GPT-5.2"
              input-price-per-1m="$1.75" output-price-per-1m="$14.00"
              jurisdiction="us"
              tier-coding="B" tier-planning="A" tier-agentic="B"
-             tier-multimodal="C" tier-long-context="A" tier-knowledge="A"
+             tier-multimodal="C" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 42.2 (xhigh); GPQA 90.3; LiveCodeBench 88.9; HLE 35.4%; released 2025-12-10"
+             headline-benchmarks="AA Intelligence Index 30.4 (xhigh); GPQA 90.3; LiveCodeBench 88.9; HLE 37.7%; released 2025-12-10"
              pricing-notes="Hidden by default; Agentic and reasoning capabilities; Available reasoning effort variant is gpt-5.2-high"
              best-for="Earlier-flagship GPT reasoning model (December 2025) with 400K context and broad knowledge coverage (GPQA 71.2, MMLU Pro 81.4); same medium-tier pricing as GPT-5.3 Codex but lacks Codex's autonomous-coding specialization — pick gpt-5.3-codex over gpt-5.2 for coding/agentic tasks; gpt-5.2 fits when broad reasoning at A-tier knowledge and a 400K context window are the primary need at the medium price tier" />
       <model id="gpt-5.2-codex" name="GPT-5.2 Codex"
              input-price-per-1m="$1.75" output-price-per-1m="$14.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="B" tier-agentic="S"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 40.1 (xhigh); τ²-bench retail pass_1 92.1%; SWE-bench Verified (mini-SWE-agent) 72.8%; SWE-bench Multilingual 66.3%"
+             headline-benchmarks="AA Intelligence Index 28.5 (xhigh); τ²-bench retail pass_1 92.1%; SWE-bench Verified (mini-SWE-agent) 72.8%; SWE-bench Multilingual 66.3%"
              pricing-notes="Hidden by default; Agentic and reasoning capabilities"
              best-for="OpenAI's Codex variant of GPT-5.2 at the same medium-tier pricing as gpt-5.3-codex ($1.75/$14) — placeholder Codex-lineage S-tier coding + agentic ratings pending an independent gpt-5.2-codex vs gpt-5.3-codex head-to-head; fits when a specific gpt-5.2 codebase behavior is preferred or when 5.3-codex is unavailable, otherwise prefer gpt-5.3-codex as the newer generation in the same series." />
       <model id="gpt-5.6-terra" name="GPT-5.6 Terra"
              input-price-per-1m="$2.00" output-price-per-1m="$12.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-coding="S" tier-planning="A" tier-agentic="S"
              tier-multimodal="A" tier-long-context="A" tier-knowledge="A"
              tier-speed="A"
-             headline-benchmarks="AA Intelligence Index 55.0 (max); HLE 41.8%; Terminal-Bench 2.1 88.0; Output Speed 126.9 tokens/s"
+             headline-benchmarks="AA Intelligence Index 42.1 (max); HLE 42.9%; Terminal-Bench 2.1 88.0; Output Speed 104.8 tokens/s"
              pricing-notes="Requires Max Mode on legacy request-based plans; Mid-tier GPT-5.6 variant between Sol and Luna; Agentic and reasoning capabilities; Fast mode is available at 2x pricing; Long context supports up to 1M tokens with 2x input pricing; Fast mode is available for long context (>272k) at 2x Fast input pricing; Cache writes are billed at 1.25x the uncached input rate"
-             best-for="OpenAI's mid-tier GPT-5.6 variant between Sol (flagship) and Luna (mini) at medium-tier pricing ($2/$12) — Artificial Analysis Intelligence Index 55.0 (max) matches near-frontier reasoning while output speed (~127 tokens/s) is faster than most peers; pick for balanced near-frontier reasoning, agentic execution, and speed when Sol's high tier isn't justified but stronger throughput than GPT-5.4 is desired." />
+             best-for="OpenAI's mid-tier GPT-5.6 variant between Sol (flagship) and Luna (mini) at medium-tier pricing ($2/$12) — Artificial Analysis Intelligence Index 42.1 (max) matches near-frontier reasoning while output speed (~105 tokens/s) is faster than most peers; pick for balanced near-frontier reasoning, agentic execution, and speed when Sol's high tier isn't justified but stronger throughput than GPT-5.4 is desired." />
       <model id="gemini-3.1-pro" name="Gemini 3.1 Pro"
              input-price-per-1m="$2.00" output-price-per-1m="$12.00"
              jurisdiction="us"
              tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="S" tier-long-context="S" tier-knowledge="A"
+             tier-multimodal="S" tier-long-context="A" tier-knowledge="A"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 46.5 (#3); AA-Omniscience 32.9 (#1); HLE 44.7% (#1); LMArena Text Elo 1478.9 (#11); 1M-token context"
+             headline-benchmarks="AA Intelligence Index 29.7 (#3); AA-Omniscience 32.9 (#1); HLE 47.0% (#1); LMArena Text Elo 1480.1 (#16); 1M-token context"
              pricing-notes="-"
              best-for="True native multimodal understanding (text, image, video, audio, and code in a single pass), 1M-token context optimized for heterogeneous inputs, strong agentic multi-step tool use, and synthesizing insights across large mixed-media datasets or sprawling document corpora — the obvious choice whenever multimodal or long-context is the primary category" />
       <model id="gemini-3-pro" name="Gemini 3 Pro"
              input-price-per-1m="$2.00" output-price-per-1m="$12.00"
              jurisdiction="us"
              tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="S" tier-long-context="S" tier-knowledge="A"
+             tier-multimodal="S" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="Gemini 3 generation Pro variant predating the 3.1 refresh; 1M-token context; native multimodal across text/image/video/audio/code"
+             headline-benchmarks="AA Intelligence Index 28.0 (high); LMArena Text Elo 1479.5; 1M-token context; native multimodal across text/image/video/audio/code"
              pricing-notes="Hidden by default"
              best-for="Gemini 3 family Pro model at the same medium-tier pricing as gemini-3.1-pro — pick gemini-3.1-pro over gemini-3-pro when both are available since 3.1 carries the updated benchmarks and is the canonical visible Gemini Pro; gemini-3-pro fits when reproducing earlier Gemini-3-generation outputs or when the 3.1 refresh's behavioral changes are undesirable for a specific workload" />
       <model id="gpt-5" name="GPT-5"
              input-price-per-1m="$1.25" output-price-per-1m="$10.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
+             tier-coding="C" tier-planning="A" tier-agentic="D"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="Earlier flagship GPT-5 family entry with agentic and reasoning capabilities at medium-tier output pricing; specific AA / LMArena numbers pending benchmark refresh"
+             headline-benchmarks="AA Intelligence Index 23.0 (high); GPQA 85.4; HLE 28.5%; agentic and reasoning capabilities at medium-tier output pricing"
              pricing-notes="Hidden by default; Agentic and reasoning capabilities; Available reasoning effort variant is gpt-5-high"
              best-for="OpenAI's baseline GPT-5 family flagship — broad reasoning capability at medium-tier pricing ($10/M output), useful when a balanced GPT-5-class model is needed without the premium of GPT-5.4 / 5.5 and without the codex coding specialization; superseded by GPT-5.2 / 5.3 / 5.4 for most production use cases but available on Cursor's pool" />
       <model id="gpt-5.1-codex" name="GPT-5.1 Codex"
              input-price-per-1m="$1.25" output-price-per-1m="$10.00"
              jurisdiction="us"
              tier-coding="S" tier-planning="B" tier-agentic="A"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="C"
              tier-speed="B"
-             headline-benchmarks="Earlier-generation Codex specialization at medium-tier output pricing; strong terminal and tool-use proficiency carried forward from the Codex lineage"
+             headline-benchmarks="AA Intelligence Index 23.7 (high); HLE 25.7%; earlier-generation Codex specialization with strong terminal / tool-use profile carried forward from the Codex lineage"
              pricing-notes="Hidden by default; Agentic and reasoning capabilities"
              best-for="Earlier Codex generation at the same medium-tier pricing as gpt-5.3-codex but $10/M output (gpt-5.3-codex is $14/M) — the lowest-cost S-tier coding model on the medium tier; prefer gpt-5.3-codex when latest-generation Codex quality matters, prefer gpt-5.1-codex when reproducing earlier-Codex-generation outputs or when the slightly cheaper output price compounds against a high-volume coding workload" />
       <model id="gpt-5.1-codex-max" name="GPT-5.1 Codex Max"
@@ -987,89 +1103,80 @@
       <model id="gemini-3.5-flash" name="Gemini 3.5 Flash"
              input-price-per-1m="$1.50" output-price-per-1m="$9.00"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 50.2 (high reasoning); τ²-bench banking pass_1 25.4%; Output Speed 267.9 tokens/s"
+             headline-benchmarks="AA Intelligence Index 32.6 (high reasoning); τ²-bench banking pass_1 32.2%; Output Speed 250.6 tokens/s"
              pricing-notes="Hidden by default"
              best-for="Auto-added cheap-tier Google model; pending editorial best-for refinement." />
       <model id="mistral-medium-3.5" name="Mistral Medium 3.5"
              input-price-per-1m="$1.50" output-price-per-1m="$7.50"
              jurisdiction="eu"
              tier-coding="B" tier-planning="B" tier-agentic="C"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="C"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 39 (independently measured by Artificial Analysis); unified chat / reasoning / code model with an adjustable reasoning dial (reasoning_effort); multimodal (text + image input)"
+             headline-benchmarks="AA Intelligence Index 14.2 (independently measured by Artificial Analysis); unified chat / reasoning / code model with an adjustable reasoning dial (reasoning_effort); multimodal (text + image input)"
              pricing-notes="Provider-direct Mistral API per-token pricing (not via the Cursor pool); eu-jurisdiction; prices manually maintained (Mistral publishes no machine-readable price source)"
-             best-for="Mistral's flagship unified model — the EU-jurisdiction choice for data-sovereignty / EU-regulatory workloads at low cost ($7.50/M output), with adjustable reasoning and multimodal (vision) input. Artificial Analysis Intelligence Index 39 places it mid-pack (below the US/cn frontier such as Gemini 3.1 Pro or DeepSeek V4-Pro) — pick it when the operator's EU jurisdiction is the deciding constraint, not when raw capability is. Reached via the `mistral-api` method (provider-direct per-token) with a mistral-api-key." />
+             best-for="Mistral's flagship unified model — the EU-jurisdiction choice for data-sovereignty / EU-regulatory workloads at low cost ($7.50/M output), with adjustable reasoning and multimodal (vision) input. Artificial Analysis Intelligence Index 14.2 places it well below the US/cn frontier (behind models such as Gemini 3.1 Pro or DeepSeek V4-Pro) — pick it when the operator's EU jurisdiction is the deciding constraint, not when raw capability is. Reached via the `mistral-api` method (provider-direct per-token) with a mistral-api-key." />
       <model id="gemini-3.6-flash" name="Gemini 3.6 Flash"
              input-price-per-1m="$1.50" output-price-per-1m="$7.50"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="B"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 50.1 (high); HLE 38.3% (high); Terminal-Bench 2.1 77.5; Output Speed 235.8 tokens/s"
+             headline-benchmarks="AA Intelligence Index 34.0 (high); HLE 40.8% (high); Terminal-Bench 2.1 77.5; Output Speed 188.5 tokens/s"
              pricing-notes="Hidden by default"
-             best-for="Google's Gemini 3.5 Flash successor at low-tier pricing ($1.50/$7.50, cheaper than 3.5 Flash's $9/M output) — placeholder tier ratings inherited from gemini-3.5-flash pending an independent 3.5-vs-3.6 head-to-head, with Artificial Analysis Intelligence Index 50.1 (high) confirming near-frontier reasoning for a cheap-tier Flash model and output speed ~236 tokens/s; pick over gemini-3.5-flash when both are visible since 3.6 supersedes 3.5 in the same series at a lower output price." />
+             best-for="Google's Gemini 3.5 Flash successor at low-tier pricing ($1.50/$7.50, cheaper than 3.5 Flash's $9/M output) — placeholder tier ratings inherited from gemini-3.5-flash pending an independent 3.5-vs-3.6 head-to-head, with Artificial Analysis Intelligence Index 34.0 (high) confirming near-frontier reasoning for a cheap-tier Flash model and output speed ~188 tokens/s; pick over gemini-3.5-flash when both are visible since 3.6 supersedes 3.5 in the same series at a lower output price." />
       <model id="gemini-3.7-flash" name="Gemini 3.7 Flash"
              input-price-per-1m="$0.75" output-price-per-1m="$3.50"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 45.2 (high); HLE 47.9% (high); Terminal-Bench 2.1 85.8; Output Speed 294.8 tokens/s"
+             headline-benchmarks="AA Intelligence Index 39.1 (high); HLE 47.9% (high); Terminal-Bench 2.1 85.8; Output Speed 325.4 tokens/s"
              pricing-notes="Hidden by default"
-             best-for="Google's Gemini 3.7 Flash — a low-tier ($0.75/$3.50) Flash variant with placeholder tier ratings inherited from the 3.6 Flash line, with AA Intelligence Index 45.2 (high) and Terminal-Bench 2.1 85.8 confirming strong near-frontier reasoning at throughput-optimized inference (~295 tokens/s). Hidden by default on Cursor's pricing page; superseded by Gemini 3.8 Flash at the same output price." />
+             best-for="Google's Gemini 3.7 Flash — a low-tier ($0.75/$3.50) Flash variant with placeholder tier ratings inherited from the 3.6 Flash line, with AA Intelligence Index 39.1 (high) and Terminal-Bench 2.1 85.8 confirming strong near-frontier reasoning at throughput-optimized inference (~325 tokens/s). Hidden by default on Cursor's pricing page; superseded by Gemini 3.8 Flash at the same output price." />
       <model id="gemini-3.8-flash" name="Gemini 3.8 Flash"
              input-price-per-1m="$0.75" output-price-per-1m="$3.50"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="S"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 47.1 (high); HLE 47.8% (high); Terminal-Bench 2.1 87.6; Output Speed 429.2 tokens/s"
+             headline-benchmarks="AA Intelligence Index 40.9 (high); HLE 47.8% (high); Terminal-Bench 2.1 87.6; Output Speed 315.7 tokens/s"
              pricing-notes="-"
-             best-for="Google's Gemini 3.8 Flash — the visible-by-default successor to 3.7 Flash at the same low-tier pricing ($0.75/$3.50), with placeholder tier ratings inherited from the Flash series and AA Intelligence Index 47.1 (high), Terminal-Bench 2.1 87.6, and exceptional output speed (~429 tokens/s). Pick over 3.7 Flash when both are available since 3.8 supersedes 3.7 in the same series at equal output price." />
+             best-for="Google's Gemini 3.8 Flash — the visible-by-default successor to 3.7 Flash at the same low-tier pricing ($0.75/$3.50), with placeholder tier ratings inherited from the Flash series and AA Intelligence Index 40.9 (high), Terminal-Bench 2.1 87.6, and exceptional output speed (~316 tokens/s). Pick over 3.7 Flash when both are available since 3.8 supersedes 3.7 in the same series at equal output price." />
       <model id="gpt-5.6-luna" name="GPT-5.6 Luna"
              input-price-per-1m="$0.20" output-price-per-1m="$1.20"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="A"
+             tier-coding="A" tier-planning="A" tier-agentic="A"
+             tier-multimodal="B" tier-long-context="S" tier-knowledge="B"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 51.2 (max) / 49.1 (xhigh); HLE 37.2% (max); Output Speed 174.7 tokens/s (max) / 173.8 (xhigh)"
+             headline-benchmarks="AA Intelligence Index 37.3 (max) / 34.6 (xhigh); HLE 39.5% (max); Output Speed 151.0 tokens/s (max) / 146.3 (xhigh)"
              pricing-notes="Requires Max Mode on legacy request-based plans; Smallest GPT-5.6 variant, optimized for cost and speed; Agentic and reasoning capabilities; Fast mode is available at 2x pricing; Long context supports up to 1M tokens with 2x input pricing; Fast mode is available for long context (>272k) at 2x Fast input pricing; Cache writes are billed at 1.25x the uncached input rate"
-             best-for="OpenAI's smallest GPT-5.6 variant at low-tier pricing ($0.20/$1.20, 5x cheaper output than at initial listing) — strong AA Intelligence Index (51.2 max) for the price and very high output throughput (~175 tokens/s), positioning it as a very cost-efficient near-frontier alternative to Gemini 3.5 Flash and other cheap Flash-class models when GPT-family behavior is preferred; pick when latency and cost dominate but broader reasoning quality than smaller mini/nano variants is required." />
-      <model id="grok-4.5" name="Grok 4.5"
+             best-for="OpenAI's smallest GPT-5.6 variant at low-tier pricing ($0.20/$1.20, 5x cheaper output than at initial listing) — strong AA Intelligence Index (37.3 max) for the price and very high output throughput (~151 tokens/s), positioning it as a very cost-efficient near-frontier alternative to Gemini 3.5 Flash and other cheap Flash-class models when GPT-family behavior is preferred; pick when latency and cost dominate but broader reasoning quality than smaller mini/nano variants is required." />
+      <model id="grok-4.7" name="Grok 4.7"
              input-price-per-1m="$2.00" output-price-per-1m="$6.00"
              jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="S" tier-knowledge="A"
+             tier-coding="S" tier-planning="A" tier-agentic="S"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 53.8 (high); Terminal-Bench 2.1 81.6; τ²-bench banking pass_1 47.9%; LMArena Text Elo 1452"
-             pricing-notes="Jointly trained by Cursor and SpaceXAI; Not yet available in the European Union"
-             best-for="Grok family's latest release at low-tier pricing ($6/M output), jointly trained by Cursor and SpaceXAI — Artificial Analysis Intelligence Index 53.8 (high) and Terminal-Bench 2.1 81.6 make it a strong near-frontier value; carries the Grok lineage's signature very-large-context capability, useful for long-context coding, planning, and agentic work when cost efficiency matters. Not yet available in the EU per Cursor's pricing notes; jurisdiction=us (Cursor operator)." />
-      <model id="grok-4.6" name="Grok 4.6"
-             input-price-per-1m="$2.00" output-price-per-1m="$6.00"
-             jurisdiction="us"
-             tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="B" tier-long-context="S" tier-knowledge="A"
-             tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 50.6 (high) / 49.3 (xhigh); HLE 42.9% (high); Terminal-Bench 2.1 88.4 (high); τ²-bench banking pass_1 50.7%"
-             pricing-notes="Jointly trained by Cursor and SpaceXAI"
-             best-for="Cursor and SpaceXAI's Grok 4.5 successor at the same low-tier pricing ($2/$6) — placeholder tier ratings inherited from grok-4.5 with benchmark-grounded confirmation from AA Intelligence Index (50.6 high), Terminal-Bench 2.1 (88.4 high), and τ²-bench banking (50.7% pass_1). Pick over grok-4.5 when both are available since 4.6 supersedes 4.5 in the same series at equal output price." />
-      <model id="claude-4.5-haiku" name="Claude 4.5 Haiku"
+             headline-benchmarks="AA Intelligence Index 46.4 (xhigh) / 46.3 (high); HLE 43.1% (xhigh); SciCode 57.4; AA-LCR 0.767"
+             pricing-notes="Jointly trained by Cursor and SpaceXAI; Long context (>256k input tokens) is billed at 2x standard rates, up to 500k; Fast mode is available at 2x pricing; Fast mode for long context (>256k) is billed at 3x standard rates"
+             best-for="Cursor and SpaceXAI's Grok 4.6 successor at the same low-tier pricing ($2/$6) — placeholder tier ratings inherited from grok-4.6 with benchmark-grounded confirmation from AA Intelligence Index (46.4 xhigh) and HLE (43.1% xhigh); 500K native context and jointly trained by Cursor and SpaceXAI. Pick over grok-4.5 / grok-4.6 when available since 4.7 supersedes them in the same series at equal output price." />
+      <model id="claude-4.5-haiku" name="Haiku 4.5"
              input-price-per-1m="$1.00" output-price-per-1m="$5.00"
              jurisdiction="us"
-             tier-coding="B" tier-planning="B" tier-agentic="B"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="B"
+             tier-coding="C" tier-planning="B" tier-agentic="C"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="D"
              tier-speed="S"
-             headline-benchmarks="AA Intelligence Index 29.6; Output Speed 151.4 tokens/s; AA-Omniscience -4.2; latency leader among Claude family"
+             headline-benchmarks="AA Intelligence Index 16.9 (reasoning); Output Speed 144.6 tokens/s; AA-Omniscience -4.2; latency leader among Claude family"
              pricing-notes="Hidden by default; Bedrock/Vertex: regional endpoints +10% surcharge; Cache: writes 1.25x, reads 0.1x"
              best-for="Speed-optimized lowest-cost Claude model, ideal for simple completions, high-volume repetitive tasks, and latency-sensitive workflows where a lightweight capable response matters more than deep reasoning" />
       <model id="muse-spark-1.3" name="Muse Spark 1.3"
              input-price-per-1m="$1.25" output-price-per-1m="$4.25"
              jurisdiction="us"
-             tier-coding="B" tier-planning="B" tier-agentic="B"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="B"
+             tier-coding="A" tier-planning="B" tier-agentic="A"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
              tier-speed="B"
              headline-benchmarks="Auto-added pending editorial tier review; specific benchmark numbers pending next refresh"
              pricing-notes="Requires Max Mode on legacy request-based plans; Up to 1M tokens in Max Mode at the same per-token rates (no long-context surcharge); Cached input is billed at $0.15 per million tokens with no separate cache-write charge"
@@ -1077,28 +1184,28 @@
       <model id="gpt-5.4-mini" name="GPT-5.4 Mini"
              input-price-per-1m="$0.75" output-price-per-1m="$4.50"
              jurisdiction="us"
-             tier-coding="B" tier-planning="C" tier-agentic="C"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="B"
+             tier-coding="B" tier-planning="C" tier-agentic="B"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="B"
              tier-speed="A"
-             headline-benchmarks="AA Intelligence Index 40 (xhigh); HLE 26.6% (xhigh); τ²-bench banking pass_1 21.4%"
+             headline-benchmarks="AA Intelligence Index 24.1 (xhigh); HLE 28.1% (xhigh); τ²-bench banking pass_1 25.6%"
              pricing-notes="Hidden by default; Smaller, faster variant of GPT-5.4; 90% discount on cached input tokens"
              best-for="Lightweight GPT-5.4 variant balancing quality and cost, well-suited for straightforward coding, short-form generation, and high-throughput workloads needing solid GPT reasoning at a fraction of the flagship price" />
       <model id="kimi-k2.7-code" name="Kimi K2.7 Code"
              input-price-per-1m="$0.95" output-price-per-1m="$4.00"
              jurisdiction="cn"
              tier-coding="B" tier-planning="B" tier-agentic="B"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 41.9; τ²-bench retail pass_1 90.1%; LMArena WebDev Elo 1471"
+             headline-benchmarks="AA Intelligence Index 25.8; τ²-bench retail pass_1 90.1%; LMArena WebDev Elo 1471"
              pricing-notes="Hidden by default"
              best-for="Moonshot's Kimi K2.7 Code — Kimi K2 successor specialized for coding at low-tier pricing ($4/M output), placeholder tier ratings inherited from kimi-k2.5 (its predecessor) pending independent benchmark validation of the K2.7 series; routed via Cursor's pool only, cn-jurisdiction excluded by the default allowed-jurisdictions list unless the user opts into cn." />
       <model id="gemini-3-flash" name="Gemini 3 Flash"
              input-price-per-1m="$0.50" output-price-per-1m="$3.00"
              jurisdiction="us"
              tier-coding="B" tier-planning="A" tier-agentic="A"
-             tier-multimodal="S" tier-long-context="S" tier-knowledge="A"
+             tier-multimodal="S" tier-long-context="A" tier-knowledge="B"
              tier-speed="S"
-             headline-benchmarks="Gemini 3 generation Flash variant; native multimodal across text/image/video/audio; 1M-token context; throughput-optimized inference"
+             headline-benchmarks="AA Intelligence Index 26.3 (reasoning); LiveCodeBench 90.8; native multimodal across text/image/video/audio; 1M-token context"
              pricing-notes="Hidden by default"
              best-for="Gemini 3 generation's cheap-tier model — meaningfully stronger planning, agentic, knowledge ratings than 2.5 Flash at slightly higher cost ($3.00/M output vs $2.50/M), with native multimodal-S; pick over 2.5 Flash when the task benefits from Gemini 3 family improvements and per-call cost discipline still matters" />
       <model id="composer-2.5" name="Composer 2.5"
@@ -1114,74 +1221,74 @@
              input-price-per-1m="$0.30" output-price-per-1m="$2.50"
              jurisdiction="us"
              tier-coding="B" tier-planning="B" tier-agentic="B"
-             tier-multimodal="A" tier-long-context="A" tier-knowledge="B"
+             tier-multimodal="A" tier-long-context="B" tier-knowledge="C"
              tier-speed="S"
-             headline-benchmarks="High-throughput Gemini Flash variant with native multimodal grounding; 1M-token context; designed for low-cost high-volume inference"
+             headline-benchmarks="AA Intelligence Index 9.9 (non-reasoning) / 13.1 (reasoning); native multimodal grounding; 1M-token context; designed for low-cost high-volume inference"
              pricing-notes="Hidden by default"
              best-for="Google's cheap, fast, multimodal Flash model at $0.30/M output — the cost-efficient pick for high-volume structured-output tasks (model recommendation, classification, light planning with strong system-prompt grounding) where multimodal capability matters and frontier-class reasoning does not; powers free-tier SaaS surfaces where per-call cost discipline is essential and the bundled templates do the structural heavy lifting" />
       <model id="gpt-5-mini" name="GPT-5 Mini"
              input-price-per-1m="$0.25" output-price-per-1m="$2.00"
              jurisdiction="us"
-             tier-coding="B" tier-planning="C" tier-agentic="C"
-             tier-multimodal="B" tier-long-context="B" tier-knowledge="B"
+             tier-coding="D" tier-planning="C" tier-agentic="D"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="C"
              tier-speed="S"
-             headline-benchmarks="Cheapest GPT-5 family variant at $2.00/M output; throughput-optimized inference"
+             headline-benchmarks="AA Intelligence Index 16.8 (high); cheapest GPT-5 family variant at $2.00/M output; throughput-optimized inference"
              pricing-notes="Hidden by default"
              best-for="The cheapest GPT-5 family variant at $2.00/M output — well-suited for trivial text tasks, simple lookups, rapid classification, and high-throughput pipelines where the cost-per-call is the binding constraint; not appropriate for multi-step planning or autonomous agentic execution; competitive with Gemini 2.5 Flash on cost but lacks Gemini's native multimodal-A rating" />
       <model id="gpt-5.1-codex-mini" name="GPT-5.1 Codex Mini"
              input-price-per-1m="$0.25" output-price-per-1m="$2.00"
              jurisdiction="us"
              tier-coding="A" tier-planning="C" tier-agentic="C"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="D" tier-long-context="B" tier-knowledge="C"
              tier-speed="S"
-             headline-benchmarks="Auto-added pending editorial tier review; specific benchmark numbers pending next refresh"
+             headline-benchmarks="AA Intelligence Index 20.4 (high); HLE 18.5%; carries the Codex-lineage strong terminal / tool-use profile at a fraction of the medium-tier price"
              pricing-notes="Hidden by default; Agentic and reasoning capabilities; 4x rate limits compared to GPT-5.1 Codex"
              best-for="OpenAI's smaller GPT-5.1 Codex variant at low-tier pricing ($0.25/$2.00) — placeholder ratings set one tier below gpt-5.1-codex on coding and two below on planning/agentic per the catalog's Mini-variant convention (gpt-5-mini, gpt-5.4-mini), with tier-speed=S; offers 4x rate limits vs gpt-5.1-codex for high-throughput routine coding at a fraction of the medium-tier price. Not an S-tier coder until a gpt-5.1-codex vs gpt-5.1-codex-mini head-to-head says so." />
       <model id="gpt-5.4-nano" name="GPT-5.4 Nano"
              input-price-per-1m="$0.20" output-price-per-1m="$1.25"
              jurisdiction="us"
-             tier-coding="C" tier-planning="D" tier-agentic="D"
-             tier-multimodal="C" tier-long-context="C" tier-knowledge="C"
+             tier-coding="B" tier-planning="D" tier-agentic="B"
+             tier-multimodal="C" tier-long-context="A" tier-knowledge="B"
              tier-speed="S"
-             headline-benchmarks="Cheapest GPT-5.4 family variant; throughput-optimized inference"
+             headline-benchmarks="AA Intelligence Index 20.7 (xhigh); HLE 28.3% (xhigh); cheapest GPT-5.4 family variant; throughput-optimized inference"
              pricing-notes="Hidden by default; Smallest GPT-5.4 variant, optimized for cost; 90% discount on cached input tokens"
              best-for="Ultra-low-cost GPT variant for trivial text tasks, simple lookups, rapid classification, and extreme-throughput pipelines where cost efficiency is the sole constraint and task complexity is minimal" />
       <model id="deepseek-v4-pro" name="DeepSeek-V4-Pro"
              input-price-per-1m="$0.66" output-price-per-1m="$1.98"
              jurisdiction="cn"
              tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="D" tier-long-context="A" tier-knowledge="A"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="B"
              tier-speed="C"
-             headline-benchmarks="AA Intelligence Index 52 (reasoning, max effort) — independently measured by Artificial Analysis; SWE-bench Verified 80.6%, LiveCodeBench 93.5, Terminal-Bench 2.0 67.9, Codeforces CodeElo 3206, Putnam-2025 120/120 (DeepSeek-reported); 1M-token context; text-only (no image input); ~46 tokens/s (notably slow)"
-             pricing-notes="Provider-direct DeepSeek API per-token pricing (not via the Cursor pool); cache-hit input $0.003625/M"
-             best-for="DeepSeek's V4-Pro flagship — a very low-cost ($0.87/M output), cn-jurisdiction reasoning model with a 1M-token context window and thinking mode on by default. Strong general intelligence (Artificial Analysis Intelligence Index 52, just below Grok 4.3) and a frontier-approaching coding profile (SWE-bench Verified 80.6%, LiveCodeBench 93.5, Codeforces CodeElo 3206) — these coding numbers are DeepSeek-reported, so it is rated coding-A rather than S pending an independent SWE-bench leaderboard entry. Text-only (no multimodal) and notably slow (~46 tokens/s), so not for latency-sensitive or image work. Reached via the `deepseek-api` method (provider-direct per-token, not the Cursor pool) when the cn jurisdiction is acceptable and a deepseek-api-key is configured — the cheapest A-tier coding / reasoning option in the catalog." />
-      <model id="deepseek-v4-flash" name="DeepSeek-V4-Flash"
-             input-price-per-1m="$0.22" output-price-per-1m="$0.66"
+             headline-benchmarks="AA Intelligence Index 36.0 (reasoning, max effort) — independently measured by Artificial Analysis; SWE-bench Verified 80.6%, LiveCodeBench 93.5, Terminal-Bench 2.0 67.9, Codeforces CodeElo 3206, Putnam-2025 120/120 (DeepSeek-reported); 1M-token context; text-only (no image input); ~46 tokens/s (notably slow)"
+             pricing-notes="Provider-direct DeepSeek API per-token pricing (not via the Cursor pool). Listed price is DeepSeek's OFF-PEAK rate (all hours except 01:00–04:00 and 06:00–10:00 UTC Mon–Fri, i.e. ~79% of the week incl. all US/EU working hours); peak is 2×: $1.32 input / $3.96 output per 1M — aggregators such as OpenRouter list the peak rate. Cache-hit input $0.022/M off-peak ($0.044/M peak)."
+             best-for="DeepSeek's V4-Pro flagship — a very low-cost ($1.98/M output off-peak), cn-jurisdiction reasoning model with a 1M-token context window and thinking mode on by default. Strong general intelligence (Artificial Analysis Intelligence Index 36.0) and a frontier-approaching coding profile (SWE-bench Verified 80.6%, LiveCodeBench 93.5, Codeforces CodeElo 3206) — these coding numbers are DeepSeek-reported, so it is rated coding-A rather than S pending an independent SWE-bench leaderboard entry. Text-only (no multimodal) and notably slow (~46 tokens/s), so not for latency-sensitive or image work. Reached via the `deepseek-api` method (provider-direct per-token, not the Cursor pool) when the cn jurisdiction is acceptable and a deepseek-api-key is configured — the cheapest option in the catalog with an A-tier planning / agentic / long-context / knowledge profile (V4.1-Flash is cheaper and faster for A-tier coding alone)." />
+      <model id="deepseek-flash" name="DeepSeek-V4.1-Flash"
+             input-price-per-1m="$0.15" output-price-per-1m="$0.60"
              jurisdiction="cn"
              tier-coding="A" tier-planning="B" tier-agentic="B"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-multimodal="C" tier-long-context="S" tier-knowledge="B"
              tier-speed="A"
-             headline-benchmarks="AA Intelligence Index 47 (reasoning, max effort) — independently measured by Artificial Analysis; SWE-bench Verified 79.0% (DeepSeek-reported); 1M-token context; text-only (no image input); ~90 tokens/s"
-             pricing-notes="Provider-direct DeepSeek API per-token pricing (not via the Cursor pool); cache-hit input $0.0028/M"
-             best-for="DeepSeek's V4-Flash — the fast (~90 tokens/s), cheapest DeepSeek variant ($0.28/M output) with a 1M-token context window, for high-throughput / latency-sensitive text and code work under the cn jurisdiction with a deepseek-api-key. Mid-pack general intelligence (Artificial Analysis Intelligence Index 47) paired with a strong, DeepSeek-reported coding result (SWE-bench Verified 79.0%) — rated coding-A on that basis with the rest of its profile B-tier; text-only (no multimodal). Reached via the `deepseek-api` method (provider-direct per-token). Pick V4-Pro over V4-Flash when reasoning depth or the strongest coding matters; pick V4-Flash when speed and the lowest cost dominate." />
+             headline-benchmarks="AA Intelligence Index 39.5 (max) — independently measured by Artificial Analysis (v4.3; the retired V4-Flash-0731 scored 34.3 and V4-Pro 36.0 on the same index); ~229 tokens/s median output (AA); Terminal-Bench 2.1 90.6, Terminal-Bench 4.0 31.2, DeepSWE v1.1 74.2, HLE 36.8%, GPQA Diamond 90.9, Codeforces 3471, MMMU-Pro 56.5 (all DeepSeek-reported, max effort); 1M-token context; image input supported (V4-Flash-Vision-Exp folded in)"
+             pricing-notes="Provider-direct DeepSeek API per-token pricing (not via the Cursor pool). Listed price is DeepSeek's OFF-PEAK rate (all hours except 01:00–04:00 and 06:00–10:00 UTC Mon–Fri, i.e. ~79% of the week incl. all US/EU working hours); peak is 2×: $0.30 input / $1.20 output per 1M — aggregators such as OpenRouter list the peak rate. Cache-hit input $0.003/M off-peak ($0.006/M peak). The legacy model names deepseek-v4-flash and deepseek-v4-flash-vision-exp are still accepted by the API but are served by this model at this price."
+             best-for="DeepSeek's V4.1-Flash (API name deepseek-flash) — the 2026-09-17 successor to the retired V4-Flash: the fast (~229 tokens/s), cheapest DeepSeek variant ($0.60/M output off-peak) with a 1M-token context window and now native image input, for high-throughput / latency-sensitive text, code, and light vision work under the cn jurisdiction with a deepseek-api-key. Tier ratings are inherited from V4-Flash pending the cron's benchmark-grounded pass, except multimodal lifted from D to C because image input is now native (MMMU-Pro 56.5 is DeepSeek-reported, so no higher yet). Independently it now out-scores V4-Pro on the AA Intelligence Index (39.5 vs 36.0) and DeepSeek reports frontier-class agentic-coding numbers (Terminal-Bench 2.1 90.6, DeepSWE v1.1 74.2) — self-reported, so it stays coding-A rather than S pending an independent leaderboard entry. Reached via the `deepseek-api` method (provider-direct per-token); MIT open weights on Hugging Face for the `ollama` path. Pick V4-Pro over V4.1-Flash only when its deeper reasoning profile matters; pick V4.1-Flash when speed, cost, or image input dominate." />
       <model id="mistral-small-4" name="Mistral Small 4"
              input-price-per-1m="$0.10" output-price-per-1m="$0.30"
              jurisdiction="eu"
-             tier-coding="C" tier-planning="C" tier-agentic="C"
-             tier-multimodal="B" tier-long-context="C" tier-knowledge="C"
+             tier-coding="D" tier-planning="C" tier-agentic="D"
+             tier-multimodal="B" tier-long-context="C" tier-knowledge="D"
              tier-speed="A"
-             headline-benchmarks="AA Intelligence Index 28 (independently measured by Artificial Analysis); compact Mixture-of-Experts unifying the former Small / Magistral / Pixtral / Devstral lines; adjustable reasoning_effort; multimodal (text + image)"
+             headline-benchmarks="AA Intelligence Index 11.3 (independently measured by Artificial Analysis); compact Mixture-of-Experts unifying the former Small / Magistral / Pixtral / Devstral lines; adjustable reasoning_effort; multimodal (text + image)"
              pricing-notes="Provider-direct Mistral API per-token pricing (not via the Cursor pool); eu-jurisdiction; prices manually maintained (Mistral publishes no machine-readable price source)"
-             best-for="Mistral's cheapest fast model ($0.30/M output) — a small EU-jurisdiction MoE with multimodal input and an optional reasoning dial, for high-throughput / latency-sensitive text and light multimodal work where the EU operator matters and a mistral-api-key is configured. Artificial Analysis Intelligence Index 28 is low, so it is a cost / sovereignty pick rather than a capability pick. Reached via the `mistral-api` method (provider-direct per-token)." />
+             best-for="Mistral's cheapest fast model ($0.30/M output) — a small EU-jurisdiction MoE with multimodal input and an optional reasoning dial, for high-throughput / latency-sensitive text and light multimodal work where the EU operator matters and a mistral-api-key is configured. Artificial Analysis Intelligence Index 11.3 is low, so it is a cost / sovereignty pick rather than a capability pick. Reached via the `mistral-api` method (provider-direct per-token)." />
       <model id="mistral-large-3" name="Mistral Large 3"
              input-price-per-1m="$0.50" output-price-per-1m="$1.50"
              jurisdiction="eu"
-             tier-coding="C" tier-planning="C" tier-agentic="C"
-             tier-multimodal="D" tier-long-context="C" tier-knowledge="C"
+             tier-coding="D" tier-planning="C" tier-agentic="D"
+             tier-multimodal="D" tier-long-context="D" tier-knowledge="D"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 23 (independently measured by Artificial Analysis); open-weight Mixture-of-Experts (self-hostable); text-only"
+             headline-benchmarks="AA Intelligence Index 9.3 (independently measured by Artificial Analysis); open-weight Mixture-of-Experts (self-hostable); text-only"
              pricing-notes="Provider-direct Mistral API per-token pricing (not via the Cursor pool); eu-jurisdiction; prices manually maintained (Mistral publishes no machine-readable price source)"
-             best-for="Mistral's open-weight Large 3 (MoE) — an EU-jurisdiction, self-hostable option at very low cost ($1.50/M output) for data-sovereignty workloads or teams that want to run the weights themselves. Artificial Analysis Intelligence Index 23 sits below the frontier and even below Mistral's own Medium 3.5 (Mistral repositioned Large as an open community model) — pick it for the open-weights / EU-operator profile, not raw capability. Reached via the `mistral-api` method (provider-direct per-token) or self-hosting." />
+             best-for="Mistral's open-weight Large 3 (MoE) — an EU-jurisdiction, self-hostable option at very low cost ($1.50/M output) for data-sovereignty workloads or teams that want to run the weights themselves. Artificial Analysis Intelligence Index 9.3 sits below the frontier and even below Mistral's own Medium 3.5 (Mistral repositioned Large as an open community model) — pick it for the open-weights / EU-operator profile, not raw capability. Reached via the `mistral-api` method (provider-direct per-token) or self-hosting." />
       <model id="codestral" name="Codestral"
              input-price-per-1m="$0.30" output-price-per-1m="$0.90"
              jurisdiction="eu"
@@ -1195,7 +1302,7 @@
              input-price-per-1m="$1.40" output-price-per-1m="$4.40"
              jurisdiction="cn"
              tier-coding="A" tier-planning="A" tier-agentic="A"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="A"
+             tier-multimodal="D" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
              headline-benchmarks="z.ai (Zhipu AI) GLM-5.2 flagship (~Jun 2026) — strong coding / agentic model in the GLM-5 line; text-only; cn-jurisdiction; specific public benchmark numbers pending independent refresh"
              pricing-notes="Provider-direct z.ai (Zhipu) API per-token pricing (not via the Cursor pool); cn-jurisdiction; cache-input $0.26/M"
@@ -1203,8 +1310,8 @@
       <model id="glm-4.6" name="GLM-4.6"
              input-price-per-1m="$0.60" output-price-per-1m="$2.20"
              jurisdiction="cn"
-             tier-coding="A" tier-planning="B" tier-agentic="B"
-             tier-multimodal="D" tier-long-context="B" tier-knowledge="B"
+             tier-coding="C" tier-planning="B" tier-agentic="C"
+             tier-multimodal="D" tier-long-context="B" tier-knowledge="C"
              tier-speed="B"
              headline-benchmarks="z.ai GLM-4.6 — the widely-adopted, cost-efficient GLM coding workhorse; regarded as a strong value coding model in the GLM-4.x line; text-only; cn-jurisdiction; specific numbers pending independent refresh"
              pricing-notes="Provider-direct z.ai (Zhipu) API per-token pricing (not via the Cursor pool); cn-jurisdiction; cache-input $0.11/M"
@@ -1213,7 +1320,7 @@
              input-price-per-1m="$0.20" output-price-per-1m="$1.10"
              jurisdiction="cn"
              tier-coding="B" tier-planning="C" tier-agentic="C"
-             tier-multimodal="D" tier-long-context="C" tier-knowledge="C"
+             tier-multimodal="D" tier-long-context="C" tier-knowledge="D"
              tier-speed="A"
              headline-benchmarks="z.ai GLM-4.5-Air — a lightweight, fast, low-cost GLM variant for high-throughput text / code; text-only; cn-jurisdiction; specific numbers pending independent refresh"
              pricing-notes="Provider-direct z.ai (Zhipu) API per-token pricing (not via the Cursor pool); cn-jurisdiction; cache-input $0.03/M"
@@ -1221,30 +1328,39 @@
       <model id="gpt-oss-120b" name="gpt-oss-120b"
              input-price-per-1m="$0.15" output-price-per-1m="$0.60"
              jurisdiction="us"
-             tier-coding="B" tier-planning="B" tier-agentic="B"
-             tier-multimodal="D" tier-long-context="C" tier-knowledge="B"
+             tier-coding="D" tier-planning="B" tier-agentic="D"
+             tier-multimodal="D" tier-long-context="C" tier-knowledge="C"
              tier-speed="A"
              headline-benchmarks="OpenAI gpt-oss-120b — open-weight (Apache-2.0) Mixture-of-Experts reasoning model (~117B total / ~5B active) with configurable reasoning effort; OpenAI positions it near o4-mini on reasoning; 128K context; hosted by Groq (~500 tokens/s); us-jurisdiction"
              pricing-notes="Provider-direct Groq-hosted pricing for OpenAI's open-weight gpt-oss (Apache-2.0); us-jurisdiction; prices manually maintained from groq.com/pricing"
-             best-for="OpenAI's open-weight gpt-oss-120b (Apache-2.0) hosted by Groq — a very low-cost ($0.60/M output), fast (~500 tokens/s), us-jurisdiction reasoning model with an adjustable reasoning dial, for cost / throughput-sensitive reasoning and coding where an open-weight, self-hostable model (data-sovereignty, on-prem portability) is preferred. OpenAI positions it near o4-mini; 128K context; text-only. Reached via the `groq-api` method (provider-direct per-token) with a groq-api-key — note this host is not among the operator's current subscriptions, so it is catalog-present but only recommendable once a groq-api-key (or another gpt-oss host) is configured." />
+             best-for="OpenAI's open-weight gpt-oss-120b (Apache-2.0) hosted by Groq — a very low-cost ($0.60/M output), fast (~500 tokens/s), us-jurisdiction reasoning model with an adjustable reasoning dial, for cost / throughput-sensitive reasoning and coding where an open-weight, self-hostable model (data-sovereignty, on-prem portability) is preferred. OpenAI positions it near o4-mini; 128K context; text-only. Reached via the `groq-api` method (provider-direct per-token) with a groq-api-key, or via the `ollama` method when docs/user-context.md declares it pulled locally (Apache-2.0 weights; ~65 GB at MXFP4) — recommendable whenever EITHER host is declared." />
       <model id="gpt-oss-20b" name="gpt-oss-20b"
              input-price-per-1m="$0.075" output-price-per-1m="$0.30"
              jurisdiction="us"
-             tier-coding="C" tier-planning="C" tier-agentic="C"
-             tier-multimodal="D" tier-long-context="C" tier-knowledge="C"
+             tier-coding="D" tier-planning="C" tier-agentic="D"
+             tier-multimodal="D" tier-long-context="D" tier-knowledge="D"
              tier-speed="S"
              headline-benchmarks="OpenAI gpt-oss-20b — smaller open-weight (Apache-2.0) Mixture-of-Experts reasoning model (~21B total / ~3.6B active); OpenAI positions it near o3-mini; 128K context; very fast on Groq (~1000 tokens/s); us-jurisdiction"
              pricing-notes="Provider-direct Groq-hosted pricing for OpenAI's open-weight gpt-oss (Apache-2.0); us-jurisdiction; prices manually maintained from groq.com/pricing"
-             best-for="OpenAI's smaller open-weight gpt-oss-20b (Apache-2.0) hosted by Groq — the cheapest gpt-oss ($0.30/M output) and extremely fast (~1000 tokens/s), for high-throughput / latency-sensitive light reasoning, classification, and simple code under the us jurisdiction, or as an on-device / self-hostable open-weight option. OpenAI positions it near o3-mini; 128K context; text-only. Reached via the `groq-api` method (provider-direct per-token) with a groq-api-key — catalog-present but only recommendable once a groq-api-key (or another gpt-oss host) is configured. Prefer gpt-oss-120b when reasoning quality matters more than raw speed / cost." />
+             best-for="OpenAI's smaller open-weight gpt-oss-20b (Apache-2.0) hosted by Groq — the cheapest gpt-oss ($0.30/M output) and extremely fast (~1000 tokens/s), for high-throughput / latency-sensitive light reasoning, classification, and simple code under the us jurisdiction, or as an on-device / self-hostable open-weight option. OpenAI positions it near o3-mini; 128K context; text-only. Reached via the `groq-api` method (provider-direct per-token) with a groq-api-key, or via the `ollama` method when docs/user-context.md declares it pulled locally (Apache-2.0 weights; ~13 GB at MXFP4, fits 16 GB unified memory) — recommendable whenever EITHER host is declared. Prefer gpt-oss-120b when reasoning quality matters more than raw speed / cost." />
       <model id="grok-4.3" name="Grok 4.3"
              input-price-per-1m="$1.25" output-price-per-1m="$2.50"
              jurisdiction="us"
-             tier-coding="B" tier-planning="A" tier-agentic="S"
-             tier-multimodal="B" tier-long-context="S" tier-knowledge="A"
+             tier-coding="C" tier-planning="A" tier-agentic="D"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="B"
              tier-speed="B"
-             headline-benchmarks="AA Intelligence Index 37.6 (#7); AA-Omniscience 18.3 (#4); HLE 35.0%; LMArena Search Elo 1165.3"
+             headline-benchmarks="AA Intelligence Index 24.9 (high); AA-Omniscience 18.3 (#4); HLE 35.0%; LMArena Search Elo 1165.3"
              pricing-notes="Hidden by default; Requires Max Mode on request-based plans"
              best-for="Latest Grok release with built-in multi-agent self-verification, configurable reasoning depth, and signature 2M-token context with hallucination-resistant grounding — leads the low tier on agentic execution and long-context, ideal when massive context, factual accuracy, and aggressive cost efficiency must coexist" />
+      <model id="grok-4.6" name="Grok 4.6"
+             input-price-per-1m="$2.00" output-price-per-1m="$6.00"
+             jurisdiction="us"
+             tier-coding="S" tier-planning="A" tier-agentic="S"
+             tier-multimodal="B" tier-long-context="A" tier-knowledge="A"
+             tier-speed="B"
+             headline-benchmarks="AA Intelligence Index 44.3 (high); HLE 42.9% (high); Terminal-Bench 2.1 88.4 (high); τ²-bench banking pass_1 50.7%"
+             pricing-notes="Jointly trained by Cursor and SpaceXAI"
+             best-for="Cursor and SpaceXAI's Grok 4.5 successor at the same low-tier pricing ($2/$6) — placeholder tier ratings inherited from grok-4.5 with benchmark-grounded confirmation from AA Intelligence Index (44.3 high), Terminal-Bench 2.1 (88.4 high), and τ²-bench banking (50.7% pass_1). Pick over grok-4.5 when both are available since 4.6 supersedes 4.5 in the same series at equal output price." />
     </tier>
   </model-options>
 
@@ -1252,7 +1368,7 @@
     Each access method is a way to run one or more models from
     `<model-options>`. Methods differ in (a) which models they expose,
     (b) how billing works (per-token, subscription-included,
-    subscription-pool, subscription-or-key), (c) which capability
+    subscription-pool, subscription-or-key, local), (c) which capability
     toggles (Max Mode, effort/thinking, orchestration) they expose — which
     is exactly what decides WHICH setting lines a block for that platform
     may emit, per `<output-format>` — and (d) what credentials
@@ -1272,12 +1388,19 @@
     - subscription-or-key — surface accepts either a subscription OR a
       direct API key; if a subscription is active, prefer it.
     - per-token — pay-per-token at the provider's published API rate.
+    - local — self-hosted weights on the operator's own hardware; $0 per
+      token; throughput bounded by that hardware; quality bounded by the
+      quantization actually pulled, which the tier ratings do NOT
+      describe (they rate the provider-hosted weights). FUNDED only when
+      docs/user-context.md declares the runtime present AND lists the
+      chosen model among the pulled models — see `<access-selection>`
+      Step B.
 
     <method id="anthropic-api" name="Anthropic API"
             provider="anthropic" billing="per-token"
             provider-jurisdiction="us"
             requires="anthropic-api-key"
-            supports-models="claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
+            supports-models="claude-opus-5-5,claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
             best-for="Programmatic / scripted Claude use outside Claude Code — raw API headers, batch endpoints, or features not surfaced by Claude Code. Falls back here when claude.ai Max budget is exhausted." />
@@ -1285,15 +1408,15 @@
             provider="anthropic" billing="subscription-or-key"
             provider-jurisdiction="us"
             requires="claude-max-subscription OR anthropic-api-key"
-            supports-models="claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
+            supports-models="claude-opus-5-5,claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="yes"
-            best-for="Default for Claude coding or terminal tasks when a claude.ai Max subscription is active — $0 marginal cost until the Max budget is exhausted, full tool-use surface, runs as a CLI, IDE extension inside Cursor, native VS Code extension, and as of 2.1.170+ also ships Claude Fable 5 (Mythos-class) plus a first-class Claude in Chrome browser-control integration (GA in 2.1.198), with Claude Sonnet 5 now the default model (2.1.197+) at native 1M-token context; as of 2.1.219 Claude Opus 5 ships as the new default Opus (1M context, fast mode at $10/$50 per Mtok) and Opus 4.7 is removed from fast mode so `/fast` now applies to Opus 5 and Opus 4.8; 2.1.220–2.1.273 are bug-fix / reliability / self-hosted-runner / UI-polish / plugin-safety releases with no effort/thinking surface changes beyond the 2.1.267 `maxEffortLevel` cap and the 2.1.269 `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) knob for the Workflow tool's per-run concurrent-agent limit noted below (2.1.224 adds `claude self-hosted-runner` for turning your own machines into places where Claude Code web/mobile/desktop sessions can run, cross-session `SendMessage`, and archive-plugin sources; 2.1.225 adds gateway spend-limit reporting to the usage warning; 2.1.227 polishes the slash-command menu and fixes feature-flag evaluation for expired login tokens; 2.1.257 ships Claude Fable 5.1 as the new default Fable at 1M context and $10/$50 per Mtok; 2.1.259 adds `managedMcpServers` policy and `--permission-prompts none` for unattended headless hosts; 2.1.260 adds an inline `/diff` panel and a headless text form of `/advisor`; 2.1.261 adds `/skill-doctor` and `bashOutputMaxChars` / `taskOutputMaxChars` settings; 2.1.263 is a reliability release; 2.1.265 adds a `--plugin-dir` folder-of-plugins mode and tightens plugin path containment; 2.1.266 restores gateway/proxy behavior when `CLAUDE_CODE_USE_GATEWAY` is set alongside an API key or `apiKeyHelper`; 2.1.267 adds a `maxEffortLevel` setting — top-level or per model under `modelSettings` — that CAPS the effort level on every provider including Bedrock, Vertex, and Foundry while still letting users pick any lower level, plus `--system-prompt-snapshot off` for iterating on prompt text and a fix for `effort:` frontmatter on custom commands, skills, and subagents being ignored on models whose default effort is still pinned; 2.1.269 adds `claude plugin eval` for scored plugin eval suites, `/output-style [name]` to list and switch output styles (including over Remote Control and in headless sessions), a Bash-tool file-edit diff (setting `bashEditDiffEnabled`), `OTEL_METRICS_INCLUDE_REPOSITORY` for tagging OpenTelemetry metrics and events with `vcs.*` attributes, `CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS` to extend the LLM gateway `/v1/models` discovery timeout, and `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) to raise the Workflow tool's per-run concurrent-agent limit for inference-bound fan-outs — none of which change the `/effort` vocabulary; 2.1.270 fixes read-only git commands in Bash unexpectedly asking for permission after a session had been running for a while, a 2.1.269 regression, with no surface changes; 2.1.271 adds fast mode in Claude Code Remote (cloud and self-hosted runner) sessions where organization policy allows it, mouse support in the `/config` panel, per-command Bash / PowerShell / Monitor `allowed_domains` in auto mode with sandboxing, agent-frontmatter and `--agents` JSON `omitClaudeMd` to let custom / plugin subagents run without CLAUDE.md files (managed policy still loads), and `--accept-command <sha256>` for `claude plugin install` / `update`; 2.1.272 is a bug-fix / reliability release; 2.1.273 adds `x-claude-code-*` LLM-gateway request-hint headers behind `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`, forking a `--remote-control` / `/remote-control` session from the Claude app as a local background session, and MCP-server-disconnected notifications, plus fixes for permission handling, credential/auth error messages, prompt-cache retention across `/login` / `/upgrade` / `/extra-usage`, and gateway 401 messaging — no effort/thinking surface changes). Exposes the full `/effort` dial (low/medium/high/xhigh/max — Opus 4.6 and Sonnet 4.6 top out at max with no xhigh step; Opus 5, Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, and Fable 5.1 expose the full range; effort levels a model does not support fall back to the highest supported level at or below the requested one; deployments may set `maxEffortLevel` to cap the maximum reachable level on every provider), the Option+T/Alt+T, `alwaysThinkingEnabled`, and `MAX_THINKING_TOKENS=0` on/off controls, plus Ultracode (session-wide xhigh + Dynamic Workflows via `/effort ultracode` or `\"ultracode\": true`; 2.1.202+ adds a `/config` \"Dynamic workflow size\" advisory guideline, 2.1.219 defaults it to medium (aim for fewer than 15 agents) with the `workflowSizeGuideline` settings key to set it from any settings file, and 2.1.269 adds `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) to raise the per-run concurrent-agent cap for the Workflow tool) and the per-turn `ultrathink` keyword (`think`/`think hard`/`think more` are not recognized)." />
+            best-for="Default for Claude coding or terminal tasks when a claude.ai Max subscription is active — $0 marginal cost until the Max budget is exhausted, full tool-use surface, runs as a CLI, IDE extension inside Cursor, native VS Code extension, and as of 2.1.170+ also ships Claude Fable 5 (Mythos-class) plus a first-class Claude in Chrome browser-control integration (GA in 2.1.198), with Claude Sonnet 5 now the default model (2.1.197+) at native 1M-token context; as of 2.1.219 Claude Opus 5 ships as the new default Opus (1M context, fast mode at $10/$50 per Mtok) and Opus 4.7 is removed from fast mode so `/fast` now applies to Opus 5 and Opus 4.8; 2.1.280 ships Claude Opus 5.5 as the new default Opus (1M context, $4/$20 per Mtok with $0.20/Mtok cache reads) and changes the Pro and Team Standard default model from Sonnet to Opus (matching Max / Team Premium / Enterprise); 2.1.220–2.1.280 are bug-fix / reliability / self-hosted-runner / UI-polish / plugin-safety / VS Code / Claude apps / AGENTS.md / auto-mode-server-classifier releases with no effort/thinking surface changes beyond the 2.1.267 `maxEffortLevel` cap and the 2.1.269 `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) knob for the Workflow tool's per-run concurrent-agent limit noted below (2.1.224 adds `claude self-hosted-runner` for turning your own machines into places where Claude Code web/mobile/desktop sessions can run, cross-session `SendMessage`, and archive-plugin sources; 2.1.225 adds gateway spend-limit reporting to the usage warning; 2.1.227 polishes the slash-command menu and fixes feature-flag evaluation for expired login tokens; 2.1.257 ships Claude Fable 5.1 as the new default Fable at 1M context and $10/$50 per Mtok; 2.1.259 adds `managedMcpServers` policy and `--permission-prompts none` for unattended headless hosts; 2.1.260 adds an inline `/diff` panel and a headless text form of `/advisor`; 2.1.261 adds `/skill-doctor` and `bashOutputMaxChars` / `taskOutputMaxChars` settings; 2.1.263 is a reliability release; 2.1.265 adds a `--plugin-dir` folder-of-plugins mode and tightens plugin path containment; 2.1.266 restores gateway/proxy behavior when `CLAUDE_CODE_USE_GATEWAY` is set alongside an API key or `apiKeyHelper`; 2.1.267 adds a `maxEffortLevel` setting — top-level or per model under `modelSettings` — that CAPS the effort level on every provider including Bedrock, Vertex, and Foundry while still letting users pick any lower level, plus `--system-prompt-snapshot off` for iterating on prompt text and a fix for `effort:` frontmatter on custom commands, skills, and subagents being ignored on models whose default effort is still pinned; 2.1.269 adds `claude plugin eval` for scored plugin eval suites, `/output-style [name]` to list and switch output styles (including over Remote Control and in headless sessions), a Bash-tool file-edit diff (setting `bashEditDiffEnabled`), `OTEL_METRICS_INCLUDE_REPOSITORY` for tagging OpenTelemetry metrics and events with `vcs.*` attributes, `CLAUDE_CODE_GATEWAY_MODEL_DISCOVERY_TIMEOUT_MS` to extend the LLM gateway `/v1/models` discovery timeout, and `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) to raise the Workflow tool's per-run concurrent-agent limit for inference-bound fan-outs — none of which change the `/effort` vocabulary; 2.1.270 fixes read-only git commands in Bash unexpectedly asking for permission after a session had been running for a while, a 2.1.269 regression, with no surface changes; 2.1.271 adds fast mode in Claude Code Remote (cloud and self-hosted runner) sessions where organization policy allows it, mouse support in the `/config` panel, per-command Bash / PowerShell / Monitor `allowed_domains` in auto mode with sandboxing, agent-frontmatter and `--agents` JSON `omitClaudeMd` to let custom / plugin subagents run without CLAUDE.md files (managed policy still loads), and `--accept-command <sha256>` for `claude plugin install` / `update`; 2.1.272 is a bug-fix / reliability release; 2.1.273 adds `x-claude-code-*` LLM-gateway request-hint headers behind `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`, forking a `--remote-control` / `/remote-control` session from the Claude app as a local background session, and MCP-server-disconnected notifications, plus fixes for permission handling, credential/auth error messages, prompt-cache retention across `/login` / `/upgrade` / `/extra-usage`, and gateway 401 messaging — no effort/thinking surface changes; 2.1.274 adds a critical-memory-usage warning with recovery steps, `CLAUDE_CODE_MCP_STARTUP_WAIT_MS` to bound how long the first non-interactive turn waits for connecting MCP servers, an `effort` attribute on the `claude_code.llm_request` OpenTelemetry trace span, plus assorted VS Code, Claude Code on the web, Claude Tag, and Code Review fixes and improvements — no changes to the `/effort` vocabulary or extended-thinking controls; 2.1.275 adds signed-in account confirmation for Claude apps gateway sign-in, a send-now key (ctrl+enter, or ctrl+x ctrl+s) that flushes queued messages mid-turn, syncing of claude.ai-account skills and plugins into terminal sessions (opt out with `syncClaudeAiSkills: false` / `syncClaudeAiPlugins: false`), `/plugin install <plugin> --marketplace <source>`, and a startup warning when `otelHeadersHelper` fails, plus a broad set of reliability and rendering fixes — no changes to the `/effort` vocabulary or extended-thinking controls; 2.1.276 is a hotfix for a 2.1.275 regression where every request behind a proxy or gateway failed with `400 … Input tag 'advisor_20260301'`, with no surface changes; 2.1.277 adds AGENTS.md fallback support (in a project with no CLAUDE.md, Claude Code reads AGENTS.md instead — configurable under \"Project instructions\" in `/config`; not yet on Bedrock, Vertex or Foundry), `CLAUDE_GATEWAY_PROXY_IS_EGRESS_BOUNDARY=1` for Claude apps gateways whose only egress is a forward proxy, an optional `headers:` map on Claude apps gateway upstreams, plus assorted reliability, plugin, background-task, and VS Code / Claude Code on the web / Claude Tag fixes — no changes to the `/effort` vocabulary or extended-thinking controls; 2.1.278 changes auto mode for Claude API and Enterprise users, and on Bedrock, Vertex, Foundry and gateways, to default to the server-side classifier that does not charge for classifier overhead (opt out on Bedrock, Vertex, Foundry and gateways with `CLAUDE_CODE_AUTO_MODE_SERVER=0`; warns on billed fallback) and adds an `Auto mode server` row to `/status` showing whether this session's auto mode classifier runs on the server — no changes to the `/effort` vocabulary or extended-thinking controls; 2.1.280 ships Claude Opus 5.5 as the new default Opus model at 1M context and $4/$20 per Mtok, changes the Pro and Team Standard default model from Sonnet to Opus (matching Max / Team Premium / Enterprise), and stops Opus 4.7, Opus 4.8 and Fable 5 from holding their launch-default effort over an explicit `/effort`, `effortLevel`, project or managed setting — the `/effort` vocabulary itself is unchanged). Exposes the full `/effort` dial (low/medium/high/xhigh/max — Opus 4.6 and Sonnet 4.6 top out at max with no xhigh step; Opus 5, Opus 5.5, Opus 4.7, Opus 4.8, Sonnet 5, Fable 5, and Fable 5.1 expose the full range; effort levels a model does not support fall back to the highest supported level at or below the requested one; deployments may set `maxEffortLevel` to cap the maximum reachable level on every provider), the Option+T/Alt+T, `alwaysThinkingEnabled`, and `MAX_THINKING_TOKENS=0` on/off controls, plus Ultracode (session-wide xhigh + Dynamic Workflows via `/effort ultracode` or `\"ultracode\": true`; 2.1.202+ adds a `/config` \"Dynamic workflow size\" advisory guideline, 2.1.219 defaults it to medium (aim for fewer than 15 agents) with the `workflowSizeGuideline` settings key to set it from any settings file, and 2.1.269 adds `CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS` (1–256) to raise the per-run concurrent-agent cap for the Workflow tool) and the per-turn `ultrathink` keyword (`think`/`think hard`/`think more` are not recognized)." />
     <method id="claude-web" name="claude.ai web / desktop"
             provider="anthropic" billing="subscription-included"
             provider-jurisdiction="us"
             requires="claude-max-subscription"
-            supports-models="claude-opus-5,opus-4.8,claude-fable-5.1,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
+            supports-models="claude-opus-5-5,claude-opus-5,opus-4.8,claude-fable-5.1,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
             best-for="Chat-driven Claude use (no terminal, no codebase tool use) under the same Max budget that funds Claude Code — pick when the task is conversational rather than code-editing." />
@@ -1304,15 +1427,23 @@
             supports-models="gpt-5.6-sol,gpt-5.5,gpt-5.6-terra,gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex,gpt-5.1-codex-max,gpt-5.1-codex,gpt-5.1-codex-mini,gpt-5,gpt-5.6-luna,gpt-5.4-mini,gpt-5.4-nano,gpt-5-mini"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Programmatic / scripted GPT use when an OpenAI API key is configured. Pay-per-token at OpenAI's published rates. Exposes the full Codex/OpenAI `reasoning_effort` dial (`minimal`, `low`, `medium`, `high`, `xhigh` — the top `xhigh` tier is model-dependent)." />
+            best-for="Programmatic / scripted GPT use when an OpenAI API key is configured. Pay-per-token at OpenAI's published rates. Exposes the full Codex/OpenAI `reasoning_effort` dial (`low`, `medium`, `high`, `xhigh`, `max`, `ultra` — the top `ultra` step is a session-wide multi-agent orchestration mode analogous to Claude Code's `ultracode`)." />
     <method id="codex-cli" name="Codex"
-            provider="openai" billing="subscription-or-key"
+            provider="openai" billing="subscription-included"
             provider-jurisdiction="us"
-            requires="chatgpt-subscription OR openai-api-key"
-            supports-models="gpt-5.6-sol,gpt-5.5,gpt-5.6-terra,gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex,gpt-5.1-codex-max,gpt-5.1-codex,gpt-5.1-codex-mini,gpt-5,gpt-5.6-luna,gpt-5.4-mini,gpt-5-mini"
+            requires="chatgpt-subscription"
+            supports-models="gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5,gpt-5.4,gpt-5.4-mini,gpt-5.2,gpt-5,gpt-5-mini"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Default for GPT-driven autonomous coding sessions when a ChatGPT Plus/Pro subscription is active — pays from the ChatGPT budget instead of the per-token API rate. Best surface for gpt-5.3-codex / gpt-5.1-codex on long-running terminal / agentic work. Exposes the full Codex `model_reasoning_effort` dial (`minimal`, `low`, `medium`, `high`, `xhigh` — top `xhigh` tier is model-dependent) plus the plan-mode `plan_mode_reasoning_effort` variant that additionally accepts `none`." />
+            best-for="Default for GPT-driven autonomous coding sessions when a ChatGPT Plus/Pro subscription is active — pays from the ChatGPT budget instead of the per-token API rate, in the CLI and the IDE extension. A ChatGPT-account sign-in CANNOT run the `-codex` model variants: Codex answers 400 &quot;The &apos;gpt-5.3-codex&apos; model is not supported when using Codex with a ChatGPT account.&quot; Those variants are reachable only through `codex-api` (an OpenAI API key), so recommending one here would name a model the operator&apos;s subscription cannot run. Exposes the full Codex `reasoning_effort` dial (`low`, `medium`, `high`, `xhigh`, `max`, `ultra` — the top `ultra` step is session-wide multi-agent orchestration on par with Claude Code&apos;s `ultracode`) and no Max Mode." />
+    <method id="codex-api" name="Codex (API key)"
+            provider="openai" billing="per-token"
+            provider-jurisdiction="us"
+            requires="openai-api-key"
+            supports-models="gpt-5.3-codex,gpt-5.2-codex,gpt-5.1-codex-max,gpt-5.1-codex,gpt-5.1-codex-mini,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5,gpt-5.4,gpt-5.4-mini,gpt-5.2,gpt-5,gpt-5-mini"
+            exposes-max-mode="no" exposes-thinking="yes"
+            exposes-orchestration="no"
+            best-for="The same Codex surface driven by an OpenAI API key instead of a ChatGPT sign-in: the ONLY way to run the coding-specialised `-codex` variants (gpt-5.3-codex and the gpt-5.1-codex family), and the fallback for GPT work once the ChatGPT plan&apos;s limits bind. Billed per token at list price, so prefer `codex-cli` while the subscription still has headroom. Exposes the full Codex `reasoning_effort` dial (`low`, `medium`, `high`, `xhigh`, `max`, `ultra`)." />
     <method id="chatgpt-app" name="ChatGPT (web / desktop)"
             provider="openai" billing="subscription-included"
             provider-jurisdiction="us"
@@ -1328,7 +1459,7 @@
             supports-models="gemini-3.1-pro,gemini-3-pro,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash,gemini-2.5-flash"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Programmatic / scripted Gemini use with a Google API key. Pay-per-token at Google's published rates. Exposes the discrete Gemini thinking-level dial (`minimal`, `low`, `medium`, `high`) shared across the 3.x and 2.5 generations — per-model support varies (Gemini 3 Pro is low/high only; Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash are low/medium/high; the 2.5 generation is low/medium/high without `minimal`; `minimal` appears on Flash-line models such as 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite Image, and 3 Flash). Powers the roadmodel SaaS free-tier surfaces (/recommend on Gemini 2.5 Flash; /roadmap on Gemini 2.5 Flash with 3.1 Pro escalation)." />
+            best-for="Programmatic / scripted Gemini use with a Google API key. Pay-per-token at Google's published rates. Exposes the discrete Gemini thinking-level dial (`minimal`, `low`, `medium`, `high`) shared across the 3.x and 2.5 generations — per-model support varies (Gemini 3 Pro is low/high only; Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash / 2.5 Pro / 2.5 Flash / 2.5 Flash-Lite are low/medium/high without `minimal`; `minimal` appears on Flash-line models such as 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite Image, and 3 Flash). Powers the roadmodel SaaS free-tier surfaces (/recommend on Gemini 2.5 Flash; /roadmap on Gemini 2.5 Flash with 3.1 Pro escalation)." />
     <method id="gemini-cli" name="Gemini CLI"
             provider="google" billing="subscription-or-key"
             provider-jurisdiction="us"
@@ -1336,7 +1467,7 @@
             supports-models="gemini-3.1-pro,gemini-3-pro,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash,gemini-2.5-flash"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Terminal-driven Gemini use; the CLI surface for multimodal and long-context Gemini work outside Cursor's pool. Exposes the discrete Gemini thinking-level dial (`minimal`, `low`, `medium`, `high`) — per-model support varies (Gemini 3 Pro is low/high only; Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash are low/medium/high; the 2.5 generation is low/medium/high without `minimal`; `minimal` appears on Flash-line models such as 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite Image, and 3 Flash)." />
+            best-for="Terminal-driven Gemini use; the CLI surface for multimodal and long-context Gemini work outside Cursor's pool. Exposes the discrete Gemini thinking-level dial (`minimal`, `low`, `medium`, `high`) — per-model support varies (Gemini 3 Pro is low/high only; Gemini 3.1 Pro / 3.7 Flash / 3.8 Flash / 2.5 Pro / 2.5 Flash / 2.5 Flash-Lite are low/medium/high without `minimal`; `minimal` appears on Flash-line models such as 3.6 Flash, 3.5 Flash, 3.5 Flash-Lite, 3.1 Flash-Lite Image, and 3 Flash)." />
     <method id="gemini-app" name="Gemini (web / app)"
             provider="google" billing="subscription-included"
             provider-jurisdiction="us"
@@ -1349,7 +1480,7 @@
             provider="xai" billing="per-token"
             provider-jurisdiction="us"
             requires="xai-api-key"
-            supports-models="grok-4.6,grok-4.5,grok-4.3"
+            supports-models="grok-4.7,grok-4.6,grok-4.3"
             exposes-max-mode="no" exposes-thinking="no"
             exposes-orchestration="no"
             best-for="Direct Grok API access for 2M-context or hallucination-resistant tasks; pay-per-token at xAI's published rates." />
@@ -1357,10 +1488,10 @@
             provider="deepseek" billing="per-token"
             provider-jurisdiction="cn"
             requires="deepseek-api-key"
-            supports-models="deepseek-v4-flash,deepseek-v4-pro"
+            supports-models="deepseek-flash,deepseek-v4-pro"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Direct DeepSeek API access (provider-direct per-token; OpenAI-format at api.deepseek.com and Anthropic-format at api.deepseek.com/anthropic) for the deepseek-v4 models — cost-conscious coding / reasoning / long-context (1M) work when the cn jurisdiction is acceptable and a deepseek-api-key is configured. Exposes the full thinking dial (toggle + reasoning_effort `low`/`high`/`max`). Not routed via the Cursor pool. cn-jurisdiction: excluded by the default allowed-jurisdictions list unless the user opts into cn." />
+            best-for="Direct DeepSeek API access (provider-direct per-token; OpenAI-format at api.deepseek.com and Anthropic-format at api.deepseek.com/anthropic) for the DeepSeek V4-series models (deepseek-flash = DeepSeek-V4.1-Flash, deepseek-v4-pro) — cost-conscious coding / reasoning / long-context (1M) work when the cn jurisdiction is acceptable and a deepseek-api-key is configured. Exposes the full thinking dial (toggle + reasoning_effort `low`/`high`/`max`). Not routed via the Cursor pool. cn-jurisdiction: excluded by the default allowed-jurisdictions list unless the user opts into cn." />
     <method id="mistral-api" name="Mistral API"
             provider="mistral" billing="per-token"
             provider-jurisdiction="eu"
@@ -1384,15 +1515,31 @@
             supports-models="gpt-oss-120b,gpt-oss-20b"
             exposes-max-mode="no" exposes-thinking="yes"
             exposes-orchestration="no"
-            best-for="Direct Groq API access (provider-direct per-token; OpenAI-format at api.groq.com) hosting OpenAI's open-weight gpt-oss (Apache-2.0) models — very low-cost, very high-throughput reasoning / coding under the us jurisdiction. Exposes the gpt-oss reasoning-effort dial. Groq is the pinned host that defines gpt-oss price + access (price = f(model, platform)); the open weights can also be self-hosted or run on another host. NOTE Groq is not among the operator's current subscriptions, so gpt-oss is catalog-present but only recommendable once a groq-api-key is configured." />
+            best-for="Direct Groq API access (provider-direct per-token; OpenAI-format at api.groq.com) hosting OpenAI's open-weight gpt-oss (Apache-2.0) models — very low-cost, very high-throughput reasoning / coding under the us jurisdiction. Exposes the gpt-oss reasoning-effort dial. Groq is the pinned host that defines gpt-oss price + access (price = f(model, platform)); the open weights can also be self-hosted or run on another host. NOTE this method is funded only by a groq-api-key; the same open weights are also reachable through the `ollama` method when the operator declares a local pull in docs/user-context.md." />
     <method id="cursor" name="Cursor"
             provider="cursor" billing="subscription-pool"
             provider-jurisdiction="us"
             requires="cursor-pro-or-ultra-subscription"
-            supports-models="claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,gpt-5.5,gpt-5.6-sol,claude-sonnet-5,sonnet-4.6,gpt-5.4,kimi-k3,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex,gpt-5.6-terra,gemini-3.1-pro,gemini-3-pro,gpt-5,gpt-5.1-codex-max,gpt-5.1-codex,gemini-3.5-flash,gemini-3.6-flash,claude-4.5-haiku,muse-spark-1.3,gpt-5.4-mini,gpt-5.4-nano,grok-4.6,grok-4.5,kimi-k2.7-code,gemini-3.7-flash,gemini-3.8-flash,gemini-3-flash,composer-2.5,gemini-2.5-flash,gpt-5-mini,gpt-5.1-codex-mini,gpt-5.6-luna,glm-5.2"
+            supports-models="claude-opus-5-5,claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,gpt-5.5,gpt-5.6-sol,claude-sonnet-5,sonnet-4.6,gpt-5.4,kimi-k3,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex,gpt-5.6-terra,gemini-3.1-pro,gemini-3-pro,gpt-5,gpt-5.1-codex-max,gpt-5.1-codex,gemini-3.5-flash,gemini-3.6-flash,claude-4.5-haiku,muse-spark-1.3,gpt-5.4-mini,gpt-5.4-nano,grok-4.7,grok-4.6,kimi-k2.7-code,gemini-3.7-flash,gemini-3.8-flash,gemini-3-flash,composer-2.5,gemini-2.5-flash,gpt-5-mini,gpt-5.1-codex-mini,gpt-5.6-luna,glm-5.2"
             exposes-max-mode="yes" exposes-thinking="no"
             exposes-orchestration="no"
             best-for="Cursor IDE — single Platform covering both UI modes (Composer for multi-file autonomous editing; Chat for interactive model-picker). The operator picks the mode at task time based on the chosen Model: composer-2 / composer-2.5 imply Composer mode; frontier models (opus-4.7, gpt-5.5, sonnet-4.6, etc.) imply Chat mode. Cursor's own Auto and Premium routing modes are deliberately NOT enumerated as roadmodel-recommendable models because their routing is opaque (see `jurisdiction-context` for the rationale) — operators who want routing behavior pick a specific fixed model and let Cursor's pool handle the call. All routes through the $0-marginal Cursor pool. Defer to claude-code when the chosen model is Claude and claude.ai Max is active (Max budget is cheaper marginal cost than burning Cursor pool tokens on Claude calls that have a dedicated Anthropic subscription path)." />
+    <method id="ollama" name="Ollama (local)"
+            provider="ollama" billing="local"
+            provider-jurisdiction="local"
+            requires="ollama-local"
+            supports-models="gpt-oss-120b,gpt-oss-20b,deepseek-v4-pro,deepseek-flash,glm-5.2,glm-4.6,glm-4.5-air,kimi-k3,kimi-k2.7-code,mistral-large-3,mistral-small-4"
+            exposes-max-mode="no" exposes-thinking="yes"
+            exposes-orchestration="no"
+            best-for="Open-weight models pulled and served on the operator's OWN hardware through a local Ollama runtime — $0 per token, no data leaves the machine, no subscription budget consumed. supports-models lists ONLY catalogued models whose weights are downloadable under a licence that permits local use (Apache-2.0: gpt-oss-120b / gpt-oss-20b / mistral-large-3 / mistral-small-4; MIT: deepseek-v4-pro / deepseek-flash / glm-5.2 / glm-4.6 / glm-4.5-air; Modified MIT: kimi-k2.7-code; Kimi K3 License: kimi-k3) — the MODEL-level jurisdiction filter (Step 0b) still governs which of them are eligible. HARDWARE CAVEAT: the catalog's tier ratings describe the provider-hosted weights; a quantized local pull (4-bit GGUF, MXFP4, and similar) runs about one tier below them for coding and reasoning, throughput is bounded by the operator's GPU / unified memory, and the largest entries (kimi-k3, deepseek-v4-pro) do not fit consumer hardware at all — the selector funds this method ONLY for models the operator has actually listed as pulled in docs/user-context.md, so a listed model is one that fits. Thinking is forwarded as `reasoning_effort` for models that support it (gpt-oss, GLM, DeepSeek, Kimi); the per-model dial is the model's, not the runtime's. Reached via the `ollama` access method when docs/user-context.md declares `Ollama installed | Yes` and the model in its pulled-models table." />
+    <method id="openrouter" name="OpenRouter"
+            provider="openrouter" billing="per-token"
+            provider-jurisdiction="us"
+            requires="openrouter-api-key"
+            supports-models="claude-opus-5-5,claude-opus-5,opus-4.8,claude-fable-5.1,claude-fable-5,opus-4.7,claude-sonnet-5,sonnet-4.6,claude-4.5-haiku,gpt-5.6-sol,gpt-5.5,gpt-5.6-terra,gpt-5.4,gpt-5.3-codex,gpt-5.2,gpt-5.2-codex,gpt-5.1-codex-max,gpt-5.1-codex,gpt-5.1-codex-mini,gpt-5,gpt-5.6-luna,gpt-5.4-mini,gpt-5.4-nano,gpt-5-mini,gemini-3.1-pro,gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash,gemini-2.5-flash,grok-4.7,grok-4.6,grok-4.3,deepseek-v4-pro,deepseek-flash,mistral-medium-3.5,mistral-small-4,codestral,glm-5.2,glm-4.6,glm-4.5-air,gpt-oss-120b,gpt-oss-20b,kimi-k3,kimi-k2.7-code,muse-spark-1.3"
+            exposes-max-mode="no" exposes-thinking="yes"
+            exposes-orchestration="no"
+            best-for="Per-token AGGREGATOR that resells other makers' models behind one OpenAI-format endpoint and one key (openrouter.ai) — like Cursor's pool but paid per call, not a subscription. Reaches most of the catalog: supports-models is a POINT-IN-TIME snapshot of openrouter.ai/models at authoring (2026-09-20; absent: composer-2.5 which is Cursor-only, gemini-3-pro which OpenRouter serves only as an image endpoint, mistral-large-3 which it serves only as a batch endpoint) that the operator should trust LESS than a provider-direct method — prefer the maker's own method when the operator holds that key. BILLING: OpenRouter charges the maker's list price plus its platform fee (~5% on credit purchases at authoring), so the catalog price is a FLOOR for this method, never an exact estimate. ROUTING: a request may be served by any of OpenRouter's upstream hosts for that model; the MODEL-level jurisdiction filter (Step 0b) still governs which models are eligible, and this method's `us` code is OpenRouter's own (the operator's counterparty), NOT the upstream host's. Exposes the maker's reasoning dial where the routed model documents one (`reasoning_effort` on OpenAI / gpt-oss / GLM / DeepSeek families). Never the maker of any model it resells: the cross-provider BACKUP guard resolves makers through provider-direct methods, exactly as it does for Cursor." />
   </access-methods>
 
   <selection-algorithm>
@@ -1526,13 +1673,13 @@
       - Never sacrifice quality to save cost — the cost step is a true-tie
         resolver, not a downgrade trigger.
       - For PRIMARY = `multimodal`, only consider models with tier-multimodal
-        of S or A (currently: gemini-3-flash, gemini-3-pro, gemini-3.1-pro at S; gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash, gpt-5.6-luna, sonnet-4.6, claude-sonnet-5, gpt-5.4, gpt-5.6-terra, opus-4.7, opus-4.8, claude-opus-5, claude-fable-5, claude-fable-5.1, gpt-5.5, gpt-5.6-sol at A).
+        of S or A (currently: gemini-3-flash, gemini-3-pro, gemini-3.1-pro at S; gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash, gemini-3.5-flash, gpt-5.6-luna, sonnet-4.6, claude-sonnet-5, gpt-5.4, gpt-5.6-terra, opus-4.7, opus-4.8, claude-opus-5, claude-opus-5-5, claude-fable-5, claude-fable-5.1, gpt-5.5, gpt-5.6-sol at A).
       - For PRIMARY = `long-context`, prefer models with native large
-        context (opus-4.7 1M, opus-4.8 1M, claude-opus-5 1M, gemini-3.1-pro 1M) over forcing
+        context (opus-4.7 1M, opus-4.8 1M, claude-opus-5 1M, claude-opus-5-5 1M, gemini-3.1-pro 1M) over forcing
         a smaller-context model into Max Mode truncation.
       - For PRIMARY = `coding` at S-tier requirement, the candidate set is
-        gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.3-codex, gpt-5.2-codex, opus-4.7, opus-4.8, claude-opus-5, claude-fable-5, claude-fable-5.1, gpt-5.5, gpt-5.6-sol; cost tie-breaker favors
-        gpt-5.1-codex when the ratings are equivalent for the prompt.
+        grok-4.6, grok-4.7, gpt-5.1-codex, gpt-5.1-codex-max, gpt-5.6-terra, gpt-5.2-codex, gpt-5.3-codex, claude-opus-5-5, gpt-5.6-sol, claude-opus-5, claude-fable-5.1; cost tie-breaker favors
+        grok-4.6 when the ratings are equivalent for the prompt.
       - Default to composer-2.5 for routine multi-file implementation when a
         coding-A rating suffices; escalate only on a concrete capability
         gap.
@@ -1591,7 +1738,12 @@
       In practice the two filters usually agree, but the two-step
       structure handles the edge case cleanly. Methods with
       `provider-jurisdiction="unknown"` are treated as forbidden
-      under the default allowed list.
+      under the default allowed list. A method with
+      `provider-jurisdiction="local"` passes EVERY allowed-jurisdictions
+      list, whatever it contains — no data leaves the machine, so there
+      is no counterparty jurisdiction to check (the chosen MODEL's own
+      jurisdiction was already filtered at Step 0b); `unknown` stays
+      forbidden.
 
     Step A — Filter access methods by model support.
       Reduce the candidate set from Step A0 to those whose
@@ -1609,22 +1761,67 @@
       disclosure in the RATIONALE (consider every model, surface the
       cheaper path, never suppress the better pick).
 
+      EXCEPTION — `local` billing. A `local` method is FUNDED when
+      docs/user-context.md declares the runtime present (its "Local
+      models (Ollama)" section says `Ollama installed | Yes`) AND lists
+      the chosen model among the pulled models; otherwise DROP it.
+      Hardware the operator does not have is not money they might
+      spend, so the never-hard-exclude guardrail does not apply — this
+      has the same precedence as the Step A00 operator list. DISCLOSURE
+      (same clause as Step A00): when the dropped local method would
+      otherwise have WON Step C/D on cost, add one RATIONALE clause
+      naming it and the fact that the runtime or the pulled model is
+      not declared (e.g. "Ollama would be the $0 path for this model
+      but user-context lists no such pull").
+
     Step C — Rank by effective marginal cost.
       Order survivors lowest-cost first:
         1. `subscription-included` and `subscription-or-key` methods
            backed by an active subscription (marginal cost $0 until
-           the subscription's usage budget is exhausted).
+           the subscription's usage budget is exhausted), and a
+           FUNDED `local` method (marginal cost $0, no usage budget
+           behind it at all — bounded only by the operator's
+           hardware).
         2. `subscription-pool` methods backed by an active pool
            (marginal cost $0 until the pool is exhausted).
         3. `subscription-or-key` methods backed only by an API key,
            and `per-token` methods (real dollars per call).
+      USAGE-POOL STATUS (docs/user-context.md "Usage-pool status", when
+      present) adjusts the tier a subscription-funded method sits in for
+      the current window:
+        - `headroom` — as ranked above.
+        - `tight` — stays in its tier for High-complexity work, but for a
+          Low- or Medium-complexity task prefer another FUNDED pool with
+          `headroom` that reaches an ADEQUATE model (a second coding-agent
+          subscription, a local model), so the tight pool is kept for the
+          steps that need it. Say so in the RATIONALE.
+        - `exhausted` (until the stated reset) — the method is NOT $0 for
+          this window: overflow bills at provider list price per token
+          (usage credits), so rank it in tier 3 at that model's per-token
+          rate; if the entry says overflow is OFF, treat the method as
+          UNFUNDED for the window. A model reachable through another funded
+          pool then wins on cost when it is adequate for the task; the
+          RATIONALE must name the reset time and the pool that was skipped.
+      A `tight` or `exhausted` entry also CLOSES the `<objective>`
+      FLAT-FUNDING GATE for every candidate that subscription funds
+      (condition (c)) — the per-pool table overrides the single headroom
+      declaration for the current window.
       Within a tier, prefer the access method whose surface matches
       the task — Claude Code over claude.ai web for coding, Codex
       over ChatGPT app for autonomous coding sessions. Cursor's
       Composer vs Chat UI modes are both reached via the single
       `cursor` access method — the operator picks the mode at task
       time based on the chosen Model (composer-2 / composer-2.5
-      imply Composer mode; frontier models imply Chat mode).
+      imply Composer mode; frontier models imply Chat mode). A coding
+      agent surface beats a bare local endpoint for agentic work on
+      the same tie.
+      LOCAL QUANTIZATION CAVEAT — any pick whose PLATFORM is a `local`
+      method MUST carry in its RATIONALE this verbatim clause:
+      "local quantized weights run below the catalog tier ratings; treat coding and reasoning as one tier lower than listed"
+      The tier ratings describe the provider-hosted weights; a quantized local
+      pull does not reach them, and the reader must see that where the
+      pick is justified (Step G lists it among the RATIONALE
+      obligations).
       If every survivor is UNFUNDED (the user holds no credential for
       any method that reaches the chosen model), still pick the cheapest
       of them by published per-token rate and disclose in the RATIONALE
@@ -1685,11 +1882,13 @@
       for the call (or note the lack thereof), (b) why the EFFORT level
       and THINKING toggle were chosen — omitted entirely when the
       platform exposes neither — and (c) why ORCHESTRATION was chosen
-      where it is emitted. When EFFORT is `Ultracode`, the rationale must
-      call out the session-budget caveat (claude.ai Max budget burns
-      10-100x faster than at High effort). When Step A00 dropped a
-      platform that would otherwise have won, add the disclosure clause
-      that step requires.
+      where it is emitted, and (d) when the PLATFORM is a `local` method,
+      the verbatim quantization caveat clause from Step C. When EFFORT is
+      `Ultracode`, the rationale must call out the session-budget caveat
+      (claude.ai Max budget burns 10-100x faster than at High effort).
+      When Step A00 dropped a platform that would otherwise have won, or
+      Step B dropped an unfunded `local` method that would have, add the
+      disclosure clause that step requires.
 
     Guardrails:
     - Prefer a FUNDED access method, but NEVER hard-exclude an unfunded
@@ -1700,11 +1899,13 @@
       pay-per-token spend — and, when the user has not declared that
       credential, noting that reaching this pick needs an API key or
       subscription they have not listed. Consider every model, surface
-      the cheaper path, never suppress the better pick. (There are TWO
-      hard filters, and this guardrail yields to both: jurisdiction —
-      Step A0 / `<selection-algorithm>` Step 0, a compliance constraint —
-      and the operator's platform allowlist / denylist, Step A00. Neither
-      is a cost constraint, which is why they outrank a guardrail written
+      the cheaper path, never suppress the better pick. (There are THREE
+      hard filters, and this guardrail yields to all of them: jurisdiction
+      — Step A0 / `<selection-algorithm>` Step 0, a compliance constraint
+      — the operator's platform allowlist / denylist, Step A00, and the
+      Step B `local` exception, which drops a local method whose runtime
+      or pulled model the operator has not declared. None is a cost
+      constraint, which is why they outrank a guardrail written
       to stop COST from suppressing a pick. Funding itself remains a
       soft, tie-break preference. An operator declaring they do not use a
       surface is NOT the same as that surface being unfunded: unfunded
@@ -1939,8 +2140,32 @@
     THINKING: [On/Off]
     ORCHESTRATION: [None/PerPrompt]
     CONVERSATION: [New/Continue]
-    RATIONALE: [THREE labelled segments — TASK: / PICK: / EFFORT: — exactly as in
-                single-prompt mode.]
+    RATIONALE: [Emit THREE labelled segments in this EXACT order and format, so
+                the UI can split them into sub-headings. Keep EACH segment to
+                ONE crisp sentence of roughly 15-25 words — no lists, no second
+                sentence, no restating the prompt:
+                  TASK: <the prompt's PRIMARY task category, one clause>
+                  PICK: <the recommended model's tier rating in that category
+                  plus ONE headline benchmark or named leaderboard from
+                  <benchmark-sources> supporting it (note the cost tie-breaker
+                  only if step 5 actually applied). The tier you cite MUST be
+                  the one <model-options> gives THAT EXACT model id for THAT
+                  exact category — read it off the row, never infer it. Do NOT
+                  generalise from a model FAMILY or "lineage" (e.g. claiming
+                  "S-tier for the Sonnet lineage"): tiers are per-model, and a
+                  sibling's rating says nothing about this one. If the row's
+                  rating is A, write A — never round it up to S>
+                  EFFORT: <WHY the emitted setting fields fit THIS task's
+                  difficulty — the EFFORT level and THINKING toggle where the
+                  platform exposes them, MAX MODE where it does, ORCHESTRATION
+                  where it applies. Justify only the fields the block actually
+                  emits: never assert an effort or thinking level for a
+                  platform that exposes no reasoning dial, and never mention
+                  Max Mode for a platform that has none. NEVER funding,
+                  how-to-run, or setup instructions>
+                Each label is upper-case followed by a colon and a space; keep
+                every segment short and justifying the pick only, and NEVER
+                perform the task.]
 
     TIER: COST
     MODEL: [Model Name]
