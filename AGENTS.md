@@ -173,8 +173,11 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
 - `up` is a sequence task: `docker compose up -d --wait postgres minio`
   and then `docker compose run --rm minio-init`, because `--wait`
   treats a cleanly exited one-shot job as a failure.
-- MinIO images are pulled from `quay.io/minio` (the Docker Hub
-  repository is no longer served) and pinned to a release tag.
+- MinIO images come from Chainguard (`cgr.dev/chainguard/minio`,
+  `cgr.dev/chainguard/minio-client:latest-dev`) pinned by digest: MinIO
+  no longer serves its own images anonymously (Docker Hub repository
+  removed, `quay.io/minio` answers 401). Only the `latest`/`latest-dev`
+  tags are free, so bump by updating the digest.
 - Host ports are overridable in `.env` (`POSTGRES_PORT`,
   `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`); the maintainer's machine has
   a native PostgreSQL on 5432 and Windows reserves 9000.
