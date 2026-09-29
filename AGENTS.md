@@ -14,10 +14,11 @@ PostgreSQL, Polars, DuckDB; Next.js and TypeScript in `web/`.
   product specification (do not edit; it is the source of truth for
   the canonical data model, attribution model, outcome definitions,
   presentation rules, security requirements, and testing strategy).
-- `ROADMAP.md` — the project roadmap (phases, architecture, branch,
-  security, release, and operations strategy). Read §5 before any work.
-- `docs/phaseNN-roadmap.md` — the executable plan for one phase, one
-  step per agent session. Start from the step you were given.
+- `docs/roadmap/ROADMAP.md` — the project roadmap (phases,
+  architecture, branch, security, release, and operations strategy).
+  Read §5 before any work.
+- `docs/roadmap/phaseNN-roadmap.md` — the executable plan for one
+  phase, one step per agent session. Start from the step you were given.
 - `docs/ROADMAP.md` — the living status document: current phase,
   completed items, unresolved data-access questions, next milestones.
   Update it at the end of every step; record a data-access question

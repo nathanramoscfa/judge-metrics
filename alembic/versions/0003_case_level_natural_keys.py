@@ -6,7 +6,7 @@ Revises: 0002
 Create Date: 2026-09-17 09:00:00+00:00
 
 Phase 2 Step 2 (the synthetic connector and case-level publishing,
-docs/phase02-roadmap.md) makes the case-level tables upsertable the way
+docs/roadmap/phase02-roadmap.md) makes the case-level tables upsertable the way
 revision 0002 made the reference tables:
 
 - ``source_row_id`` (Text, NOT NULL — the tables are empty, so no backfill)

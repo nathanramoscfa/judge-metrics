@@ -14,7 +14,7 @@ Modes are mutually exclusive; with no flag the script runs ``--fast`` plus
   --security  the gate over the phase's surface: detect-secrets against the
               baseline, bandit, pip-audit over uv.lock, pnpm audit
   --all       static + py + node + e2e + security
-  --post      static + the V1-V6 matrix of docs/phase01-roadmap.md, plus
+  --post      static + the V1-V6 matrix of docs/roadmap/phase01-roadmap.md, plus
               ``gh pr checks`` for the current branch when gh is signed in
 
 Every static check is independent and reads the repository only; it prints
@@ -574,7 +574,7 @@ def check_41() -> str | None:
 
 
 def check_42() -> str | None:
-    return _missing(f"docs/phase{PHASE}-roadmap.md")
+    return _missing(f"docs/roadmap/phase{PHASE}-roadmap.md")
 
 
 def check_43() -> str | None:
@@ -637,7 +637,7 @@ STATIC_CHECKS: tuple[tuple[int, str, CheckFn], ...] = (
     (39, "security backstop: no private-key header, AKIA key, or PEM block in the trees", check_39),
     (40, f"scripts/verify_phase{PHASE}.py exists", check_40),
     (41, f"docs/phase{PHASE}-qa-findings.md exists", check_41),
-    (42, f"docs/phase{PHASE}-roadmap.md exists", check_42),
+    (42, f"docs/roadmap/phase{PHASE}-roadmap.md exists", check_42),
     (43, f'.github/workflows/phase-verify.yml matrix includes "{PHASE}"', check_43),
 )
 

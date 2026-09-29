@@ -24,9 +24,9 @@ STATIC_CHECKS = 44
 
 
 def test_roadmap_doc_exists() -> None:
-    path = REPO_ROOT / "docs" / "phase02-roadmap.md"
+    path = REPO_ROOT / "docs" / "roadmap" / "phase02-roadmap.md"
     assert path.is_file()
-    assert path.read_text(encoding="utf-8").startswith("<!-- docs/phase02-roadmap.md -->")
+    assert path.read_text(encoding="utf-8").startswith("<!-- docs/roadmap/phase02-roadmap.md -->")
 
 
 def test_qa_findings_doc_exists() -> None:

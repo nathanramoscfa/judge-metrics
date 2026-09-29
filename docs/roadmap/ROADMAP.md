@@ -17,7 +17,7 @@ events, with every published statistic traceable to versioned source
 records and code.
 
 The product specification is the brief archived verbatim at
-[`docs/brief/judgemetrics-master-project-specification.xml`](docs/brief/judgemetrics-master-project-specification.xml)
+[`docs/brief/judgemetrics-master-project-specification.xml`](../brief/judgemetrics-master-project-specification.xml)
 (authored with ChatGPT, September 2026). This roadmap executes it. Where
 the roadmap departs from the brief, §2 "Changes from the original brief"
 records the change and the reason, and §2 "Brief phases mapped to
@@ -26,7 +26,7 @@ phases landed. The brief's product principles, non-goals, canonical data
 model, attribution model, outcome definitions, presentation rules,
 security requirements, testing strategy, and statistical warnings apply
 unchanged. The living status document the brief asks for is
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+[`docs/ROADMAP.md`](../ROADMAP.md).
 
 ---
 
@@ -266,7 +266,7 @@ security gate, branch protection, and the command interface.
 **Handles sensitive data:** Yes — local secrets in env files only;
 public judicial biographies, no defendant data
 
-Execution plan: [`docs/phase01-roadmap.md`](docs/phase01-roadmap.md).
+Execution plan: [`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md).
 Brief phases: 0, 1, 3, and the judge portions of 4 and 6.
 
 #### 1.1 Repository bootstrap, command interface, and security gate
@@ -391,7 +391,7 @@ golden-testable before any real case data exists.
 **Handles sensitive data:** No real defendant data — synthetic records
 labelled as such on every surface
 
-Execution plan: [`docs/phase02-roadmap.md`](docs/phase02-roadmap.md).
+Execution plan: [`docs/roadmap/phase02-roadmap.md`](phase02-roadmap.md).
 Brief phases: 2, the case portions of 4 and 6, and the testing
 strategy's property tests and golden dataset.
 
@@ -488,7 +488,7 @@ from any published number back to raw artifacts, and every remaining
 public page — so the brief's seventeen-item first milestone passes end
 to end on synthetic data.
 
-**Status:** In progress — [`docs/phase03-roadmap.md`](docs/phase03-roadmap.md)
+**Status:** In progress — [`docs/roadmap/phase03-roadmap.md`](phase03-roadmap.md)
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — correction requester contacts
@@ -1623,7 +1623,7 @@ court-level comparison arrive with Phase 7.
 |-------|------------------------------------------------------|------------|-----------------------------------------------------------------|--------|
 | 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
-| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/phase03-roadmap.md |
+| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/roadmap/phase03-roadmap.md |
 | 4     | Risk adjustment and validation                       | High       | Fable 5.1 (Claude Code) for methodology and validation; Opus 5 implementation | Not started |
 | 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |
@@ -1638,6 +1638,6 @@ Max subscription (top useful effort, thinking on); GPT-family backups
 (GPT-5.6 Sol for design-heavy steps, GPT-5.3 Codex for implementation
 steps) run on Codex funded by ChatGPT Plus. Per-step tables, rationales,
 and selection blocks live in each phase roadmap, beginning with
-[`docs/phase01-roadmap.md`](docs/phase01-roadmap.md). Re-export the kit
+[`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md). Re-export the kit
 at the start of every phase (`uv run poe kit`) so the catalog is current
 before the phase roadmap is written.

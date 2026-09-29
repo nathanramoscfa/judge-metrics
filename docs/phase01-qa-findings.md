@@ -2,7 +2,7 @@
 # Phase 1 — QA findings
 
 The rollup of every finding surfaced while executing Phase 1 (Steps 1
-through 6 of [`phase01-roadmap.md`](phase01-roadmap.md)), classified
+through 6 of [`phase01-roadmap.md`](roadmap/phase01-roadmap.md)), classified
 per `ROADMAP.md` §5 "Defect handling & triage", with the guard each one
 left behind ("prevent the class, not the instance"). Findings that were
 recorded elsewhere at the time (pull-request bodies, `docs/ROADMAP.md`

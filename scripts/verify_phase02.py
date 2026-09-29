@@ -17,7 +17,7 @@ Modes are mutually exclusive; with no flag the script runs ``--fast`` plus
               baseline, bandit over src, alembic, and scripts, pip-audit
               over uv.lock, pnpm audit
   --all       static + py + node + e2e + security
-  --post      static + the V1-V6 matrix of docs/phase02-roadmap.md, the seed
+  --post      static + the V1-V6 matrix of docs/roadmap/phase02-roadmap.md, the seed
               idempotency probe, plus ``gh pr checks`` for the current branch
               when gh is signed in
 
@@ -830,7 +830,7 @@ def check_42() -> str | None:
 
 
 def check_43() -> str | None:
-    return _missing(f"docs/phase{PHASE}-roadmap.md")
+    return _missing(f"docs/roadmap/phase{PHASE}-roadmap.md")
 
 
 def check_44() -> str | None:
@@ -966,7 +966,7 @@ STATIC_CHECKS: tuple[tuple[int, str, CheckFn], ...] = (
     ),
     (41, f"scripts/verify_phase{PHASE}.py exists", check_41),
     (42, f"docs/phase{PHASE}-qa-findings.md exists", check_42),
-    (43, f"docs/phase{PHASE}-roadmap.md exists", check_43),
+    (43, f"docs/roadmap/phase{PHASE}-roadmap.md exists", check_43),
     (44, f'.github/workflows/phase-verify.yml matrix includes "{PHASE}"', check_44),
 )
 
