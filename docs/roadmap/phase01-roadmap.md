@@ -1,5 +1,5 @@
 <!-- docs/roadmap/phase01-roadmap.md -->
-# Phase 1 Roadmap — Foundation, Canonical Schema, and the FJC Judge Slice
+# Phase 1 Roadmap — Foundation, Canonical Schema, and the FJC Judge Slice ✅
 
 **Status:** Complete — 2026-09-17
 

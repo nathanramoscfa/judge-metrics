@@ -251,7 +251,9 @@ synthetic end to end and are refused by the ingest runner in production.
 
 ## 4. Phased Roadmap
 
-### Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice
+### Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice ✅
+
+**Status:** Complete — 2026-09-17
 
 **Goal:** Ship a governed repository and a runnable end-to-end slice —
 the complete canonical schema behind reversible migrations, Federal
@@ -259,8 +261,6 @@ Judicial Center judge data flowing from source through an immutable raw
 lake into canonical tables, out through a versioned API, and onto a web
 judge page — with CI that builds and scans containers, a fail-closed
 security gate, branch protection, and the command interface.
-
-**Status:** Complete — 2026-09-17
 
 **Complexity:** High · **Risk:** Low · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — local secrets in env files only;
@@ -377,15 +377,15 @@ Brief phases: 0, 1, 3, and the judge portions of 4 and 6.
 
 ---
 
-### Phase 2 — Synthetic Justice Dataset, Entity Resolution, and Case Timelines
+### Phase 2 — Synthetic Justice Dataset, Entity Resolution, and Case Timelines ✅
+
+**Status:** Complete — 2026-09-19
 
 **Goal:** Generate a deterministic synthetic justice dataset with known
 truth, load it through the same connector path real data will use,
 resolve entities with an auditable framework and review queue, and
 expose case timelines — so the whole pipeline is demonstrable and
 golden-testable before any real case data exists.
-
-**Status:** Complete — 2026-09-19
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** No real defendant data — synthetic records
@@ -482,13 +482,13 @@ strategy's property tests and golden dataset.
 
 ### Phase 3 — Metrics Engine and the Complete Local Demo (First Milestone)
 
+**Status:** In progress — [`docs/roadmap/phase03-roadmap.md`](phase03-roadmap.md)
+
 **Goal:** Publish reproducible descriptive and longitudinal metrics from
 a versioned registry with exact golden expectations, a provenance trace
 from any published number back to raw artifacts, and every remaining
 public page — so the brief's seventeen-item first milestone passes end
 to end on synthetic data.
-
-**Status:** In progress — [`docs/roadmap/phase03-roadmap.md`](phase03-roadmap.md)
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — correction requester contacts
@@ -585,13 +585,13 @@ milestone.
 
 ### Phase 4 — Risk Adjustment and Statistical Validation
 
+**Status:** Not started
+
 **Goal:** Compare observed outcomes with model-expected outcomes for
 comparable cohorts on synthetic data with planted effects, publish
 observed/expected ratios with intervals and partial pooling, and
 document validation before any adjusted statistic appears on a judge
 page.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — synthetic sensitive attributes
@@ -652,13 +652,13 @@ of 5; the calibration portion of 10.
 
 ### Phase 5 — First Real State-Court Pipeline and the Florida Acquisition Plan
 
+**Status:** Not started
+
 **Goal:** Ingest the first real state criminal-court corpus (Cook
 County, IL State's Attorney datasets) end to end with actor attribution,
 conservative person resolution, real timelines, coverage statistics, and
 the first real metrics, while completing the Florida source inventory
 and a lawful acquisition plan.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — real defendant-level records
@@ -750,12 +750,12 @@ cases, and a corpus frozen at 2024-12-30.
 
 ### Phase 6 — Methodological Validation, Admin Tools, and Trust
 
+**Status:** Not started
+
 **Goal:** Quantify the platform's error rates on real data instead of
 assuming correctness, ship the administrative surface behind
 authentication, complete the corrections and rapid-suppression process,
 and pass an external legal review.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local);
 external legal review cost TBD · **Handles sensitive data:** Yes —
@@ -821,12 +821,12 @@ logging.
 
 ### Phase 7 — Expansion: Florida Pilot, Federal Dockets, and the Coverage Map
 
+**Status:** Not started
+
 **Goal:** Add the Florida pilot jurisdiction and the federal docket
 layer through the same connector framework, introduce probabilistic
 entity resolution across sources, and ship jurisdiction pages with a
 coverage map and a repeatable jurisdiction-add playbook.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none beyond
 metered PACER requests under a hard cap (TBD) · **Handles sensitive
@@ -886,13 +886,13 @@ Brief phases: 7, 9 (Florida), and 12.
 
 ### Phase 8 — Production Hardening, Observability, and Launch
 
+**Status:** Not started
+
 **Goal:** Operate JudgeMetrics as a public service: vendor-neutral
 managed infrastructure, observability with owned alarms, edge rate
 limits and caching, a codebase-wide security and accessibility audit, a
 rehearsed release and rollback path, a readiness gate, and a staged
 public launch.
-
-**Status:** Not started
 
 **Complexity:** Medium · **Risk:** High · **Cloud cost:** TBD (managed
 PostgreSQL, object storage, hosting, CDN, error tracking) · **Handles
@@ -957,14 +957,14 @@ Brief phase: 11.
 
 ### Phase 9 — Sustainability and Data Products
 
+**Status:** Not started
+
 **Goal:** Fund continued operation without compromising the public
 surface: a legal home for the project, a data license that inherits
 each source's redistribution terms, versioned research snapshots, a
 keyed API tier, a priced jurisdiction-onboarding service, and grant,
 sponsorship, and donation channels — with the free website and every
 judge-level aggregate unchanged and never paywalled.
-
-**Status:** Not started
 
 **Complexity:** Medium · **Risk:** Medium · **Cloud cost:** payment
 processor fees and snapshot storage egress (TBD) · **Handles sensitive

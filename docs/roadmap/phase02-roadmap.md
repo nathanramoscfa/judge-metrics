@@ -1,5 +1,5 @@
 <!-- docs/roadmap/phase02-roadmap.md -->
-# Phase 2 Roadmap — Synthetic Justice Dataset, Entity Resolution, and Case Timelines
+# Phase 2 Roadmap — Synthetic Justice Dataset, Entity Resolution, and Case Timelines ✅
 
 **Status:** Complete — 2026-09-19
 
