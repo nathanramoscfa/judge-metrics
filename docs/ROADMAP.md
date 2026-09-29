@@ -4,10 +4,10 @@
 This is the living status document the brief asks for: the current
 phase, completed items, unresolved issues (above all, unresolved
 data-access questions, which are recorded here rather than answered by
-guesswork), and the next milestones. The plan itself is the root
-[`ROADMAP.md`](../ROADMAP.md); the per-phase execution plans are
-`docs/phaseNN-roadmap.md`. Update this file at the end of every step
-(Stage 6 of the step lifecycle).
+guesswork), and the next milestones. The plan itself is
+[`docs/roadmap/ROADMAP.md`](roadmap/ROADMAP.md); the per-phase
+execution plans are `docs/roadmap/phaseNN-roadmap.md`. Update this
+file at the end of every step (Stage 6 of the step lifecycle).
 
 ## Current phase
 
@@ -26,7 +26,7 @@ Step 5 (the corrections form, the court and jurisdiction pages,
 `bootstrap`, the `e2e` job on the demo seed, and the first-milestone
 walkthrough) merged on 2026-09-20; Step 6 (QA, `scripts/verify_phase03.py`,
 `phase-verify (03)`, and the `v0.3.0-phase-3` tag) is next, in a fresh
-conversation from [`docs/phase03-roadmap.md`](phase03-roadmap.md). Phase 2 (Synthetic
+conversation from [`docs/roadmap/phase03-roadmap.md`](roadmap/phase03-roadmap.md). Phase 2 (Synthetic
 Justice Dataset, Entity Resolution, and Case Timelines) completed on
 2026-09-18 with Step 6 (QA and `scripts/verify_phase02.py`) and is
 tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1

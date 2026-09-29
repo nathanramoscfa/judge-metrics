@@ -23,9 +23,9 @@ VERIFY_SCRIPT = REPO_ROOT / "scripts" / "verify_phase01.py"
 
 
 def test_roadmap_doc_exists() -> None:
-    path = REPO_ROOT / "docs" / "phase01-roadmap.md"
+    path = REPO_ROOT / "docs" / "roadmap" / "phase01-roadmap.md"
     assert path.is_file()
-    assert path.read_text(encoding="utf-8").startswith("<!-- docs/phase01-roadmap.md -->")
+    assert path.read_text(encoding="utf-8").startswith("<!-- docs/roadmap/phase01-roadmap.md -->")
 
 
 def test_qa_findings_doc_exists() -> None:

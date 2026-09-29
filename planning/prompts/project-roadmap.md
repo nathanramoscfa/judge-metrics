@@ -9,7 +9,7 @@ apply.
 | Placeholder    | Meaning                                                  | Default                     |
 | -------------- | -------------------------------------------------------- | --------------------------- |
 | `{{BRIEF}}`    | Where the project is described: files, or inline prose   | `@README.md`                |
-| `{{OUTPUT}}`   | Where the roadmap is written                             | `ROADMAP.md`                |
+| `{{OUTPUT}}`   | Where the roadmap is written                             | `docs/roadmap/ROADMAP.md`   |
 | `{{CONSTRAINTS}}` | Hard constraints the roadmap must respect (optional)  | —                           |
 
 ---
@@ -23,10 +23,21 @@ current. Run `pip install -U roadmodel && roadmodel export-kit . --force`
 `planning/templates/project-roadmap-template.md` and confirm its Step
 lifecycle Stage 3 reads "Open the PR, then mark the step" and Stage 6
 reads "Dispose of every finding, declare completion, then new
-conversation". If Stage 3 is a bare "Open the PR", or Stage 6 tells
+conversation". If Stage 3 is a bare "Open the PR", Stage 6 tells
 you to put findings in a "Follow-ups (non-blocking)" note after the
-completion line, STOP and tell me the kit is stale — do not write the
-roadmap from it.
+completion line, or a `### Phase` section's `**Status:**` line sits
+after its **Goal:** rather than directly under its heading, STOP and
+tell me the kit is stale — do not write the roadmap from it.
+
+Step 0b — roadmaps live in `docs/roadmap/`: `ROADMAP.md` and every
+`phaseNN-roadmap.md`, together. A project that keeps them git-excluded
+(e.g. `private/`) keeps them there, and the rest of this step does not
+apply: a tracked `ROADMAP.md` beside them is a published copy.
+Otherwise, if this project has a `ROADMAP.md` or `phaseNN-roadmap.md`
+anywhere else that git does not ignore (committed, or written and not
+yet committed), STOP and tell me to run `/roadmap-refresh` first: it
+moves them into `docs/roadmap/` and updates every reference to them. Do
+not write a new roadmap beside them.
 
 Step 1 — write `{{OUTPUT}}` from
 `@planning/templates/project-roadmap-template.md`. The project brief
@@ -49,8 +60,9 @@ availability exclusion in the selector.
 Honor the template's style rules: 80-column prose, no `<PLACEHOLDER>`
 tokens left, every `<!-- ... -->` guidance block stripped, numbers
 marked "TBD" rather than invented, every phase carrying
-`**Status:** Not started` under its Goal and the §8 summary table
-carrying a Status column (each phase's final step flips both).
+`**Status:** Not started` directly under its `### Phase` heading,
+before its Goal, and the §8 summary table carrying a Status column
+(each phase's final step flips both and appends ✅ to the heading).
 
 When the file is written, reply with its path and the phase list with
 one line each. Do not start Phase 1 — each phase gets its own phase

@@ -5,7 +5,7 @@ export const REPOSITORY_URL = "https://github.com/nathanramoscfa/judge-metrics";
 
 export const DATA_SOURCES_URL = `${REPOSITORY_URL}/blob/main/docs/DATA_SOURCES.md`;
 
-export const ROADMAP_URL = `${REPOSITORY_URL}/blob/main/ROADMAP.md`;
+export const ROADMAP_URL = `${REPOSITORY_URL}/blob/main/docs/roadmap/ROADMAP.md`;
 
 export const SYNTHETIC_DATA_URL = `${REPOSITORY_URL}/blob/main/docs/SYNTHETIC_DATA.md`;
 

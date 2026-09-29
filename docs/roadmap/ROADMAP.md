@@ -17,7 +17,7 @@ events, with every published statistic traceable to versioned source
 records and code.
 
 The product specification is the brief archived verbatim at
-[`docs/brief/judgemetrics-master-project-specification.xml`](docs/brief/judgemetrics-master-project-specification.xml)
+[`docs/brief/judgemetrics-master-project-specification.xml`](../brief/judgemetrics-master-project-specification.xml)
 (authored with ChatGPT, September 2026). This roadmap executes it. Where
 the roadmap departs from the brief, §2 "Changes from the original brief"
 records the change and the reason, and §2 "Brief phases mapped to
@@ -26,7 +26,7 @@ phases landed. The brief's product principles, non-goals, canonical data
 model, attribution model, outcome definitions, presentation rules,
 security requirements, testing strategy, and statistical warnings apply
 unchanged. The living status document the brief asks for is
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+[`docs/ROADMAP.md`](../ROADMAP.md).
 
 ---
 
@@ -251,7 +251,9 @@ synthetic end to end and are refused by the ingest runner in production.
 
 ## 4. Phased Roadmap
 
-### Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice
+### Phase 1 — Foundation, Canonical Schema, and the FJC Judge Slice ✅
+
+**Status:** Complete — 2026-09-17
 
 **Goal:** Ship a governed repository and a runnable end-to-end slice —
 the complete canonical schema behind reversible migrations, Federal
@@ -260,13 +262,11 @@ lake into canonical tables, out through a versioned API, and onto a web
 judge page — with CI that builds and scans containers, a fail-closed
 security gate, branch protection, and the command interface.
 
-**Status:** Complete — 2026-09-17
-
 **Complexity:** High · **Risk:** Low · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — local secrets in env files only;
 public judicial biographies, no defendant data
 
-Execution plan: [`docs/phase01-roadmap.md`](docs/phase01-roadmap.md).
+Execution plan: [`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md).
 Brief phases: 0, 1, 3, and the judge portions of 4 and 6.
 
 #### 1.1 Repository bootstrap, command interface, and security gate
@@ -377,7 +377,9 @@ Brief phases: 0, 1, 3, and the judge portions of 4 and 6.
 
 ---
 
-### Phase 2 — Synthetic Justice Dataset, Entity Resolution, and Case Timelines
+### Phase 2 — Synthetic Justice Dataset, Entity Resolution, and Case Timelines ✅
+
+**Status:** Complete — 2026-09-19
 
 **Goal:** Generate a deterministic synthetic justice dataset with known
 truth, load it through the same connector path real data will use,
@@ -385,13 +387,11 @@ resolve entities with an auditable framework and review queue, and
 expose case timelines — so the whole pipeline is demonstrable and
 golden-testable before any real case data exists.
 
-**Status:** Complete — 2026-09-19
-
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** No real defendant data — synthetic records
 labelled as such on every surface
 
-Execution plan: [`docs/phase02-roadmap.md`](docs/phase02-roadmap.md).
+Execution plan: [`docs/roadmap/phase02-roadmap.md`](phase02-roadmap.md).
 Brief phases: 2, the case portions of 4 and 6, and the testing
 strategy's property tests and golden dataset.
 
@@ -482,13 +482,13 @@ strategy's property tests and golden dataset.
 
 ### Phase 3 — Metrics Engine and the Complete Local Demo (First Milestone)
 
+**Status:** In progress — [`docs/roadmap/phase03-roadmap.md`](phase03-roadmap.md)
+
 **Goal:** Publish reproducible descriptive and longitudinal metrics from
 a versioned registry with exact golden expectations, a provenance trace
 from any published number back to raw artifacts, and every remaining
 public page — so the brief's seventeen-item first milestone passes end
 to end on synthetic data.
-
-**Status:** In progress — [`docs/phase03-roadmap.md`](docs/phase03-roadmap.md)
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — correction requester contacts
@@ -585,13 +585,13 @@ milestone.
 
 ### Phase 4 — Risk Adjustment and Statistical Validation
 
+**Status:** Not started
+
 **Goal:** Compare observed outcomes with model-expected outcomes for
 comparable cohorts on synthetic data with planted effects, publish
 observed/expected ratios with intervals and partial pooling, and
 document validation before any adjusted statistic appears on a judge
 page.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — synthetic sensitive attributes
@@ -652,13 +652,13 @@ of 5; the calibration portion of 10.
 
 ### Phase 5 — First Real State-Court Pipeline and the Florida Acquisition Plan
 
+**Status:** Not started
+
 **Goal:** Ingest the first real state criminal-court corpus (Cook
 County, IL State's Attorney datasets) end to end with actor attribution,
 conservative person resolution, real timelines, coverage statistics, and
 the first real metrics, while completing the Florida source inventory
 and a lawful acquisition plan.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local) ·
 **Handles sensitive data:** Yes — real defendant-level records
@@ -750,12 +750,12 @@ cases, and a corpus frozen at 2024-12-30.
 
 ### Phase 6 — Methodological Validation, Admin Tools, and Trust
 
+**Status:** Not started
+
 **Goal:** Quantify the platform's error rates on real data instead of
 assuming correctness, ship the administrative surface behind
 authentication, complete the corrections and rapid-suppression process,
 and pass an external legal review.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** High · **Cloud cost:** none (local);
 external legal review cost TBD · **Handles sensitive data:** Yes —
@@ -821,12 +821,12 @@ logging.
 
 ### Phase 7 — Expansion: Florida Pilot, Federal Dockets, and the Coverage Map
 
+**Status:** Not started
+
 **Goal:** Add the Florida pilot jurisdiction and the federal docket
 layer through the same connector framework, introduce probabilistic
 entity resolution across sources, and ship jurisdiction pages with a
 coverage map and a repeatable jurisdiction-add playbook.
-
-**Status:** Not started
 
 **Complexity:** High · **Risk:** Medium · **Cloud cost:** none beyond
 metered PACER requests under a hard cap (TBD) · **Handles sensitive
@@ -886,13 +886,13 @@ Brief phases: 7, 9 (Florida), and 12.
 
 ### Phase 8 — Production Hardening, Observability, and Launch
 
+**Status:** Not started
+
 **Goal:** Operate JudgeMetrics as a public service: vendor-neutral
 managed infrastructure, observability with owned alarms, edge rate
 limits and caching, a codebase-wide security and accessibility audit, a
 rehearsed release and rollback path, a readiness gate, and a staged
 public launch.
-
-**Status:** Not started
 
 **Complexity:** Medium · **Risk:** High · **Cloud cost:** TBD (managed
 PostgreSQL, object storage, hosting, CDN, error tracking) · **Handles
@@ -957,14 +957,14 @@ Brief phase: 11.
 
 ### Phase 9 — Sustainability and Data Products
 
+**Status:** Not started
+
 **Goal:** Fund continued operation without compromising the public
 surface: a legal home for the project, a data license that inherits
 each source's redistribution terms, versioned research snapshots, a
 keyed API tier, a priced jurisdiction-onboarding service, and grant,
 sponsorship, and donation channels — with the free website and every
 judge-level aggregate unchanged and never paywalled.
-
-**Status:** Not started
 
 **Complexity:** Medium · **Risk:** Medium · **Cloud cost:** payment
 processor fees and snapshot storage egress (TBD) · **Handles sensitive
@@ -1623,7 +1623,7 @@ court-level comparison arrive with Phase 7.
 |-------|------------------------------------------------------|------------|-----------------------------------------------------------------|--------|
 | 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
-| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/phase03-roadmap.md |
+| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/roadmap/phase03-roadmap.md |
 | 4     | Risk adjustment and validation                       | High       | Fable 5.1 (Claude Code) for methodology and validation; Opus 5 implementation | Not started |
 | 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |
@@ -1638,6 +1638,6 @@ Max subscription (top useful effort, thinking on); GPT-family backups
 (GPT-5.6 Sol for design-heavy steps, GPT-5.3 Codex for implementation
 steps) run on Codex funded by ChatGPT Plus. Per-step tables, rationales,
 and selection blocks live in each phase roadmap, beginning with
-[`docs/phase01-roadmap.md`](docs/phase01-roadmap.md). Re-export the kit
+[`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md). Re-export the kit
 at the start of every phase (`uv run poe kit`) so the catalog is current
 before the phase roadmap is written.

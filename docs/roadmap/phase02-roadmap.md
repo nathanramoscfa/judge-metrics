@@ -1,5 +1,5 @@
-<!-- docs/phase02-roadmap.md -->
-# Phase 2 Roadmap — Synthetic Justice Dataset, Entity Resolution, and Case Timelines
+<!-- docs/roadmap/phase02-roadmap.md -->
+# Phase 2 Roadmap — Synthetic Justice Dataset, Entity Resolution, and Case Timelines ✅
 
 **Status:** Complete — 2026-09-19
 
@@ -146,7 +146,7 @@ short-lived feature branch (`feature/phase02-step{M}-<slug>`), opens a
 pull request against `main`, waits for the project's CI workflow to go
 green, and squash-merges with a Conventional Commits subject line.
 Direct pushes to `main` are blocked by branch protection. See the
-parent [`ROADMAP.md`](../ROADMAP.md) "Branch management strategy" for
+parent [`ROADMAP.md`](ROADMAP.md) "Branch management strategy" for
 the canonical naming convention, PR rules, and release tagging — this
 paragraph confirms those rules apply unchanged within this phase.
 Per-step branches are listed on each step header below as
@@ -5418,7 +5418,7 @@ RATIONALE: TASK: mechanical translation of the Steps 1–5 deliverables into num
 
 ## Not in scope (from product roadmap)
 
-Per [`ROADMAP.md`](../ROADMAP.md) Phase 2, Phase 3, and §6 "Out of
+Per [`ROADMAP.md`](ROADMAP.md) Phase 2, Phase 3, and §6 "Out of
 Scope":
 
 - Any metric, metric registry, methodology page content, provenance

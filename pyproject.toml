@@ -58,7 +58,7 @@ dev = [
     "ruff>=0.16.7",
     "types-pyyaml>=6.0.12.20260906",
 ]
-# roadmodel is the planning tool behind ROADMAP.md and docs/phaseNN-roadmap.md
+# roadmodel is the planning tool behind docs/roadmap/ (ROADMAP.md, phaseNN-roadmap.md)
 # (`uv run roadmodel export-kit . --force` refreshes planning/). It is not an
 # application dependency.
 planning = [

@@ -1,4 +1,4 @@
-<!-- docs/phase03-roadmap.md -->
+<!-- docs/roadmap/phase03-roadmap.md -->
 # Phase 3 Roadmap — Metrics Engine and the Complete Local Demo (First Milestone)
 
 **Status:** In progress
@@ -5732,7 +5732,7 @@ per phase-boundary hygiene.
     46. `docs/phase03-qa-findings.md`
         exists with every rollup
         section.
-    47. `docs/phase03-roadmap.md`
+    47. `docs/roadmap/phase03-roadmap.md`
         exists (this doc).
     48. `.github/workflows/phase-verify.yml`
         matrix includes `"03"`.
@@ -5763,7 +5763,7 @@ per phase-boundary hygiene.
       (rollup structure, the alarm
       exercise, pre-ship items, the
       carry-over checklist).
-    - docs/ROADMAP.md, ROADMAP.md §4
+    - docs/ROADMAP.md, docs/roadmap/ROADMAP.md §4
       Phase 3 acceptance criteria
       and Phase 4, CONTRIBUTING.md
       "Repository settings".
@@ -5782,8 +5782,8 @@ per phase-boundary hygiene.
     `"03"` to the phase-verify.yml
     matrix and make `phase-verify
     (03)` a required context. Update
-    docs/ROADMAP.md and the root
-    ROADMAP.md if its Phase 3
+    docs/ROADMAP.md and
+    docs/roadmap/ROADMAP.md if its Phase 3
     acceptance bullets drifted. Tag
     `v0.3.0-phase-3`.
   </goal>
@@ -6053,11 +6053,11 @@ per phase-boundary hygiene.
 
     <requirement>
       Update docs/ROADMAP.md: verify
-      the root ROADMAP.md Phase 3
+      docs/roadmap/ROADMAP.md Phase 3
       "Acceptance criteria" section
       matches this roadmap's V1–V6
       checks (consistency audit;
-      patch the root roadmap's Phase
+      patch the project roadmap's Phase
       3 acceptance bullets in this
       PR if they drifted); Current
       phase → Phase 4 not started,
@@ -6114,7 +6114,7 @@ per phase-boundary hygiene.
   dependency audits clean over the phase's surface); V6.4 is green.
 - `tests/unit/test_phase03_verification.py` passes; branch protection
   still passes on the resulting PR.
-- `docs/ROADMAP.md` updated; the root `ROADMAP.md` Phase 3 acceptance
+- `docs/ROADMAP.md` updated; `docs/roadmap/ROADMAP.md` Phase 3 acceptance
   bullets match V1–V6; the tag `v0.3.0-phase-3` is on the squash-merged
   commit and pushed.
 - **Operations:** the analytics snapshot has a health signal
@@ -6380,7 +6380,7 @@ RATIONALE: TASK: Medium-complexity mechanical translation of the Steps 1–5 del
 
 ## Not in scope (from product roadmap)
 
-Per [`ROADMAP.md`](../ROADMAP.md) Phase 3, Phase 4, and §6 "Out of
+Per [`ROADMAP.md`](ROADMAP.md) Phase 3, Phase 4, and §6 "Out of
 Scope":
 
 - The expected-outcome model, expected counts, observed/expected ratios,

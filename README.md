@@ -70,10 +70,10 @@ jurisdiction page, the one-command `uv run poe bootstrap`, and the
 first-milestone walkthrough (`web/tests/e2e/first-milestone.spec.ts`,
 run in CI over the seeded demo dataset). See:
 
-- [`ROADMAP.md`](ROADMAP.md) — the eight-phase plan.
+- [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
   items, unresolved data-access questions, next milestones.
-- [`docs/phase01-roadmap.md`](docs/phase01-roadmap.md) — the Phase 1
+- [`docs/roadmap/phase01-roadmap.md`](docs/roadmap/phase01-roadmap.md) — the Phase 1
   execution plan and its post-implementation verification.
 - [`docs/brief/`](docs/brief/) — the product specification.
 
@@ -336,7 +336,6 @@ Re-export at the start of every phase so the catalog is current.
 
 ```
 judge-metrics/
-├── ROADMAP.md              project roadmap
 ├── AGENTS.md               operating instructions for AI agents (CLAUDE.md imports it)
 ├── CONTRIBUTING.md         command interface, security gate, step lifecycle
 ├── SECURITY.md             private vulnerability disclosure
@@ -354,7 +353,7 @@ judge-metrics/
 │   ├── DATA_MODEL.md       the twenty-six tables, natural keys, indexes, grants
 │   ├── METHODOLOGY.md      rendered from the metric registry (judgemetrics methodology render); the semantics behind every number
 │   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
-│   ├── phaseNN-roadmap.md  executable per-phase plans
+│   ├── roadmap/            ROADMAP.md (project roadmap) and phaseNN-roadmap.md (executable per-phase plans)
 │   └── brief/              the product specification, verbatim
 ├── alembic/                migration environment and versions (0001–0007)
 ├── data/                   reference tables (tracked: us_states, synthetic_offenses, case_vocabulary, entity_resolution_thresholds, metric_registry); raw lake and synthetic data (untracked)

@@ -1,8 +1,9 @@
 <!-- docs/ARCHITECTURE.md -->
 # Architecture
 
-The system-level picture is in the root [`ROADMAP.md`](../ROADMAP.md)
-§3. This document describes what is built: the ingest pipeline (Phase 1
+The system-level picture is in
+[`docs/roadmap/ROADMAP.md`](roadmap/ROADMAP.md) §3. This document
+describes what is built: the ingest pipeline (Phase 1
 Step 3, extended to case-level data in Phase 2 Step 2), the raw lake,
 the idempotency rules, person hashing and resolution, the database
 roles, the public API (Step 4), and the web tier (Step 5).

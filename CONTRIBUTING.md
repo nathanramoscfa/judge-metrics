@@ -2,8 +2,8 @@
 # Contributing to JudgeMetrics
 
 JudgeMetrics is built one roadmap step at a time, mostly by AI coding
-agents executing `docs/phaseNN-roadmap.md` under the rules in
-`AGENTS.md` and `ROADMAP.md` §5. Human contributors follow the same
+agents executing `docs/roadmap/phaseNN-roadmap.md` under the rules
+in `AGENTS.md` and `ROADMAP.md` §5. Human contributors follow the same
 rules. This file is the short operating version; the roadmap is the
 source of truth where they differ.
 

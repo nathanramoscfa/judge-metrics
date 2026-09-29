@@ -1,7 +1,7 @@
 <!-- .github/PULL_REQUEST_TEMPLATE.md -->
 ## Roadmap step
 
-<!-- e.g. Phase 1 Step 1 (docs/phase01-roadmap.md) — or "not a roadmap step" -->
+<!-- e.g. Phase 1 Step 1 (docs/roadmap/phase01-roadmap.md) — or "not a roadmap step" -->
 
 ## Summary
 
