@@ -95,7 +95,52 @@ the V1–V6 matrix; see "Step 6" below) and runs in CI through
 
 ### Alarm exercise
 
-RESULTS-PENDING
+**The phase's required checks.** Recorded per the Step 6 plan ("break
+one static check on the PR, observe `phase-verify (03)` and `test` fail,
+fix, observe both pass"):
+
+| Event | Commit (PR #33) | `phase-verify (03)` | `test` |
+|-------|-----------------|---------------------|--------|
+| Deliberate break (check 44 → `docs/screenshots/phase03-step5-alarm-exercise/README.md`) | `7e8f4c3` | fail — `[FAIL] 44 … missing docs/screenshots/phase03-step5-alarm-exercise/README.md`, `FAILED: 44` (run 36654428220) | fail — `python` job: `test_verify_script_fast_exits_zero` (`FAILED: 44`; 1 failed, 1,327 passed; run 36654428167); every other job green, `phase-verify (01)` and `(02)` included |
+| Fix (check 44 restored) | the next commit | pass | pass |
+
+**The analytics-snapshot alarm** (the Operations criterion: a health
+signal, `/api/v1/ready` `metrics.snapshot_hash` with `metrics verify`
+green, and an alarm, `metrics verify` non-zero). Run on 2026-09-29
+against the scratch database after `judgemetrics seed` there (role URLs
+pointed at `JUDGEMETRICS_TEST_DATABASE_URL`, snapshots under
+`data/snapshots/scratch-test-db`); one current, unsuppressed observation
+had its `observed_count` raised by one and then restored:
+
+```text
+observation=001af8f7-2d56-4b29-9c15-16d54f856fbf slug=revocation_rate observed_count=2
+tamper: observation=001af8f7-2d56-4b29-9c15-16d54f856fbf observed_count=3
+$ uv run judgemetrics metrics verify
+snapshots=1 observations=3426 verified=3425 mismatches=1 unverifiable=0
+mismatch: revocation_rate judge:51fadefb-6d7e-421c-8175-d908783ffbb0@180 column=observed_count stored=3 recomputed=2 observation=001af8f7-2d56-4b29-9c15-16d54f856fbf
+exit 1
+restore: observation=001af8f7-2d56-4b29-9c15-16d54f856fbf observed_count=2
+$ uv run judgemetrics metrics verify
+snapshots=1 observations=3426 verified=3426 mismatches=0 unverifiable=0
+exit 0
+```
+
+The alarm names the observation by id, slug, subject, window, and
+column. `test_golden_metrics.py` keeps the same assertion in CI, so the
+alarm cannot silently stop firing.
+
+**`--post` on the maintainer's machine** (2026-09-29, Windows, the
+Compose services, `dev-api` and `dev-web` running, before the PR
+existed): 49/49 static checks; items 1–5 (`uv sync`, `poe up`, `poe
+migrate`, `poe seed` on the scratch database), the `bootstrap` rerun,
+the seed probe (fifteen tables' row counts unchanged, `metric_observation`
+3,426), the compute probe (`subjects=29 observations=0 superseded=0
+subjects_published=0` on both runs), `metrics verify`, the provenance
+trace (`complete: yes`), items 6–7, the Playwright suites, the web
+suites, the security gate, every V-check suite, and item 17 (`poe
+check`) all PASS; V3.4 and V6.1 `SKIP` for want of a PR, then green
+on PR #33 (`container`, `phase-verify (03)`). The first attempt found
+findings 6.10 and 6.11.
 
 ## Pre-ship items
 
