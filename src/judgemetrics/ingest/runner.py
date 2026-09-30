@@ -114,6 +114,7 @@ from judgemetrics.ingest.base import (
     JurisdictionDraft,
     JusticeEventDraft,
     NaturalKey,
+    PartyAttributeDraft,
     PersonDraft,
     Provenance,
     RawArtifact,
@@ -140,6 +141,7 @@ from judgemetrics.ingest.publish import (
     upsert_events,
     upsert_justice_events,
     upsert_parties,
+    upsert_party_attributes,
     upsert_sentences,
 )
 from judgemetrics.ingest.registry import get_connector
@@ -158,6 +160,7 @@ UNRESOLVED_COURT = "unresolved_court"
 UNRESOLVED_JURISDICTION = "unresolved_jurisdiction"
 UNRESOLVED_CASE = "unresolved_case"
 UNRESOLVED_PERSON = "unresolved_person"
+UNRESOLVED_PARTY = "unresolved_party"
 # Judge identity systems with a partial unique expression index on
 # ``external_ids ->> '<system>'`` (``uq_judge_external_ids_<system>``).
 JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid", "synthetic_judge_code"})
@@ -204,6 +207,8 @@ class _Resolved:
     persons: list[TaggedRecord] = field(default_factory=list)
     cases: list[TaggedRecord] = field(default_factory=list)
     parties: list[TaggedRecord] = field(default_factory=list)
+    # The parties' restricted attributes (restricted.party_attribute).
+    party_attributes: list[TaggedRecord] = field(default_factory=list)
     assignments: list[TaggedRecord] = field(default_factory=list)
     charges: list[TaggedRecord] = field(default_factory=list)
     events: list[TaggedRecord] = field(default_factory=list)
@@ -229,6 +234,7 @@ class _Resolved:
             *self.persons,
             *self.cases,
             *self.parties,
+            *self.party_attributes,
             *self.assignments,
             *self.charges,
             *self.events,
@@ -1041,6 +1047,8 @@ def _resolve(
             )
         elif isinstance(record, CasePartyDraft):
             resolved.parties.append(item)
+        elif isinstance(record, PartyAttributeDraft):
+            resolved.party_attributes.append(item)
         elif isinstance(record, JudgeAssignmentDraft):
             resolved.assignments.append(item)
         elif isinstance(record, ChargeDraft):
@@ -1054,6 +1062,17 @@ def _resolve(
         else:  # pragma: no cover - every case-level draft type is handled above
             msg = f"unhandled draft type {type(record).__name__}"
             raise IngestFailed(msg)
+
+    # An attribute belongs to a party of this run (both come from one source row).
+    party_keys = {item.record.natural_key for item in resolved.parties}
+    attributes = resolved.party_attributes
+    resolved.party_attributes = []
+    for item in attributes:
+        attribute = _record_as(PartyAttributeDraft, item)
+        if attribute.party_key in party_keys:
+            resolved.party_attributes.append(item)
+        else:
+            resolved.rejections.append(_rejection(item, UNRESOLVED_PARTY, "unknown case party"))
 
     for item in justice_events:
         event = _record_as(JusticeEventDraft, item)
@@ -1076,6 +1095,7 @@ def _case_key_of(record: CanonicalRecord) -> NaturalKey | None:
     if isinstance(
         record,
         CasePartyDraft
+        | PartyAttributeDraft
         | JudgeAssignmentDraft
         | ChargeDraft
         | CourtEventDraft
@@ -1202,6 +1222,7 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
     case_ids = dict(resolved.db_cases)
     case_ids.update(upsert_cases(session, resolved.cases, court_ids, counts))
     party_ids = upsert_parties(session, resolved.parties, case_ids, person_ids, counts)
+    upsert_party_attributes(session, resolved.party_attributes, party_ids, counts)
     assignment_ids = upsert_assignments(session, resolved.assignments, case_ids, judge_ids, counts)
     charge_ids = upsert_charges(session, resolved.charges, case_ids, person_ids, counts)
     event_ids = upsert_events(session, resolved.events, case_ids, person_ids, judge_ids, counts)
@@ -1223,6 +1244,7 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
         persons=len(resolved.persons),
         cases=len(resolved.cases),
         parties=len(resolved.parties),
+        party_attributes=len(resolved.party_attributes),
         assignments=len(resolved.assignments),
         charges=len(resolved.charges),
         events=len(resolved.events),

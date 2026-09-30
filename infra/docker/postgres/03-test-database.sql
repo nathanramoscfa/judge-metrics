@@ -18,6 +18,12 @@
 
 \set ON_ERROR_STOP on
 \getenv owner_name POSTGRES_USER
+\getenv db_name POSTGRES_DB
+
+-- The admin role creates the `restricted` schema (revision 0008), which needs
+-- CREATE on the database. 02-roles.sql grants it on a fresh volume; this
+-- rerunning script brings an older volume's main database up to date.
+GRANT CREATE ON DATABASE :"db_name" TO judgemetrics_admin;
 
 SELECT format('CREATE DATABASE %I OWNER %I', 'judgemetrics_test', :'owner_name')
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'judgemetrics_test')
@@ -25,6 +31,7 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'judgemetrics_test')
 
 GRANT CONNECT ON DATABASE judgemetrics_test TO judgemetrics_app, judgemetrics_ingest, judgemetrics_admin;
 GRANT TEMPORARY ON DATABASE judgemetrics_test TO judgemetrics_admin;
+GRANT CREATE ON DATABASE judgemetrics_test TO judgemetrics_admin;
 
 \connect judgemetrics_test
 
@@ -70,7 +77,9 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_name" IN SCHEMA public
 -- a fresh volume, where the migrations apply them later): the app role never
 -- reads person_identifier, correction_request (INSERT only, revision 0007),
 -- audit_log, or entity_resolution_candidate; the ingest role only appends
--- to audit_log.
+-- to audit_log. The `restricted` schema (revision 0008) is never granted to
+-- the app role; its USAGE and every table privilege are revoked again
+-- whenever the schema exists, so no rerun can open it.
 DO $$
 DECLARE
     restricted text;
@@ -88,5 +97,9 @@ BEGIN
     IF to_regclass('public.audit_log') IS NOT NULL THEN
         EXECUTE 'REVOKE ALL ON TABLE public.audit_log FROM judgemetrics_ingest';
         EXECUTE 'GRANT SELECT, INSERT ON TABLE public.audit_log TO judgemetrics_ingest';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'restricted') THEN
+        EXECUTE 'REVOKE ALL ON ALL TABLES IN SCHEMA restricted FROM judgemetrics_app';
+        EXECUTE 'REVOKE ALL ON SCHEMA restricted FROM judgemetrics_app';
     END IF;
 END $$;

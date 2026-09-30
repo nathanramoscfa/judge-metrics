@@ -1,0 +1,1043 @@
+{
+  "controls": {
+    "age_band": {
+      "failure_to_appear_log_odds": {
+        "18-24": 0.6,
+        "25-34": 0.3,
+        "35-44": 0.0,
+        "45-54": -0.3,
+        "55+": -0.6,
+        "unknown": 0.0
+      },
+      "new_case_exponent": {
+        "18-24": 0.6,
+        "25-34": 0.3,
+        "35-44": 0.0,
+        "45-54": -0.2,
+        "55+": -0.4,
+        "unknown": 0.0
+      },
+      "role": "positive control"
+    },
+    "synthetic_group": {
+      "feeds_no_draw": true,
+      "role": "negative control",
+      "values": [
+        "group_a",
+        "group_b",
+        "group_c"
+      ]
+    }
+  },
+  "courts": {
+    "C-0001": {
+      "decisions_by_judge": {
+        "J-0001": 16,
+        "J-0004": 1,
+        "J-0005": 3
+      },
+      "mean": {
+        "fta_effect": 0.333603,
+        "leniency": 0.214685,
+        "new_case_effect": 0.539784
+      }
+    },
+    "C-0002": {
+      "decisions_by_judge": {
+        "J-0002": 13,
+        "J-0006": 3
+      },
+      "mean": {
+        "fta_effect": 1.119909,
+        "leniency": 0.454733,
+        "new_case_effect": -1.693314
+      }
+    },
+    "C-0003": {
+      "decisions_by_judge": {
+        "J-0003": 13,
+        "J-0004": 3
+      },
+      "mean": {
+        "fta_effect": 0.495681,
+        "leniency": -0.973573,
+        "new_case_effect": -1.692542
+      }
+    }
+  },
+  "definitions": {
+    "controls": "The restricted controls: age_band is the positive control (the planted effects of the filing-age band on the failure-to-appear log-odds and the next-filing exponent, which no model feature carries); synthetic_group is the negative control (drawn on its own stream after the persons; no draw reads it).",
+    "courts": "Per court: the case-weighted mean of each effect over the judges who drew its judicial discretionary release decisions (each judge weighted by those decisions), the value p0 substitutes for the deciding judge's effect.",
+    "judges": "Per judge: the courts it served, its planted leniency (release log-odds), new_case_effect (next-filing skew exponent), fta_effect (failure-to-appear log-odds), and docket_tilt (assignment log-weight per unit of risk index), and under centered each effect minus the decision-weighted mean of its courts' means (the effect the ratios rank). decisions_by_court counts the judicial discretionary release decisions the generator drew for the judge per court (the weights).",
+    "parameters": "Every constant of the generator's functional forms (docs/SYNTHETIC_DATA.md \"Planted effects\"): the judge-effect ranges, the risk features and their numeric codes, the risk-index weights, the release, failure-to-appear, and next-filing forms, and the age effects by filing-age band.",
+    "targets.pretrial_release": "Per judge, over the attributed judicial discretionary pretrial decisions (metrics.json pretrial.decisions): decisions, released (detained = false), expected = sum over the decisions of p = logistic(base + leniency) x the chance the release takes effect before the corpus end, expected_centered = the same sum with the court's mean leniency (p0), oracle_ratio = released / expected_centered, true_ratio = expected / expected_centered.",
+    "targets.windowed": "new_case and failure_to_appear, per window w and judge, over the pretrial_release cohort of metrics.json (index_events.pretrial_release.windows.<w>): cohort, followed, observed (the fixed-window numerator), expected and expected_centered summed over the followed members, oracle_ratio = observed / expected_centered, true_ratio = expected / expected_centered. A member's p is the probability of its outcome in (exposure_start, exposure_start + w days] under the generator's draws given the realized exposure start. new_case: 0 without a next case; else the chance the next filing (earliest day + int(U ** k x (span + 1)) days, a business-hour minute, k = max(floor, base_exponent + the releasing judge's effect)) falls in the window, plus the chance it falls before the exposure start times whether a later case was filed in the window. failure_to_appear: 1 - (1 - q) x (1 - o), q = logistic(base + the judge's fta_effect) x the chance its date (the rule's hearing, or a uniform day and minute) falls in the window, o = 1 when another case of the person records a failure to appear in the window. p0 substitutes the court's mean effect for the judge's."
+  },
+  "generator_version": "3",
+  "judges": {
+    "J-0001": {
+      "centered": {
+        "fta_effect": 0.124069,
+        "leniency": 0.145889,
+        "new_case_effect": -0.530702
+      },
+      "courts": [
+        "C-0001"
+      ],
+      "decisions_by_court": {
+        "C-0001": 16
+      },
+      "docket_tilt": -0.106786,
+      "fta_effect": 0.457672,
+      "leniency": 0.360574,
+      "new_case_effect": 0.009081
+    },
+    "J-0002": {
+      "centered": {
+        "fta_effect": 0.066253,
+        "leniency": 0.106146,
+        "new_case_effect": -0.269865
+      },
+      "courts": [
+        "C-0002"
+      ],
+      "decisions_by_court": {
+        "C-0002": 13
+      },
+      "docket_tilt": 1.386151,
+      "fta_effect": 1.186162,
+      "leniency": 0.560879,
+      "new_case_effect": -1.963179
+    },
+    "J-0003": {
+      "centered": {
+        "fta_effect": 0.050126,
+        "leniency": -0.356521,
+        "new_case_effect": -0.95484
+      },
+      "courts": [
+        "C-0003"
+      ],
+      "decisions_by_court": {
+        "C-0003": 13
+      },
+      "docket_tilt": 0.677653,
+      "fta_effect": 0.545806,
+      "leniency": -1.330094,
+      "new_case_effect": -2.647382
+    },
+    "J-0004": {
+      "centered": {
+        "fta_effect": -0.176692,
+        "leniency": 1.24786,
+        "new_case_effect": 3.579558
+      },
+      "courts": [
+        "C-0001",
+        "C-0003"
+      ],
+      "decisions_by_court": {
+        "C-0001": 1,
+        "C-0003": 3
+      },
+      "docket_tilt": -1.456886,
+      "fta_effect": 0.27847,
+      "leniency": 0.571351,
+      "new_case_effect": 2.445098
+    },
+    "J-0005": {
+      "centered": {
+        "fta_effect": -0.643325,
+        "leniency": -0.896963,
+        "new_case_effect": 2.195308
+      },
+      "courts": [
+        "C-0001",
+        "C-0003"
+      ],
+      "decisions_by_court": {
+        "C-0001": 3
+      },
+      "docket_tilt": -1.983413,
+      "fta_effect": -0.309722,
+      "leniency": -0.682278,
+      "new_case_effect": 2.735091
+    },
+    "J-0006": {
+      "centered": {
+        "fta_effect": -0.287097,
+        "leniency": -0.459967,
+        "new_case_effect": 1.169413
+      },
+      "courts": [
+        "C-0002"
+      ],
+      "decisions_by_court": {
+        "C-0002": 3
+      },
+      "docket_tilt": 0.764394,
+      "fta_effect": 0.832812,
+      "leniency": -0.005234,
+      "new_case_effect": -0.523901
+    }
+  },
+  "parameters": {
+    "failure_to_appear": {
+      "age": {
+        "18-24": 0.6,
+        "25-34": 0.3,
+        "35-44": 0.0,
+        "45-54": -0.3,
+        "55+": -0.6,
+        "unknown": 0.0
+      },
+      "coefficients": {
+        "charge_count": 0.1,
+        "lead_severity": -0.05,
+        "pending_case": 0.3,
+        "prior_cases": 0.15,
+        "prior_convictions": 0.1,
+        "prior_failures_to_appear": 0.8
+      },
+      "intercept": -2.0,
+      "propensity": 1.5
+    },
+    "features": [
+      "lead_severity",
+      "charge_count",
+      "prior_cases",
+      "prior_convictions",
+      "prior_failures_to_appear",
+      "pending_case"
+    ],
+    "judge_effects": {
+      "docket_tilt_half_width": 2.5,
+      "fta_effect_half_width": 1.2,
+      "leniency_half_width": 1.8,
+      "new_case_effect_half_width": 3.0
+    },
+    "next_filing": {
+      "age": {
+        "18-24": 0.6,
+        "25-34": 0.3,
+        "35-44": 0.0,
+        "45-54": -0.2,
+        "55+": -0.4,
+        "unknown": 0.0
+      },
+      "exponent_base": 0.6,
+      "exponent_floor": 0.25,
+      "exponent_propensity": 2.0,
+      "exponent_risk": 3.0
+    },
+    "release": {
+      "coefficients": {
+        "charge_count": -0.2,
+        "lead_severity": -0.3,
+        "pending_case": -0.5,
+        "prior_cases": -0.25,
+        "prior_convictions": -0.3,
+        "prior_failures_to_appear": -0.8
+      },
+      "intercept": {
+        "felony": 1.6,
+        "misdemeanor": 2.4
+      },
+      "recognizance_share": {
+        "felony": 0.45,
+        "misdemeanor": 0.7
+      },
+      "unposted_bond_share": {
+        "felony": 0.45,
+        "misdemeanor": 0.55
+      }
+    },
+    "risk_weights": {
+      "charge_count": 0.2,
+      "lead_severity": 0.25,
+      "pending_case": 0.4,
+      "prior_cases": 0.35,
+      "prior_convictions": 0.3,
+      "prior_failures_to_appear": 0.5
+    },
+    "severity_code": {
+      "felony_1": 4,
+      "felony_2": 3,
+      "felony_3": 2,
+      "misdemeanor_a": 1,
+      "misdemeanor_b": 0
+    }
+  },
+  "scale": "golden",
+  "seed": 7,
+  "targets": {
+    "failure_to_appear": {
+      "effect": "fta_effect",
+      "windows": {
+        "1095": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "180": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 2.414155,
+              "expected_centered": 2.255376,
+              "followed": 8,
+              "observed": 3,
+              "oracle_ratio": 1.330155,
+              "true_ratio": 1.0704
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 3.306035,
+              "expected_centered": 3.196677,
+              "followed": 7,
+              "observed": 4,
+              "oracle_ratio": 1.251299,
+              "true_ratio": 1.03421
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.579874,
+              "expected_centered": 0.560282,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.034969
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.562527,
+              "expected_centered": 1.646561,
+              "followed": 4,
+              "observed": 3,
+              "oracle_ratio": 1.821979,
+              "true_ratio": 0.948964
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.188388,
+              "expected_centered": 0.32937,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.571966
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.4504,
+              "expected_centered": 0.521996,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.862841
+            }
+          }
+        },
+        "30": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 1.924579,
+              "expected_centered": 1.809703,
+              "followed": 9,
+              "observed": 2,
+              "oracle_ratio": 1.105154,
+              "true_ratio": 1.063478
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 1.946342,
+              "expected_centered": 1.882599,
+              "followed": 8,
+              "observed": 1,
+              "oracle_ratio": 0.531181,
+              "true_ratio": 1.033859
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.341195,
+              "expected_centered": 0.32982,
+              "followed": 4,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.034488
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 0.733527,
+              "expected_centered": 0.850584,
+              "followed": 4,
+              "observed": 2,
+              "oracle_ratio": 2.351326,
+              "true_ratio": 0.862381
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.113479,
+              "expected_centered": 0.195862,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.579383
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "365": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 2.712808,
+              "expected_centered": 2.542053,
+              "followed": 7,
+              "observed": 4,
+              "oracle_ratio": 1.573531,
+              "true_ratio": 1.067172
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 2.579358,
+              "expected_centered": 2.499149,
+              "followed": 5,
+              "observed": 3,
+              "oracle_ratio": 1.200408,
+              "true_ratio": 1.032095
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.579874,
+              "expected_centered": 0.560282,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.034969
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.562527,
+              "expected_centered": 1.646561,
+              "followed": 4,
+              "observed": 3,
+              "oracle_ratio": 1.821979,
+              "true_ratio": 0.948964
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "730": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 0.775969,
+              "expected_centered": 0.720742,
+              "followed": 2,
+              "observed": 2,
+              "oracle_ratio": 2.774918,
+              "true_ratio": 1.076625
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 1.057245,
+              "expected_centered": 1.025268,
+              "followed": 2,
+              "observed": 2,
+              "oracle_ratio": 1.950709,
+              "true_ratio": 1.031188
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.197627,
+              "expected_centered": 0.189799,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.041245
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.428794,
+              "expected_centered": 1.506312,
+              "followed": 3,
+              "observed": 3,
+              "oracle_ratio": 1.99162,
+              "true_ratio": 0.948538
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "90": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 2.337626,
+              "expected_centered": 2.186621,
+              "followed": 9,
+              "observed": 3,
+              "oracle_ratio": 1.37198,
+              "true_ratio": 1.069059
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 2.087105,
+              "expected_centered": 2.018134,
+              "followed": 7,
+              "observed": 1,
+              "oracle_ratio": 0.495507,
+              "true_ratio": 1.034176
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.683669,
+              "expected_centered": 0.663806,
+              "followed": 4,
+              "observed": 2,
+              "oracle_ratio": 3.012931,
+              "true_ratio": 1.029924
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.562527,
+              "expected_centered": 1.646561,
+              "followed": 4,
+              "observed": 3,
+              "oracle_ratio": 1.821979,
+              "true_ratio": 0.948964
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.188388,
+              "expected_centered": 0.32937,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.571966
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.4504,
+              "expected_centered": 0.521996,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.862841
+            }
+          }
+        }
+      }
+    },
+    "new_case": {
+      "effect": "new_case_effect",
+      "windows": {
+        "1095": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "180": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 2.320334,
+              "expected_centered": 2.389051,
+              "followed": 8,
+              "observed": 3,
+              "oracle_ratio": 1.255729,
+              "true_ratio": 0.971236
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 1.260351,
+              "expected_centered": 1.445654,
+              "followed": 7,
+              "observed": 1,
+              "oracle_ratio": 0.691728,
+              "true_ratio": 0.871821
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.003272,
+              "expected_centered": 0.003272,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.0
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.399196,
+              "expected_centered": 0.189496,
+              "followed": 4,
+              "observed": 2,
+              "oracle_ratio": 10.554328,
+              "true_ratio": 7.383789
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "30": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 1.348608,
+              "expected_centered": 1.475622,
+              "followed": 9,
+              "observed": 2,
+              "oracle_ratio": 1.35536,
+              "true_ratio": 0.913925
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 0.246554,
+              "expected_centered": 0.363592,
+              "followed": 8,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.678105
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 4,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.0
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 0.893302,
+              "expected_centered": 0.023748,
+              "followed": 4,
+              "observed": 1,
+              "oracle_ratio": 42.109356,
+              "true_ratio": 37.616369
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "365": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 2.724055,
+              "expected_centered": 2.753844,
+              "followed": 7,
+              "observed": 3,
+              "oracle_ratio": 1.089386,
+              "true_ratio": 0.989183
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 2.004287,
+              "expected_centered": 2.134435,
+              "followed": 5,
+              "observed": 2,
+              "oracle_ratio": 0.937016,
+              "true_ratio": 0.939025
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.065022,
+              "expected_centered": 0.065022,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.0
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.631104,
+              "expected_centered": 0.424771,
+              "followed": 4,
+              "observed": 2,
+              "oracle_ratio": 4.708417,
+              "true_ratio": 3.839958
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "730": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 0.939499,
+              "expected_centered": 0.948217,
+              "followed": 2,
+              "observed": 1,
+              "oracle_ratio": 1.054611,
+              "true_ratio": 0.990806
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.889936,
+              "expected_centered": 1.285701,
+              "followed": 3,
+              "observed": 2,
+              "oracle_ratio": 1.555572,
+              "true_ratio": 1.469966
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 0,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        },
+        "90": {
+          "judges": {
+            "J-0001": {
+              "cohort": 9,
+              "expected": 1.928025,
+              "expected_centered": 2.027467,
+              "followed": 9,
+              "observed": 3,
+              "oracle_ratio": 1.479679,
+              "true_ratio": 0.950953
+            },
+            "J-0002": {
+              "cohort": 9,
+              "expected": 0.703384,
+              "expected_centered": 0.882244,
+              "followed": 7,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 0.797267
+            },
+            "J-0003": {
+              "cohort": 5,
+              "expected": 0.000146,
+              "expected_centered": 0.000146,
+              "followed": 4,
+              "observed": 0,
+              "oracle_ratio": 0.0,
+              "true_ratio": 1.0
+            },
+            "J-0004": {
+              "cohort": 4,
+              "expected": 1.195692,
+              "expected_centered": 0.091424,
+              "followed": 4,
+              "observed": 2,
+              "oracle_ratio": 21.876184,
+              "true_ratio": 13.078587
+            },
+            "J-0005": {
+              "cohort": 2,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 2,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            },
+            "J-0006": {
+              "cohort": 1,
+              "expected": 0.0,
+              "expected_centered": 0.0,
+              "followed": 1,
+              "observed": 0,
+              "oracle_ratio": null,
+              "true_ratio": null
+            }
+          }
+        }
+      }
+    },
+    "pretrial_release": {
+      "effect": "leniency",
+      "judges": {
+        "J-0001": {
+          "decisions": 16,
+          "expected": 12.287005,
+          "expected_centered": 11.924301,
+          "oracle_ratio": 0.754761,
+          "released": 9,
+          "true_ratio": 1.030417
+        },
+        "J-0002": {
+          "decisions": 12,
+          "expected": 9.900087,
+          "expected_centered": 9.747101,
+          "oracle_ratio": 0.923351,
+          "released": 9,
+          "true_ratio": 1.015695
+        },
+        "J-0003": {
+          "decisions": 12,
+          "expected": 6.294743,
+          "expected_centered": 7.216295,
+          "oracle_ratio": 0.692876,
+          "released": 5,
+          "true_ratio": 0.872296
+        },
+        "J-0004": {
+          "decisions": 4,
+          "expected": 3.557689,
+          "expected_centered": 2.80516,
+          "oracle_ratio": 1.425944,
+          "released": 4,
+          "true_ratio": 1.268266
+        },
+        "J-0005": {
+          "decisions": 2,
+          "expected": 1.465974,
+          "expected_centered": 1.737111,
+          "oracle_ratio": 1.151337,
+          "released": 2,
+          "true_ratio": 0.843915
+        },
+        "J-0006": {
+          "decisions": 3,
+          "expected": 2.319094,
+          "expected_centered": 2.516208,
+          "oracle_ratio": 0.397423,
+          "released": 1,
+          "true_ratio": 0.921662
+        }
+      }
+    }
+  },
+  "truth_version": "3",
+  "windows_days": [
+    30,
+    90,
+    180,
+    365,
+    730,
+    1095
+  ]
+}

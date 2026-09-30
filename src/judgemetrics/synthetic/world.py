@@ -4,8 +4,11 @@
 Draw order is fixed (courts, then judges in code order, then persons in id
 order) and every draw comes from the ``world`` or ``persons`` stream, so a
 change to the case simulation cannot move a judge's name or a person's date
-of birth. Names are unique across judges and persons; only the edge-case
-planter (``edge_cases.py``) creates a collision, and it records it.
+of birth. The judges' planted effects come from the ``effects`` stream
+(``effects.build_effects``) and each person's ``synthetic_group`` from the
+``attributes`` stream, which no other draw reads (GENERATOR_VERSION 3).
+Names are unique across judges and persons; only the edge-case planter
+(``edge_cases.py``) creates a collision, and it records it.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from pathlib import Path
 
 from judgemetrics.config import REPO_ROOT
 from judgemetrics.synthetic.config import ScaleSpec
+from judgemetrics.synthetic.effects import build_effects
 from judgemetrics.synthetic.model import (
     Court,
     Judge,
@@ -26,7 +30,12 @@ from judgemetrics.synthetic.model import (
     World,
 )
 from judgemetrics.synthetic.rng import Streams, chance, choice, randint, uniform, weighted_choice
-from judgemetrics.synthetic.vocabulary import OFFENSE_CATEGORIES, POSITIONS, SEVERITIES
+from judgemetrics.synthetic.vocabulary import (
+    OFFENSE_CATEGORIES,
+    POSITIONS,
+    SEVERITIES,
+    SYNTHETIC_GROUPS,
+)
 from judgemetrics.synthetic.wordlists import compose_name, full_name
 
 OFFENSES_PATH = REPO_ROOT / "data" / "reference" / "synthetic_offenses.csv"
@@ -175,7 +184,6 @@ def build_judges(world: World, rng: random.Random, used_names: set[str]) -> None
             code=f"J-{index:04d}",
             given=given,
             family=family,
-            release_bias=uniform(rng, -0.15, 0.15),
             dismissal_bias=uniform(rng, -0.04, 0.06),
             severity_bias=uniform(rng, 0.7, 1.3),
         )
@@ -210,12 +218,20 @@ def build_persons(world: World, rng: random.Random, used_names: set[str]) -> Non
         )
 
 
+def draw_groups(world: World, rng: random.Random) -> None:
+    """Each person's ``synthetic_group`` (id order): the negative control, read by no draw."""
+    for person in world.persons:
+        person.synthetic_group = choice(rng, SYNTHETIC_GROUPS)
+
+
 def build_world(spec: ScaleSpec, seed: int, streams: Streams) -> World:
     world = World(spec=spec, seed=seed, offenses=load_offenses())
     used_names: set[str] = set()
     build_courts(world)
     build_judges(world, streams.world, used_names)
+    build_effects(world, streams.effects)
     build_persons(world, streams.persons, used_names)
+    draw_groups(world, streams.attributes)
     for court in world.courts:
         for day in (spec.corpus_start, spec.corpus_end):
             if not world.judges_serving(court.code, day):

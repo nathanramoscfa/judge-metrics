@@ -314,27 +314,28 @@ def test_database_error_is_503_without_sql(
 
 # --- the judge's cases (golden synthetic fixture) ---------------------------------
 
-# J-0003 (Puce Wingnut) sits on fifteen distinct golden cases filed between
-# 2019-04-27 and 2021-11-14: ten closed and five open, nine misdemeanors
-# and six felonies.
+# J-0003 (Goethite Warta) sits on sixteen distinct golden cases filed between
+# 2019-01-22 and 2021-11-29: nine closed and seven open, eight misdemeanors
+# and eight felonies (GENERATOR_VERSION 3).
 SYNTHETIC_JUDGE = "J-0003"
-SYNTHETIC_JUDGE_CASES = 15
+SYNTHETIC_JUDGE_NAME = "Goethite Warta"
+SYNTHETIC_JUDGE_CASES = 16
 
 
 def test_synthetic_judge_detail_carries_the_case_window_and_badge(
     api: TestClient, golden_fixture: GoldenFixture
 ) -> None:
     body = api.get(f"/api/v1/judges/{golden_fixture.judge_ids[SYNTHETIC_JUDGE]}").json()
-    assert body["canonical_name"] == "Puce Wingnut"
+    assert body["canonical_name"] == SYNTHETIC_JUDGE_NAME
     assert body["synthetic"] is True
     assert body["case_count"] == SYNTHETIC_JUDGE_CASES
     assert body["coverage"] == {
-        "earliest_filed": "2019-04-27",
-        "latest_filed": "2021-11-14",
+        "earliest_filed": "2019-01-22",
+        "latest_filed": "2021-11-29",
         "case_count": SYNTHETIC_JUDGE_CASES,
     }
     assert all(block["synthetic"] is True for block in body["provenance"])
-    listed = api.get("/api/v1/judges", params={"q": "Puce Wingnut"}).json()
+    listed = api.get("/api/v1/judges", params={"q": SYNTHETIC_JUDGE_NAME}).json()
     assert listed["items"][0]["synthetic"] is True
 
 
@@ -366,12 +367,12 @@ def test_judge_cases_paginate_newest_filing_first(
     }
     filed = [item["filed_date"] for item in page["items"]]
     assert filed == sorted(filed, reverse=True)
-    assert page["items"][0]["case_number"] == "SYN-2021-000028"
+    assert page["items"][0]["case_number"] == "SYN-2021-000023"
     assert page["items"][0]["court"]["id"] == str(golden_fixture.court_ids["C-0003"])
     assert all(item["synthetic"] is True for item in page["items"])
 
     rest = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 10, "offset": 10}).json()
-    assert len(rest["items"]) == 5
+    assert len(rest["items"]) == 6
     assert rest["next_offset"] is None
     assert {item["id"] for item in rest["items"]}.isdisjoint({item["id"] for item in page["items"]})
     every = api.get(f"/api/v1/judges/{judge_id}/cases", params={"limit": 100}).json()
@@ -398,33 +399,38 @@ def test_judge_cases_filters(api: TestClient, golden_fixture: GoldenFixture) -> 
         assert page.status_code == 200, page.text
         return [item["case_number"] for item in page.json()["items"]]
 
-    assert len(numbers(status="closed")) == 10
-    assert len(numbers(status="open")) == 5
-    assert len(numbers(case_type="misdemeanor")) == 9
-    assert len(numbers(case_type="felony")) == 6
+    assert len(numbers(status="closed")) == 9
+    assert len(numbers(status="open")) == 7
+    assert len(numbers(case_type="misdemeanor")) == 8
+    assert len(numbers(case_type="felony")) == 8
     assert numbers(filed_from="2021-01-01") == [
-        "SYN-2021-000028",
-        "SYN-2021-000020",
+        "SYN-2021-000023",
+        "SYN-2021-000022",
         "SYN-2021-000019",
+        "SYN-2021-000018",
         "SYN-2021-000017",
         "SYN-2021-000016",
-        "SYN-2021-000014",
-        "SYN-2021-000005",
-        "SYN-2021-000002",
+        "SYN-2021-000013",
+        "SYN-2021-000010",
     ]
     assert numbers(filed_to="2019-12-31") == [
-        "SYN-2019-000013",
-        "SYN-2019-000007",
-        "SYN-2019-000004",
+        "SYN-2019-000016",
+        "SYN-2019-000008",
+        "SYN-2019-000006",
+        "SYN-2019-000005",
+        "SYN-2019-000003",
+        "SYN-2019-000002",
     ]
-    assert numbers(filed_from="2020-06-20", filed_to="2020-06-20") == ["SYN-2020-000005"]
+    assert numbers(filed_from="2020-10-13", filed_to="2020-10-13") == ["SYN-2020-000015"]
     assert numbers(filed_from="2020-01-01", filed_to="2020-12-31", status="closed") == [
-        "SYN-2020-000018",
-        "SYN-2020-000016",
-        "SYN-2020-000005",
-        "SYN-2020-000002",
+        "SYN-2020-000015",
+        "SYN-2020-000001",
     ]
-    assert numbers(status="open", case_type="felony") == ["SYN-2021-000028", "SYN-2021-000020"]
+    assert numbers(status="open", case_type="felony") == [
+        "SYN-2021-000019",
+        "SYN-2021-000018",
+        "SYN-2021-000013",
+    ]
     assert numbers(status="closed", filed_from="2099-01-01") == []
 
 

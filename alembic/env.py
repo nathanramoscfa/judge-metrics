@@ -5,6 +5,11 @@ The database URL is never read from ``alembic.ini``: it comes from the
 ``judgemetrics.database_url`` config attribute when the caller sets one
 (``judgemetrics.db.migrations``) and otherwise from
 ``get_settings().effective_admin_database_url`` — the admin (DDL) role.
+
+``include_schemas`` (revision 0008) lets autogenerate and ``alembic check``
+compare the ``restricted`` schema too; ``include_name`` limits reflection to
+``public`` and ``restricted``, so a schema an extension or the operator adds
+is never mistaken for drift.
 """
 
 from __future__ import annotations
@@ -15,7 +20,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from judgemetrics.config import get_settings
-from judgemetrics.db.models import Base
+from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 
 config = context.config
 
@@ -25,6 +30,14 @@ if config.config_file_name is not None and not config.attributes.get(
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
+SCHEMAS = frozenset({"public", RESTRICTED_SCHEMA})
+
+
+def include_name(name: str | None, type_: str, parent_names: object) -> bool:
+    """Reflect the ``public`` (the default, ``None``) and ``restricted`` schemas only."""
+    if type_ == "schema":
+        return name is None or name in SCHEMAS
+    return True
 
 
 def _database_url() -> str:
@@ -42,6 +55,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_schemas=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -52,7 +67,13 @@ def run_migrations_online() -> None:
     section["sqlalchemy.url"] = _database_url()
     connectable = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_schemas=True,
+            include_name=include_name,
+        )
         with context.begin_transaction():
             context.run_migrations()
     connectable.dispose()

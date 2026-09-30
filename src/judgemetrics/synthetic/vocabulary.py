@@ -2,9 +2,10 @@
 """The case-level vocabulary the synthetic source files use.
 
 These are the values Phase 2 Step 2 fixes in
-``data/reference/case_vocabulary.yaml`` (``version: 1``); that file must
-equal these constants (Step 2's unit test), and Phase 5's real connectors
-map onto the same vocabulary. ``actor_type`` repeats the brief's
+``data/reference/case_vocabulary.yaml`` (``version: 2`` since Phase 4 Step 1
+added the restricted vocabularies); that file must equal these constants
+(Step 2's unit test), and Phase 5's real connectors map onto the same
+vocabulary. ``actor_type`` repeats the brief's
 ``ActorType`` enum values verbatim (``judgemetrics.db.models.enums``); a
 unit test asserts the two agree so this package stays independent of the
 database layer.
@@ -12,7 +13,7 @@ database layer.
 
 from __future__ import annotations
 
-CASE_VOCABULARY_VERSION = 1
+CASE_VOCABULARY_VERSION = 2
 
 CASE_TYPES: tuple[str, ...] = ("felony", "misdemeanor")
 CASE_STATUSES: tuple[str, ...] = ("open", "closed")
@@ -90,6 +91,34 @@ RELEASE_CONDITIONS: tuple[str, ...] = (
     "electronic_monitoring",
 )
 
+# The restricted vocabularies (version 2, Phase 4 Step 1): attributes that live
+# only in the database's ``restricted`` schema, are never a model feature, and
+# are read only by the aggregate fairness analysis (docs/DATA_MODEL.md).
+RESTRICTED_ATTRIBUTES: tuple[str, ...] = ("age_band", "synthetic_group")
+AGE_BAND_VALUES: tuple[str, ...] = ("18-24", "25-34", "35-44", "45-54", "55+", "unknown")
+SYNTHETIC_GROUPS: tuple[str, ...] = ("group_a", "group_b", "group_c")
+UNKNOWN_AGE_BAND = "unknown"
+# The youngest age (whole years at filing) of each band; below the first
+# floor, or without an age, the band is ``unknown``.
+AGE_BAND_FLOORS: tuple[tuple[str, int], ...] = (
+    ("55+", 55),
+    ("45-54", 45),
+    ("35-44", 35),
+    ("25-34", 25),
+    ("18-24", 18),
+)
+
+
+def age_band_of(age: int | None) -> str:
+    """The ``age_band`` of an age in whole years at filing (``unknown`` without one)."""
+    if age is None:
+        return UNKNOWN_AGE_BAND
+    for band, floor in AGE_BAND_FLOORS:
+        if age >= floor:
+            return band
+    return UNKNOWN_AGE_BAND
+
+
 # Every vocabulary kind by the name the YAML file will use.
 VOCABULARY: dict[str, tuple[str, ...]] = {
     "case_type": CASE_TYPES,
@@ -108,6 +137,9 @@ VOCABULARY: dict[str, tuple[str, ...]] = {
     "position": POSITIONS,
     "sentence_component": SENTENCE_COMPONENTS,
     "release_condition": RELEASE_CONDITIONS,
+    "restricted_attribute": RESTRICTED_ATTRIBUTES,
+    "age_band": AGE_BAND_VALUES,
+    "synthetic_group": SYNTHETIC_GROUPS,
 }
 
 # Severity rank for choosing a case's lead charge (lower is more severe).

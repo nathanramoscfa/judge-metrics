@@ -6,7 +6,7 @@ written by the generator alongside the source files, it never enters
 the database (the synthetic connector discovers `source/` only), and
 it changes only when `GENERATOR_VERSION` or `TRUTH_VERSION` changes.
 
-- Generator version: `2`; truth version: `2`.
+- Generator version: `3`; truth version: `3`.
 - Corpus: cases filed from 2019-01-01 to 2021-12-31; every timestamp is strictly before `2022-01-01T00:00:00+00:00`, the corpus end used for follow-up.
 - World: 3 courts, 6 judges, 40 persons, 60 cases (plus 3 duplicate source records emitted as formatting variants).
 
@@ -14,11 +14,12 @@ it changes only when `GENERATOR_VERSION` or `TRUTH_VERSION` changes.
 
 | File | Rows | Contents |
 |------|------|----------|
-| `persons.csv` | 45 | `true_person_id`, `participant_id`, `court_code`: the true identity behind every participant id in every court. |
-| `subsequent_events.csv` | 99 | one row per (index event, later outcome) pair of a person: `index_event_type` is `pretrial_release` (index_at = release_at of a released pretrial decision), `disposition`, or `sentence`; `outcome_type` is `new_case`, `new_charge`, `reconviction` (in another case of the person), `failure_to_appear`, or `revocation` (any case); `days_after` is the smallest whole number of days d with outcome_at <= index_at + d days (an outcome is inside window w exactly when days_after <= w) and is always at least 1. |
+| `persons.csv` | 51 | `true_person_id`, `participant_id`, `court_code`: the true identity behind every participant id in every court. |
+| `subsequent_events.csv` | 128 | one row per (index event, later outcome) pair of a person: `index_event_type` is `pretrial_release` (index_at = release_at of a released pretrial decision), `disposition`, or `sentence`; `outcome_type` is `new_case`, `new_charge`, `reconviction` (in another case of the person), `failure_to_appear`, or `revocation` (any case); `days_after` is the smallest whole number of days d with outcome_at <= index_at + d days (an outcome is inside window w exactly when days_after <= w) and is always at least 1. |
 | `resolution_expectations.csv` | 4 | the decision (`matched`, `rejected`, `review`) entity resolution must reach for every planted participant pair, ordered by participant id, with the reason. |
-| `planted.csv` | 18 | every planted edge case: `kind`, `ids` (`key=value` pairs separated by `;`), and the pipeline behaviour it must produce. |
+| `planted.csv` | 19 | every planted edge case: `kind`, `ids` (`key=value` pairs separated by `;`), and the pipeline behaviour it must produce. |
 | `metrics.json` | - | `truth_version`, the corpus, the windows, the index kinds, the observable and `not_observable` outcomes, every metric definition, and the metric set per `judges.<judge_code>` and `courts.<court_code>`: each rate with numerator, denominator, and value, and under `index_events.<kind>.windows.<w>` the cohort, the followed count, every `<outcome>_rate`, and every `<outcome>_survival` (`1 - S(w)` with events, censored, at_risk, the Greenwood standard error, and the interval). |
+| `effects.json` | - | the planted effects (`TRUTH_VERSION` 3): every constant of the generator's functional forms under `parameters`; per `judges.<judge_code>` the courts, `leniency`, `new_case_effect`, `fta_effect`, `docket_tilt`, and each effect centered on the judge's courts; per `courts.<court_code>` the case-weighted mean effects; under `targets` the release target per judge and the `new_case` and `failure_to_appear` targets per window and judge - the cohort, the observed count, `expected` (sum of p, the oracle with the judge's effect), `expected_centered` (sum of p0, the effect replaced by the court's mean), `oracle_ratio` (observed / expected_centered), and `true_ratio` (expected / expected_centered); and the restricted `controls`. Aggregates only: no per-person row. |
 
 ## Planted edge cases
 
@@ -31,45 +32,47 @@ it changes only when `GENERATOR_VERSION` or `TRUTH_VERSION` changes.
 | `missing_dob` | 2 |
 | `missing_judge` | 3 |
 | `missing_disposition` | 2 |
-| `missing_description` | 4 |
+| `missing_description` | 5 |
 
 Every planted item, hand-checkable against `../source/`:
 
-1. **split_person** - `true_person_id` = `P-000004`; `participant_ids` = `PT-000030,PT-000041`; `first_case_number` = `SYN-2021-000007`; `first_court_code` = `C-0001`; `second_case_number` = `SYN-2021-000021`; `second_court_code` = `C-0003`; `split_case_numbers` = `SYN-2021-000021`.
+1. **split_person** - `true_person_id` = `P-000010`; `participant_ids` = `PT-000028,PT-000041`; `first_case_number` = `SYN-2021-000006`; `first_court_code` = `C-0002`; `second_case_number` = `SYN-2021-000017`; `second_court_code` = `C-0003`; `split_case_numbers` = `SYN-2021-000017`.
    Expected: one true person under two participant ids in two courts with the same name and date of birth and a related_case_number link: the rule stage decides matched and the two persons merge under one public_person_key
-2. **split_person** - `true_person_id` = `P-000029`; `participant_ids` = `PT-000017,PT-000042`; `first_case_number` = `SYN-2020-000005`; `first_court_code` = `C-0003`; `second_case_number` = `SYN-2020-000013`; `second_court_code` = `C-0001`; `split_case_numbers` = `SYN-2020-000013`.
+2. **split_person** - `true_person_id` = `P-000012`; `participant_ids` = `PT-000022,PT-000042`; `first_case_number` = `SYN-2020-000014`; `first_court_code` = `C-0001`; `second_case_number` = `SYN-2020-000017`; `second_court_code` = `C-0002`; `split_case_numbers` = `SYN-2020-000017`.
    Expected: one true person under two participant ids in two courts with the same name and date of birth and a related_case_number link: the rule stage decides matched and the two persons merge under one public_person_key
-3. **ambiguous_person_same_dob** - `true_person_ids` = `P-000034,P-000016`; `participant_ids` = `PT-000021,PT-000033`; `shared_name` = `Heliotrope Nightjar`; `courts` = `C-0001,C-0003`.
+3. **ambiguous_person_same_dob** - `true_person_ids` = `P-000030,P-000002`; `participant_ids` = `PT-000032,PT-000006`; `shared_name` = `Shale Boyne`; `courts` = `C-0001,C-0003`.
    Expected: two distinct persons with the same name and date of birth in different courts and no shared case: two person rows; the candidate pair is decided review, never merged automatically
-4. **ambiguous_person_missing_dob** - `true_person_ids` = `P-000006,P-000030`; `participant_ids` = `PT-000019,PT-000018`; `shared_name` = `Graphite Boxwood`; `courts` = `C-0001,C-0002`.
+4. **ambiguous_person_missing_dob** - `true_person_ids` = `P-000016,P-000027`; `participant_ids` = `PT-000012,PT-000021`; `shared_name` = `Umber Kolyma`; `courts` = `C-0001`.
    Expected: two distinct persons with the same name and one date of birth missing: two person rows; the candidate pair is decided rejected (reason name_only) - never merge on a name alone
-5. **duplicate_source_record** - `case_number` = `SYN-2019-000005`; `court_code` = `C-0002`; `participant_id` = `PT-000005`; `duplicate_case_number` = `syn 2019 000005`.
+5. **duplicate_source_record** - `case_number` = `SYN-2019-000001`; `court_code` = `C-0003`; `participant_id` = `PT-000001`; `duplicate_case_number` = `syn 2019 000001`.
    Expected: the connector normalizes the case number and names, so the second copy collapses onto the same court_case and child rows (one row each, the second source row attributed); data_quality_issue case_number_duplicate (info)
-6. **duplicate_source_record** - `case_number` = `SYN-2019-000008`; `court_code` = `C-0002`; `participant_id` = `PT-000008`; `duplicate_case_number` = `syn 2019 000008`.
+6. **duplicate_source_record** - `case_number` = `SYN-2019-000004`; `court_code` = `C-0002`; `participant_id` = `PT-000003`; `duplicate_case_number` = `syn 2019 000004`.
    Expected: the connector normalizes the case number and names, so the second copy collapses onto the same court_case and child rows (one row each, the second source row attributed); data_quality_issue case_number_duplicate (info)
-7. **duplicate_source_record** - `case_number` = `SYN-2019-000009`; `court_code` = `C-0002`; `participant_id` = `PT-000009`; `duplicate_case_number` = `syn 2019 000009`.
+7. **duplicate_source_record** - `case_number` = `SYN-2020-000004`; `court_code` = `C-0001`; `participant_id` = `PT-000009`; `duplicate_case_number` = `syn 2020 000004`.
    Expected: the connector normalizes the case number and names, so the second copy collapses onto the same court_case and child rows (one row each, the second source row attributed); data_quality_issue case_number_duplicate (info)
-8. **missing_dob** - `true_person_id` = `P-000013`; `participant_id` = `PT-000038`.
+8. **missing_dob** - `true_person_id` = `P-000008`; `participant_id` = `PT-000002`.
    Expected: every participant row of this person has an empty date_of_birth; the person resolves by participant id; no candidate is matched on the name alone
-9. **missing_dob** - `true_person_id` = `P-000040`; `participant_id` = `PT-000020`.
+9. **missing_dob** - `true_person_id` = `P-000037`; `participant_id` = `PT-000038`.
    Expected: every participant row of this person has an empty date_of_birth; the person resolves by participant id; no candidate is matched on the name alone
-10. **missing_judge** - `decision_id` = `DC-000025`; `case_number` = `SYN-2019-000011`; `court_code` = `C-0001`; `former_judge_code` = `J-0004`.
+10. **missing_judge** - `decision_id` = `DC-000086`; `case_number` = `SYN-2020-000015`; `court_code` = `C-0003`; `former_judge_code` = `J-0003`.
    Expected: the pretrial decision carries no judge_code, actor unknown, discretion unknown: it is published with actor_type unknown and excluded from every judge-attributed metric; data_quality_issue missing_judge_on_decision (warning)
-11. **missing_judge** - `decision_id` = `DC-000038`; `case_number` = `SYN-2020-000003`; `court_code` = `C-0002`; `former_judge_code` = `J-0002`.
+11. **missing_judge** - `decision_id` = `DC-000097`; `case_number` = `SYN-2020-000019`; `court_code` = `C-0002`; `former_judge_code` = `J-0002`.
    Expected: the pretrial decision carries no judge_code, actor unknown, discretion unknown: it is published with actor_type unknown and excluded from every judge-attributed metric; data_quality_issue missing_judge_on_decision (warning)
-12. **missing_judge** - `decision_id` = `DC-000062`; `case_number` = `SYN-2020-000012`; `court_code` = `C-0002`; `former_judge_code` = `J-0002`.
+12. **missing_judge** - `decision_id` = `DC-000125`; `case_number` = `SYN-2021-000011`; `court_code` = `C-0001`; `former_judge_code` = `J-0005`.
    Expected: the pretrial decision carries no judge_code, actor unknown, discretion unknown: it is published with actor_type unknown and excluded from every judge-attributed metric; data_quality_issue missing_judge_on_decision (warning)
-13. **missing_disposition** - `charge_id` = `CH-000028`; `case_number` = `SYN-2020-000003`; `court_code` = `C-0002`; `former_disposition` = `dismissed`.
+13. **missing_disposition** - `charge_id` = `CH-000035`; `case_number` = `SYN-2020-000009`; `court_code` = `C-0001`; `former_disposition` = `dismissed`.
    Expected: the charge carries no disposition, disposed_at, or disposition_actor in a closed case: published with a null disposition and excluded from disposition metrics; data_quality_issue missing_disposition (info)
-14. **missing_disposition** - `charge_id` = `CH-000059`; `case_number` = `SYN-2021-000006`; `court_code` = `C-0002`; `former_disposition` = `dismissed`.
+14. **missing_disposition** - `charge_id` = `CH-000050`; `case_number` = `SYN-2021-000003`; `court_code` = `C-0001`; `former_disposition` = `convicted_plea`.
    Expected: the charge carries no disposition, disposed_at, or disposition_actor in a closed case: published with a null disposition and excluded from disposition metrics; data_quality_issue missing_disposition (info)
-15. **missing_description** - `event_id` = `EV-000078`; `case_number` = `SYN-2020-000005`; `court_code` = `C-0003`; `event_type` = `sentencing_hearing`.
+15. **missing_description** - `event_id` = `EV-000045`; `case_number` = `SYN-2019-000010`; `court_code` = `C-0003`; `event_type` = `bench_warrant`.
    Expected: the court event carries an empty description: published with a null description; no data-quality issue
-16. **missing_description** - `event_id` = `EV-000167`; `case_number` = `SYN-2021-000014`; `court_code` = `C-0003`; `event_type` = `hearing`.
+16. **missing_description** - `event_id` = `EV-000105`; `case_number` = `SYN-2020-000006`; `court_code` = `C-0002`; `event_type` = `plea_hearing`.
    Expected: the court event carries an empty description: published with a null description; no data-quality issue
-17. **missing_description** - `event_id` = `EV-000185`; `case_number` = `SYN-2021-000018`; `court_code` = `C-0001`; `event_type` = `hearing`.
+17. **missing_description** - `event_id` = `EV-000123`; `case_number` = `SYN-2020-000011`; `court_code` = `C-0002`; `event_type` = `arraignment`.
    Expected: the court event carries an empty description: published with a null description; no data-quality issue
-18. **missing_description** - `event_id` = `EV-000199`; `case_number` = `SYN-2021-000023`; `court_code` = `C-0002`; `event_type` = `hearing`.
+18. **missing_description** - `event_id` = `EV-000133`; `case_number` = `SYN-2020-000012`; `court_code` = `C-0001`; `event_type` = `revocation`.
+   Expected: the court event carries an empty description: published with a null description; no data-quality issue
+19. **missing_description** - `event_id` = `EV-000181`; `case_number` = `SYN-2021-000005`; `court_code` = `C-0001`; `event_type` = `hearing`.
    Expected: the court event carries an empty description: published with a null description; no data-quality issue
 
 ## Metric definitions (`metrics.json`)
@@ -82,8 +85,8 @@ Every planted item, hand-checkable against `../source/`:
 - `pretrial.release_share`: released_count / (released_count + detained_count).
 - `pretrial.statutory_release_count`: Court only: pretrial decisions with actor legislature_or_mandatory_rule and discretion mandatory (never attributed to a judge).
 - `pretrial.unknown_actor_count`: Court only: pretrial decisions with actor unknown (the planted missing-judge examples).
-- `pretrial.windows`: The pretrial_release entry of index_events, repeated here for continuity: for each window w in days: cohort = attributed released decisions (index_at = release_at, never deferred); followed = cohort members with index_at + w days strictly before the corpus end (corpus.end_exclusive_at); numerator = followed members with at least one outcome of the type in (index_at, index_at + w days]; value = numerator / followed (null when followed is 0). failure_to_appear and revocation count events in any case of the person; new_case counts another case's filed_at, new_charge another case's charge filed_at, and reconviction a convicted charge's disposed_at in another case of the person.
-- `index_events`: Per index kind, the windowed cohort. pretrial_release: attributed released decisions (the pretrial.decisions gate; index_at = release_at); disposition: disposed cases at the case disposition time, attributed to the judge assigned at that time (court: the court's disposed cases), one member per defendant; sentence: attributed sentences at sentence_at (judge: the sentencing judge; court: the court's cases). Exposure starts at index_at, deferred to sentence_at + incarceration_days for the disposition and sentence kinds when the index case's sentence carries a positive incarceration_days (never for pretrial_release). Per window w: cohort; followed = members with exposure_start + w days strictly before corpus.end_exclusive_at; <outcome>_rate = followed members with an outcome in (exposure_start, exposure_start + w days] over the followed members; <outcome>_survival = 1 - S(w) at six decimals, the Kaplan-Meier product-limit survival over the whole cohort with each member's time to its first outcome (an event) or to the corpus end (a censoring), events counted before censorings at the same time, S = 0 once every member at risk fails, with events (at or before w), censored (strictly before w), at_risk (the rest), the Greenwood standard error, and a symmetric 95% interval clipped to [0, 1]. new_case, new_charge, and reconviction count only in another case of the person; failure_to_appear and revocation in any case. release_violation and rearrest are listed under not_observable: the synthetic source records no such event.
+- `pretrial.windows`: The pretrial_release entry of index_events, repeated here for continuity: for each window w in days: cohort = attributed released decisions (index_at = release_at; exposure_start = index_at deferred by every incarceration term of the person that contains it, as index_events states); followed = cohort members with exposure_start + w days strictly before the corpus end (corpus.end_exclusive_at); numerator = followed members with at least one outcome of the type in (exposure_start, exposure_start + w days]; value = numerator / followed (null when followed is 0). failure_to_appear and revocation count events in any case of the person; new_case counts another case's filed_at, new_charge another case's charge filed_at, and reconviction a convicted charge's disposed_at in another case of the person.
+- `index_events`: Per index kind, the windowed cohort. pretrial_release: attributed released decisions (the pretrial.decisions gate; index_at = release_at); disposition: disposed cases at the case disposition time, attributed to the judge assigned at that time (court: the court's disposed cases), one member per defendant; sentence: attributed sentences at sentence_at (judge: the sentencing judge; court: the court's cases). Exposure starts at index_at; for the disposition kind it starts at the end of the index case's own incarceration term (sentence_at + incarceration_days, the latest when there are several) when its sentence carries a positive incarceration_days. Then, for every kind, while an incarceration term [sentence_at, sentence_at + incarceration_days) of the person in any case contains the exposure start, the start moves to that term's end (the containing term that ends last). Per window w: cohort; followed = members with exposure_start + w days strictly before corpus.end_exclusive_at; <outcome>_rate = followed members with an outcome in (exposure_start, exposure_start + w days] over the followed members; <outcome>_survival = 1 - S(w) at six decimals, the Kaplan-Meier product-limit survival over the whole cohort with each member's time to its first outcome (an event) or to the corpus end (a censoring), events counted before censorings at the same time, S = 0 once every member at risk fails, with events (at or before w), censored (strictly before w), at_risk (the rest), the Greenwood standard error, and a symmetric 95% interval clipped to [0, 1]. new_case, new_charge, and reconviction count only in another case of the person; failure_to_appear and revocation in any case. release_violation and rearrest are listed under not_observable: the synthetic source records no such event.
 - `judicial_dismissal_rate`: numerator = charges disposed as dismissed with disposition_actor judge; denominator = charges with a disposition other than pending or missing. Judge: charges whose disposed_at falls inside one of the judge's assignment intervals on that case (start_at <= disposed_at < end_at). Court: charges of the court's cases.
 - `disposition_distribution`: Counts of the judicial_dismissal_rate denominator charges by disposition value.
 - `median_days_to_disposition`: Median over disposed cases of (case disposition date - filed_date) in whole days, where the case disposition is the latest disposed_at among its disposed charges. Judge: cases where the judge was assigned at the case disposition time. Court: the court's disposed cases.

@@ -126,17 +126,22 @@ SEMANTICS: tuple[tuple[str, str], ...] = (
     ),
     (
         "Exposure",
-        "Time at risk starts at the index time. For the disposition and "
-        "sentence kinds, when the sentence carries a positive "
-        "incarceration_days, exposure starts at sentence_at + "
-        "incarceration_days instead: the incarceration term defers time at "
-        "risk. For the sentence kind the deferring sentence is the index "
-        "sentence itself; for the disposition kind it is the sentence of the "
-        "same case and person, the latest term end when there are several. "
-        "The pretrial_release kind is never deferred. Documented limitation: "
-        "only the sentence of the index case defers exposure; other terms the "
-        "same person serves - an earlier sentence still running, a term in "
-        "another case or jurisdiction - are not modelled, so time at risk is "
+        "Time at risk starts at the index time and is deferred by "
+        "incarceration, because a person who is incarcerated cannot accrue a "
+        "new case in the community. An incarceration term is [sentence_at, "
+        "sentence_at + incarceration_days) of a sentence with a positive "
+        "incarceration_days. For the disposition kind the start first moves "
+        "to the end of the index case's own term (the sentence of the same "
+        "case and person, the latest term end when there are several), "
+        "because the sentence follows the disposition. Then, for every kind - "
+        "pretrial_release included - while a term of the same person in any "
+        "case contains the start, the start moves to the end of the "
+        "containing term that ends last, so exposure begins at the first "
+        "instant at or after the index time that no recorded term of the "
+        "person covers; for the sentence kind the member's own term is the "
+        "first. Documented limitation: only terms the source records are "
+        "applied - a term served in another jurisdiction, or under a sentence "
+        "the source does not publish, is not modelled, so time at risk is "
         "overstated for such persons and their rates are biased downward.",
     ),
     (
@@ -213,6 +218,11 @@ CHANGELOG: tuple[tuple[str, str], ...] = (
         "distribution, the judicial dismissal rate, and the medians; "
         "right-censoring at the source's coverage end; incarceration deferral; "
         "Wilson and Greenwood intervals; suppression below a denominator of 10.",
+    ),
+    (
+        "0.2",
+        "Exposure is deferred by every incarceration term of the person, not the "
+        "index case's alone (Phase 3 finding 1.4).",
     ),
 )
 

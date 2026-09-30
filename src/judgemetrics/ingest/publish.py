@@ -10,7 +10,8 @@ files writes nothing (no ``updated_at`` bump, no provenance change) and
 the newer artifact only when that artifact changed the row.
 
 Order (dependencies first): persons and their identifier rows → cases →
-parties → assignments → charges → court events → decisions and their
+parties → the parties' restricted attributes (``restricted.party_attribute``,
+revision 0008) → assignments → charges → court events → decisions and their
 pretrial-release children → sentences → justice events. The runner
 (``judgemetrics.ingest.runner``) resolves the drafts and calls these in
 that order; each returns the ids of the rows it touched by natural key
@@ -38,7 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from judgemetrics.db.models import Base
+from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.ingest.base import (
     CaseDraft,
     CasePartyDraft,
@@ -49,6 +50,7 @@ from judgemetrics.ingest.base import (
     JudgeAssignmentDraft,
     JusticeEventDraft,
     NaturalKey,
+    PartyAttributeDraft,
     PersonDraft,
     SentenceDraft,
     TaggedRecord,
@@ -66,6 +68,7 @@ PERSON = Base.metadata.tables["person"]
 PERSON_IDENTIFIER = Base.metadata.tables["person_identifier"]
 COURT_CASE = Base.metadata.tables["court_case"]
 CASE_PARTY = Base.metadata.tables["case_party"]
+PARTY_ATTRIBUTE = Base.metadata.tables[f"{RESTRICTED_SCHEMA}.party_attribute"]
 JUDGE_ASSIGNMENT = Base.metadata.tables["judge_assignment"]
 CHARGE = Base.metadata.tables["charge"]
 COURT_EVENT = Base.metadata.tables["court_event"]
@@ -411,6 +414,40 @@ def upsert_parties(
         session,
         ["person_id", "party_type", "source_party_label"],
         case_ids,
+    )
+
+
+def upsert_party_attributes(
+    session: Session,
+    items: Sequence[TaggedRecord],
+    party_ids: IdMap,
+    counts: RunCounts,
+) -> None:
+    """The parties' restricted attributes, upserted on ``(case_party_id, attribute)``.
+
+    Runs in the ingest transaction as the ingest role (the only non-admin
+    role with ``USAGE`` on the ``restricted`` schema); the value is written
+    and compared, never logged — the run log carries the row counts only.
+    """
+    rows: list[dict[str, Any]] = []
+    for item in items:
+        draft = record_as(PartyAttributeDraft, item)
+        rows.append(
+            {
+                "id": uuid.uuid4(),
+                "case_party_id": _require(party_ids, draft.party_key, "case party"),
+                "attribute": draft.attribute,
+                "value": draft.value,
+                "source_record_id": provenance_id(item),
+            }
+        )
+    upsert_rows(
+        session,
+        PARTY_ATTRIBUTE,
+        rows,
+        conflict=[PARTY_ATTRIBUTE.c.case_party_id, PARTY_ATTRIBUTE.c.attribute],
+        compare=["value"],
+        counts=counts,
     )
 
 

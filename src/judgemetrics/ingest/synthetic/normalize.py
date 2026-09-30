@@ -15,7 +15,12 @@ Mapping (one source file → drafts per row):
 - ``judges.csv`` → ``JudgeDraft`` (identity ``("synthetic_judge_code", code)``)
   + ``JudgeServiceDraft``;
 - ``cases.csv`` → ``CaseDraft`` (``related_case_number`` normalized and kept);
-- ``participants.csv`` → ``PersonDraft`` (hashes only) + ``CasePartyDraft``;
+- ``participants.csv`` → ``PersonDraft`` (hashes only) + ``CasePartyDraft``
+  (keyed ``<party_type>:<ordinal>``, the party's position within its case
+  and party type in normalized participant-id order, so no plaintext
+  participant id reaches a canonical column) + a ``PartyAttributeDraft``
+  per restricted attribute (``age_band`` from ``age_at_filing``, blank →
+  ``unknown``; ``synthetic_group``), bound for ``restricted.party_attribute``;
 - ``charges.csv`` → ``ChargeDraft`` and the derived ``JusticeEventDraft``s:
   ``new_case`` when the participant has an earlier case, ``reconviction``
   when a conviction follows an earlier disposition of another case;
@@ -26,8 +31,9 @@ Mapping (one source file → drafts per row):
   its ``PretrialReleaseDraft``);
 - ``sentences.csv`` → ``SentenceDraft``.
 
-Cross-row facts (court codes → court keys, a participant's other cases)
-come from ``SyntheticContext``, built by the connector's ``load_context``
+Cross-row facts (court codes → court keys, a participant's other cases,
+each party's ordinal within its case) come from ``SyntheticContext``, built
+by the connector's ``load_context``
 over every artifact of the run, so a single changed file normalizes
 against the complete export. The participant id is used as the source
 hands it out: the generator assigns one id per person across its courts
@@ -60,12 +66,15 @@ from judgemetrics.ingest.base import (
     JusticeEventDraft,
     NaturalKey,
     NormalizationError,
+    PartyAttributeDraft,
     PersonDraft,
     PretrialReleaseDraft,
     SentenceDraft,
     SourceRecordDraft,
 )
 from judgemetrics.ingest.synthetic.schema import (
+    ATTRIBUTE_AGE_BAND,
+    ATTRIBUTE_SYNTHETIC_GROUP,
     COURT_IDENTITY_SYSTEM,
     FALSE,
     JUDGE_IDENTITY_SYSTEM,
@@ -84,6 +93,7 @@ from judgemetrics.ingest.synthetic.schema import (
     TRUE,
 )
 from judgemetrics.normalization import vocabulary
+from judgemetrics.normalization.age_bands import age_band, parse_age
 from judgemetrics.normalization.case_numbers import normalize_case_number
 from judgemetrics.normalization.names import normalize_person_name
 from judgemetrics.security.identifiers import (
@@ -130,6 +140,20 @@ class SyntheticContext:
     judge_active: dict[str, bool] = field(default_factory=dict)
     # normalized participant id → the participant's cases per the charges file.
     participant_cases: dict[str, list[CaseFacts]] = field(default_factory=dict)
+    # (case key, party type, normalized participant id) → the party's 1-based
+    # ordinal within its case and party type, in normalized-id order.
+    party_ordinals: dict[tuple[NaturalKey, str, str], int] = field(default_factory=dict)
+
+    def party_row_id(
+        self, case_key: NaturalKey, party_type: str, participant_id: str, record_id: str
+    ) -> str:
+        """``<party_type>:<ordinal>``: the case party's source row id without the participant id."""
+        normalized = normalize_identifier(KIND_SOURCE_PARTICIPANT_ID, participant_id)
+        ordinal = self.party_ordinals.get((case_key, party_type, normalized))
+        if ordinal is None:
+            msg = f"{record_id}: the party is missing from the participants context"
+            raise NormalizationError(msg)
+        return party_source_row_id(party_type, ordinal)
 
     def court_key(self, court_code: str, record_id: str) -> NaturalKey:
         court = self.courts.get(court_code.strip())
@@ -359,9 +383,36 @@ def person_draft(pepper: SecretStr, participant_id: str, full_name: str, dob: st
     )
 
 
+def party_source_row_id(party_type: str, ordinal: int) -> str:
+    """The case party's natural-key suffix, as revision 0008 rewrites existing rows."""
+    return f"{party_type}:{ordinal}"
+
+
+def attribute_drafts(
+    party: CasePartyDraft, payload: Mapping[str, Any], record_id: str
+) -> list[PartyAttributeDraft]:
+    """The party's restricted attributes: its ``age_band`` always, its group when given.
+
+    The age is parsed as a bounded integer and only its band leaves this
+    function; a blank age is the explicit ``unknown`` band.
+    """
+    age = parse_age(clean(payload.get("age_at_filing")), context=record_id)
+    drafts = [PartyAttributeDraft(party.natural_key, ATTRIBUTE_AGE_BAND, age_band(age))]
+    group = clean(payload.get("synthetic_group"))
+    if group:
+        drafts.append(
+            PartyAttributeDraft(
+                party.natural_key,
+                ATTRIBUTE_SYNTHETIC_GROUP,
+                vocabulary.require("synthetic_group", group, context=record_id),
+            )
+        )
+    return drafts
+
+
 def participant_drafts(
     context: SyntheticContext, pepper: SecretStr, payload: Mapping[str, Any]
-) -> tuple[PersonDraft, CasePartyDraft]:
+) -> tuple[PersonDraft, CasePartyDraft, list[PartyAttributeDraft]]:
     participant_id = require_value(payload, "participant_id", record_id="participant")
     record_id = f"participant {participant_id}"
     case_key = case_key_for(context, payload, record_id)
@@ -383,9 +434,9 @@ def participant_drafts(
         person_key=person.natural_key,
         party_type=party_type,
         source_party_label=party_type,
-        source_row_id=normalize_identifier(KIND_SOURCE_PARTICIPANT_ID, participant_id),
+        source_row_id=context.party_row_id(case_key, party_type, participant_id, record_id),
     )
-    return person, party
+    return person, party, attribute_drafts(party, payload, record_id)
 
 
 def charge_drafts(
@@ -650,7 +701,8 @@ def normalize_record(
     if kind == RECORD_TYPE_CASE:
         return [case_draft(context, payload)]
     if kind == RECORD_TYPE_PARTICIPANT:
-        return list(participant_drafts(context, pepper, payload))
+        person, party, attributes = participant_drafts(context, pepper, payload)
+        return [person, party, *attributes]
     if kind == RECORD_TYPE_CHARGE:
         return charge_drafts(context, pepper, payload)
     if kind == RECORD_TYPE_ASSIGNMENT:
@@ -672,8 +724,9 @@ def build_context(
     court_rows: Sequence[Mapping[str, Any]],
     judge_rows: Sequence[Mapping[str, Any]],
     charge_rows: Sequence[Mapping[str, Any]],
+    participant_rows: Sequence[Mapping[str, Any]] = (),
 ) -> SyntheticContext:
-    """The lookups ``normalize_record`` needs, from the parsed rows of three files.
+    """The lookups ``normalize_record`` needs, from the parsed rows of four files.
 
     Rows that cannot be read are skipped here; they are rejected with an
     issue when their own normalization runs.
@@ -715,4 +768,19 @@ def build_context(
                 disposed_ats=tuple(sorted(d for _, d in moments if d is not None)),
             )
         )
+    parties: dict[tuple[NaturalKey, str], set[str]] = {}
+    for row in participant_rows:
+        try:
+            case_key = case_key_for(context, row, "participant")
+            party_type = vocabulary.require("party_type", clean(row.get("party_type")))
+            normalized = normalize_identifier(
+                KIND_SOURCE_PARTICIPANT_ID, clean(row.get("participant_id"))
+            )
+        except (NormalizationError, ValueError):
+            continue
+        parties.setdefault((case_key, party_type), set()).add(normalized)
+    for (case_key, party_type), members in parties.items():
+        # Code-point order, the order revision 0008 ranks the old keys in (COLLATE "C").
+        for ordinal, normalized in enumerate(sorted(members), start=1):
+            context.party_ordinals[(case_key, party_type, normalized)] = ordinal
     return context

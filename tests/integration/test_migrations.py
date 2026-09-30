@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0007): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0008): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -20,6 +20,8 @@ from judgemetrics.db.migrations import current_revision, downgrade, head_revisio
 from judgemetrics.db.models import (
     CANONICAL_TABLES,
     PG_ENUM_NAMES,
+    RESTRICTED_SCHEMA,
+    RESTRICTED_SCHEMA_TABLES,
     RESTRICTED_TABLES,
     ActorType,
     Decision,
@@ -35,13 +37,15 @@ EXPECTED_ENUMS = set(PG_ENUM_NAMES.values())
 
 
 class Snapshot(NamedTuple):
-    """Table, index, unique-constraint, enum, and extension names."""
+    """Table, index, unique-constraint, enum, extension, and schema names."""
 
     tables: list[str]
     indexes: dict[str, list[str]]
     uniques: dict[str, list[str]]
     enums: list[str]
     extensions: list[str]
+    # Revision 0008: the restricted schema's tables, their indexes and uniques.
+    restricted: dict[str, list[str]]
 
 
 def _snapshot(engine: Engine) -> Snapshot:
@@ -57,6 +61,18 @@ def _snapshot(engine: Engine) -> Snapshot:
             table: sorted(uc["name"] or "" for uc in inspector.get_unique_constraints(table))
             for table in tables
         }
+        restricted: dict[str, list[str]] = {}
+        if RESTRICTED_SCHEMA in inspector.get_schema_names():
+            for table in sorted(inspector.get_table_names(schema=RESTRICTED_SCHEMA)):
+                restricted[table] = sorted(
+                    [
+                        *(i["name"] or "" for i in inspector.get_indexes(table, RESTRICTED_SCHEMA)),
+                        *(
+                            u["name"] or ""
+                            for u in inspector.get_unique_constraints(table, RESTRICTED_SCHEMA)
+                        ),
+                    ]
+                )
         enums = sorted(
             row[0]
             for row in connection.execute(
@@ -66,7 +82,7 @@ def _snapshot(engine: Engine) -> Snapshot:
         extensions = sorted(
             row[0] for row in connection.execute(text("SELECT extname FROM pg_extension"))
         )
-    return Snapshot(tables, indexes, uniques, enums, extensions)
+    return Snapshot(tables, indexes, uniques, enums, extensions, restricted)
 
 
 def _url(engine: Engine) -> str:
@@ -150,7 +166,14 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "uq_person_public_person_key" in uniques["person"]
     assert "uq_metric_snapshot_content_hash" in uniques["metric_snapshot"]
     assert "ix_ingest_run_metrics_snapshot_id" in indexes["ingest_run"]
-    assert current_revision(migrated_database) == head_revision() == "0007"
+    # Revision 0008: the restricted schema and its one table; the twenty-six stay public.
+    assert set(snapshot.restricted) == set(RESTRICTED_SCHEMA_TABLES) == {"party_attribute"}
+    assert set(snapshot.restricted["party_attribute"]) == {
+        "uq_party_attribute_case_party_attribute",
+        "ix_party_attribute_source_record_id",
+    }
+    assert not set(RESTRICTED_SCHEMA_TABLES) & set(snapshot.tables)
+    assert current_revision(migrated_database) == head_revision() == "0008"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -352,7 +375,13 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # Through 0004 and 0003 first: each downgrade must leave exactly the prior shape.
+    # 0008 first: the restricted schema goes, the ordinal party keys stay.
+    downgrade(url, "0007")
+    assert current_revision(migrated_database) == "0007"
+    without_restricted = _snapshot(migrated_database)
+    assert without_restricted.restricted == {}
+    assert without_restricted.tables == before.tables
+    # Through 0004 and 0003 next: each downgrade must leave exactly the prior shape.
     downgrade(url, "0003")
     assert current_revision(migrated_database) == "0003"
     without_audit = _snapshot(migrated_database)
@@ -369,6 +398,7 @@ def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: En
     downgrade(url, "base")
     stripped = _snapshot(migrated_database)
     assert stripped.tables == ["alembic_version"]
+    assert stripped.restricted == {}
     assert stripped.enums == []
     assert current_revision(migrated_database) is None
     upgrade(url, "head")
@@ -456,6 +486,66 @@ def test_revision_0007_grants_insert_only_on_correction_request(
             )
         }
     assert privileges == {"INSERT"}
+
+
+def test_revision_0008_grants_the_restricted_schema_to_ingest_and_admin_only(
+    migrated_database: Engine,
+) -> None:
+    """Read from the catalog (any connection role): no app privilege, DML for ingest, all admin."""
+    with migrated_database.connect() as connection:
+        roles = set(
+            connection.scalars(
+                text(
+                    "SELECT rolname FROM pg_roles WHERE rolname IN "
+                    "('judgemetrics_app', 'judgemetrics_ingest', 'judgemetrics_admin')"
+                )
+            )
+        )
+        if len(roles) < 3:
+            pytest.skip("the application roles do not exist on this database")
+
+        def usage(role: str) -> bool:
+            return bool(
+                connection.scalar(
+                    text("SELECT has_schema_privilege(:role, 'restricted', 'USAGE')"),
+                    {"role": role},
+                )
+            )
+
+        def table_privileges(role: str) -> set[str]:
+            return {
+                privilege
+                for privilege in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES")
+                if connection.scalar(
+                    text("SELECT has_table_privilege(:role, 'restricted.party_attribute', :p)"),
+                    {"role": role, "p": privilege},
+                )
+            }
+
+        assert not usage("judgemetrics_app")
+        assert usage("judgemetrics_ingest") and usage("judgemetrics_admin")
+        # No grant of any kind to the app role, on the schema or the table.
+        app_grants = connection.execute(
+            text(
+                "SELECT privilege_type FROM information_schema.role_table_grants "
+                "WHERE grantee = 'judgemetrics_app' AND table_schema = 'restricted'"
+            )
+        ).all()
+        assert app_grants == []
+        assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= table_privileges("judgemetrics_ingest")
+        assert {"TRUNCATE", "REFERENCES"}.isdisjoint(table_privileges("judgemetrics_ingest"))
+        assert table_privileges("judgemetrics_admin") >= {"SELECT", "INSERT", "UPDATE", "DELETE"}
+        # PUBLIC holds nothing on the schema (``public`` is the pseudo-role).
+        assert not usage("public")
+
+
+def test_revision_0008_rewrote_every_party_key_to_its_ordinal(migrated_database: Engine) -> None:
+    """No case_party.source_row_id keeps a participant id: every key is <party_type>:<n>."""
+    with migrated_database.connect() as connection:
+        keys = connection.execute(text("SELECT party_type, source_row_id FROM case_party")).all()
+    for party_type, source_row_id in keys:
+        prefix, _, ordinal = source_row_id.partition(":")
+        assert prefix == party_type and ordinal.isdigit() and int(ordinal) >= 1, source_row_id
 
 
 def test_app_role_can_read_public_tables(migrated_database: Engine, app_engine: Engine) -> None:

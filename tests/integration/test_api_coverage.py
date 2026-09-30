@@ -69,7 +69,7 @@ def test_only_the_fjc_fixture_present_means_no_synthetic_source(
     }
     assert body["synthetic_present"] is False
     assert body["registry_version"] >= 1
-    assert body["methodology_version"] == "0.1"
+    assert body["methodology_version"] == "0.2"
     sources = _by_source(body)
     assert "synthetic" not in sources
     assert set(sources["fjc"]) == SOURCE_KEYS
@@ -114,7 +114,7 @@ def test_golden_ingest_is_reported_with_counts_window_and_last_run(
         synthetic["cases"],
         synthetic["persons"],
     ) == (1, 3, 6, 60, 40)
-    assert (synthetic["earliest_filed"], synthetic["latest_filed"]) == ("2019-01-21", "2021-11-25")
+    assert (synthetic["earliest_filed"], synthetic["latest_filed"]) == ("2019-01-02", "2021-12-15")
     assert synthetic["last_ingest"] == {
         "run_id": str(golden_fixture.run_id),
         "completed_at": synthetic["last_ingest"]["completed_at"],

@@ -16,8 +16,8 @@ engine right-censors follow-up at). Everything a connector produces is a frozen 
 - the ``CanonicalRecord`` drafts, each with a ``natural_key`` the runner
   deduplicates and upserts on: the reference drafts (jurisdiction, court,
   judge, judge service) and the case-level drafts (person, case, party,
-  assignment, charge, court event, decision with its pretrial release,
-  sentence, justice event).
+  the party's restricted attributes, assignment, charge, court event,
+  decision with its pretrial release, sentence, justice event).
 
 Natural keys: a person is ``("person", <identifier kind>, <hash>)`` — the
 peppered hash of its stable source identifier, never a name; a case is
@@ -26,8 +26,10 @@ row that belongs to a case is ``("<table>", *case_key[1:], source_row_id)``
 where ``source_row_id`` is the source's own row identifier, so a re-export
 of the same row upserts in place; a justice event is keyed on the person
 hash, the event type, the instant, and the related case, because a
-derived event has no source row of its own. ``describe_key`` renders a
-key for issue descriptions and logs without the person hash.
+derived event has no source row of its own; a party's restricted attribute
+is ``("party_attribute", *case_key[1:], party source_row_id, attribute)``.
+``describe_key`` renders a key for issue descriptions and logs without the
+person hash (and never with an attribute's value, which no key carries).
 
 Source-specific parsing stays in the connectors; the drafts speak the
 canonical domain only.
@@ -354,6 +356,30 @@ class CasePartyDraft:
 
 
 @dataclass(frozen=True, slots=True)
+class PartyAttributeDraft:
+    """A restricted attribute of a case party, bound for ``restricted.party_attribute``.
+
+    ``attribute`` is a ``restricted_attribute`` vocabulary value and
+    ``value`` a value of that kind (``age_band``: ``18-24`` … ``unknown``;
+    ``synthetic_group``). The draft never carries the raw source value (an
+    age, a birth date), and ``repr`` withholds ``value`` so no log line or
+    error message built from a draft can show it.
+    """
+
+    party_key: NaturalKey
+    attribute: str
+    value: str = field(repr=False)
+
+    @property
+    def case_key(self) -> NaturalKey:
+        return ("case", *self.party_key[1:-1])
+
+    @property
+    def natural_key(self) -> NaturalKey:
+        return ("party_attribute", *self.party_key[1:], self.attribute)
+
+
+@dataclass(frozen=True, slots=True)
 class JudgeAssignmentDraft:
     case_key: NaturalKey
     judge_key: NaturalKey
@@ -480,6 +506,7 @@ CaseLevelRecord = (
     PersonDraft
     | CaseDraft
     | CasePartyDraft
+    | PartyAttributeDraft
     | JudgeAssignmentDraft
     | ChargeDraft
     | CourtEventDraft

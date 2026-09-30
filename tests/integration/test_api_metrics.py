@@ -110,7 +110,7 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
     assert body["attribution_notes"] == list(ATTRIBUTION_TEXT)
     assert body["gate_descriptions"] == GATE_TEXT
     assert body["changelog"] == [{"version": v, "text": t} for v, t in CHANGELOG]
-    assert body["changelog"][0]["version"] == REGISTRY.methodology_version
+    assert body["changelog"][-1]["version"] == REGISTRY.methodology_version
     assert body["methodology_version"] == REGISTRY.methodology_version
     assert body["known_limitations"] == list(REGISTRY.known_limitations)
     assert len(body["known_limitations"]) == 8
@@ -159,7 +159,7 @@ def test_judge_metrics_carry_every_presentation_field_grouped_by_slug(
     assert body["subject"] == {
         "subject_type": "judge",
         "id": str(judge_id),
-        "canonical_name": "Puce Wingnut",
+        "canonical_name": "Goethite Warta",
         "synthetic": True,
     }
     observations = _observations(body)

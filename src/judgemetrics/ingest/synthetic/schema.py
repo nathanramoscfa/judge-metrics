@@ -12,7 +12,10 @@ projects to the expected set regardless so that stays true.
 ``participants.csv`` carries ``full_name`` and ``date_of_birth``. They are
 read for hashing only (``judgemetrics.security.identifiers``) and never
 enter a payload column that reaches a canonical row, a log line, or an
-issue description.
+issue description. It also carries ``age_at_filing`` and (GENERATOR_VERSION
+3) ``synthetic_group``, the restricted attributes: the age is mapped to its
+``age_band`` and both are published only into ``restricted.party_attribute``
+(``RESTRICTED_ATTRIBUTE_COLUMNS``), never onto a person or party draft.
 """
 
 from __future__ import annotations
@@ -65,6 +68,7 @@ EXPECTED_HEADERS: dict[str, tuple[str, ...]] = {
         "full_name",
         "date_of_birth",
         "age_at_filing",
+        "synthetic_group",
     ),
     CHARGES_FILE: (
         "charge_id",
@@ -158,6 +162,11 @@ RECORD_TYPE_SENTENCE = "sentences"
 
 # Columns that name a person attribute: hashed in ``normalize``, never kept.
 PERSON_ATTRIBUTE_COLUMNS: frozenset[str] = frozenset({"full_name", "date_of_birth"})
+# Columns that carry a restricted attribute: published to the restricted
+# schema only (the age as its band), never onto a person or party draft.
+RESTRICTED_ATTRIBUTE_COLUMNS: frozenset[str] = frozenset({"age_at_filing", "synthetic_group"})
+ATTRIBUTE_AGE_BAND = "age_band"
+ATTRIBUTE_SYNTHETIC_GROUP = "synthetic_group"
 
 # Identity systems the connector writes into ``external_ids``.
 JUDGE_IDENTITY_SYSTEM = "synthetic_judge_code"

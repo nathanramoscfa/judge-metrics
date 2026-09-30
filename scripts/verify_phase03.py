@@ -120,11 +120,19 @@ METRICS_STEP1_MODULES = (
     "methodology",
 )
 METRICS_STEP2_MODULES = ("snapshot", "compute", "suppression", "publish", "verify")
-# Restricted person material no module under metrics/ may name (check 9).
-# `person_identifier` is allowed only inside snapshot.py's RESTRICTED_TABLES
-# denylist and its docstring (the export's own guard names what it never
-# reads); the other three must not appear at all.
-PERSON_COLUMNS = ("full_name", "date_of_birth", "public_person_key")
+# Restricted person material no module under metrics/ (recursively) may name
+# (check 9). `person_identifier` is allowed only inside snapshot.py's
+# RESTRICTED_TABLES denylist and its docstring (the export's own guard names
+# what it never reads); the others must not appear at all. Phase 4 Step 1
+# added the restricted attributes and their table.
+PERSON_COLUMNS = (
+    "full_name",
+    "date_of_birth",
+    "public_person_key",
+    "age_band",
+    "synthetic_group",
+    "party_attribute",
+)
 RESTRICTED_TABLE_READS = (
     re.compile(r'tables\[\s*"person_identifier"\s*\]'),
     re.compile(r'sa\.table\(\s*"person_identifier"'),
@@ -617,19 +625,22 @@ def check_08() -> str | None:
 
 
 def check_09() -> str | None:
-    modules = sorted(_path(f"{PACKAGE}/metrics").glob("*.py"))
+    root = _path(f"{PACKAGE}/metrics")
+    modules = sorted(root.glob("**/*.py"))
     if not modules:
         return f"{PACKAGE}/metrics has no modules"
     for module in modules:
         text = module.read_text(encoding="utf-8")
-        where = f"{PACKAGE}/metrics/{module.name}"
+        where = f"{PACKAGE}/metrics/{module.relative_to(root).as_posix()}"
         for column in PERSON_COLUMNS:
             if re.search(rf"\b{column}\b", text):
                 return f"`{column}` in {where}"
         for pattern in RESTRICTED_TABLE_READS:
             if pattern.search(text):
                 return f"a read of person_identifier in {where}"
-        if module.name != "snapshot.py" and re.search(r"\bperson_identifier\b", text):
+        if module.relative_to(root).as_posix() != "snapshot.py" and re.search(
+            r"\bperson_identifier\b", text
+        ):
             return f"`person_identifier` in {where}"
     return None
 
@@ -674,15 +685,31 @@ def check_13() -> str | None:
     )
 
 
+def _source_version(relative: str, constant: str) -> int | None:
+    """``<constant> = "<n>"`` read from a source file with a regular expression."""
+    found = re.search(rf'^{constant}\s*=\s*"(\d+)"', _read(relative), re.MULTILINE)
+    return None if found is None else int(found.group(1))
+
+
 def check_14() -> str | None:
     manifest_path = f"{GOLDEN_DIR}/manifest.json"
     truth_path = f"{GOLDEN_DIR}/truth/metrics.json"
-    if (reason := _missing(manifest_path, truth_path)) is not None:
+    config_path = f"{PACKAGE}/synthetic/config.py"
+    truth_module = f"{PACKAGE}/synthetic/truth.py"
+    if (reason := _missing(manifest_path, truth_path, config_path, truth_module)) is not None:
         return reason
     manifest = json.loads(_read(manifest_path))
-    for key in ("generator_version", "truth_version"):
-        if str(manifest.get(key)) != "2":
-            return f"{manifest_path} {key} is not 2"
+    # The source constants, not a literal: a later phase's version bump must
+    # never fail this earlier phase's required check (Phase 4 Step 1).
+    for key, relative, constant in (
+        ("generator_version", config_path, "GENERATOR_VERSION"),
+        ("truth_version", truth_module, "TRUTH_VERSION"),
+    ):
+        version = _source_version(relative, constant)
+        if version is None or version < 2:
+            return f"{relative} has no {constant} of at least 2"
+        if str(manifest.get(key)) != str(version):
+            return f"{manifest_path} {key} is not {constant} ({version})"
     if not isinstance(manifest.get("corpus"), dict):
         return f"{manifest_path} records no `corpus`"
     truth = json.loads(_read(truth_path))
@@ -1100,7 +1127,7 @@ STATIC_CHECKS: tuple[tuple[int, str, CheckFn], ...] = (
     (13, "cli.py registers metrics compute and metrics verify", check_13),
     (
         14,
-        "golden manifest at versions 2/2 with corpus; truth metrics; every sha256 matches",
+        "golden manifest at the source versions (>= 2) with corpus; truth metrics; sha256s",
         check_14,
     ),
     (15, "tests/golden/test_golden_metrics.py exists and is tracked", check_15),

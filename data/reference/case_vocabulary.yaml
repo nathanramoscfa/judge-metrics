@@ -5,8 +5,10 @@
 # judgemetrics.synthetic.vocabulary (unit test). Bump `version` whenever a
 # value is added, renamed, or removed, and record the change in
 # docs/DATA_MODEL.md; Phase 5's real-source connectors map their source
-# values onto these and never extend them silently.
-version: 1
+# values onto these and never extend them silently. Version 2 (Phase 4
+# Step 1) adds the restricted vocabularies - restricted_attribute, age_band,
+# synthetic_group - whose values live only in the `restricted` schema.
+version: 2
 kinds:
   case_type:
     - felony
@@ -94,3 +96,17 @@ kinds:
     - travel_restriction
     - drug_testing
     - electronic_monitoring
+  restricted_attribute:
+    - age_band
+    - synthetic_group
+  age_band:
+    - 18-24
+    - 25-34
+    - 35-44
+    - 45-54
+    - 55+
+    - unknown
+  synthetic_group:
+    - group_a
+    - group_b
+    - group_c

@@ -75,10 +75,15 @@ source's stable identifier; a case is `("case", <court name>, <court
 type>, <normalized case number>)`; every row that belongs to a case is
 `("<table>", *case_key[1:], source_row_id)`, where `source_row_id` is the
 source's own row identifier (a charge id, an event id), so a re-export of
-the same row upserts in place; a derived justice event is keyed on the
-person hash, the event type, the instant (UTC), and the related case.
-`describe_key` renders any key for an issue description or log line
-without the person hash.
+the same row upserts in place — except for a case party, whose
+`source_row_id` is `<party_type>:<ordinal>` (revision 0008: the party's
+position within its case and party type, never the participant id, which
+reaches the database only as a hash); a party's restricted attribute is
+`("party_attribute", *case_key[1:], party source_row_id, attribute)`; a
+derived justice event is keyed on the person hash, the event type, the
+instant (UTC), and the related case. `describe_key` renders any key for
+an issue description or log line without the person hash, and no key
+carries a restricted attribute's value.
 
 ### The fourteen steps and where they run
 
@@ -180,6 +185,13 @@ and `seed` refuse to start without it), with the normalization per kind
 `<normalized name>|<iso date>` when both exist). `PersonDraft` carries
 those hashes only; the publish step writes them to the restricted
 `person_identifier` table (`encrypted_value` stays NULL in this phase).
+The case party row keys on `<party_type>:<ordinal>` — its 1-based
+position within the case and party type in code-point order of the
+normalized participant ids — not on the participant id: until revision
+0008 (Phase 4 Step 1) `case_party.source_row_id` held the normalized
+participant id itself, a plaintext identifier in an app-readable
+column. The migration rewrote the existing keys in the same order
+(`COLLATE "C"`), so a re-ingest upserts onto them unchanged.
 
 `entity_resolution.pipeline.resolve_persons(session, drafts, run)` is the
 deterministic stage applied to incoming rows: a draft whose
@@ -205,17 +217,57 @@ from `Settings.synthetic_dir` (the directory holding `manifest.json` and
 `source/<name>` (`truth/` is never discovered), `fetch` reads bytes from
 disk after checking the id is a plain relative path inside the directory,
 `load_context` fails the run when a file's sha256 differs from the
-manifest and builds the court-code index and each participant's case
-timeline from `charges.csv`, `validate_raw` checks the manifest's
+manifest and builds the court-code index, each participant's case
+timeline from `charges.csv`, and each party's ordinal within its case
+from `participants.csv`, `validate_raw` checks the manifest's
 `generator_version` and each file's header set (missing → error naming
 the header, extra → warning), and `normalize` maps rows onto the drafts
 (`normalize.py`, one section per file), deriving justice events —
 `new_case` when a participant has an earlier case, `reconviction` when a
 conviction follows an earlier disposition of another case,
-`failure_to_appear` and `revocation` from the court events. `judgemetrics
+`failure_to_appear` and `revocation` from the court events — and
+publishing each party's restricted `age_band` and `synthetic_group` into
+`restricted.party_attribute` (parser version 2). `judgemetrics
 ingest run synthetic --from-fixture tests/fixtures/golden` reads the
 golden fixture through the runner's fixture path, which accepts
 contained relative ids for this reason.
+
+### Restricted schema
+
+The PostgreSQL schema `restricted` (revision 0008) holds the attributes
+the root roadmap classifies as restricted: `restricted.party_attribute`,
+one row per case party per attribute (`age_band`, `synthetic_group`),
+keyed `(case_party_id, attribute)` and cascading with its party
+(`docs/DATA_MODEL.md` "The restricted schema"). Its boundary:
+
+- **Grants.** `USAGE` for `judgemetrics_ingest` and `judgemetrics_admin`
+  only, DML for the ingest role and every privilege for the admin role
+  (by table grant and by default privilege), `PUBLIC` revoked, and no
+  grant of any kind to `judgemetrics_app`: the public API cannot name the
+  table. `03-test-database.sql` revokes the app role's usage again on
+  every `uv run poe up`. The admin role holds `CREATE` on the database
+  so a migration can create the schema.
+- **Writes.** The ingest runner publishes a `PartyAttributeDraft` after
+  the parties it belongs to, in the ingest transaction, with the natural-
+  key upsert and `IS DISTINCT FROM` guard of the other case-level tables
+  (`ingest/publish.py` `upsert_party_attributes`); an attribute whose
+  party is not in the run is rejected (`unresolved_party`). The draft's
+  `repr` withholds its value; the run log carries the table's row counts
+  only.
+- **Reads.** Nothing in the public API, the metrics engine, or the
+  snapshot reads it: the snapshot checks every table it exports against
+  the schema (`refuse_restricted`, by `RESTRICTED_SCHEMA`, never by table
+  name), and no module under `metrics/` names a restricted attribute
+  (unit test and `verify_phase03.py` check 9, recursively). The aggregate
+  fairness analysis of Phase 4 Step 4, as the ingest role, is the only
+  planned reader.
+- **Logs.** `age_band`, `synthetic_group`, and `attribute_value` are on
+  the scrubber's denylist (never a bare `age`, which would redact
+  `stage=` and `message=`).
+- **Migrations.** `alembic/env.py` runs with `include_schemas`, filtered
+  to `public` and `restricted`, so `uv run alembic check` compares the
+  schema; `RESTRICTED_SCHEMA_TABLES` (`db/models/__init__.py`) lists its
+  tables beside `RESTRICTED_TABLES`.
 
 ### Refusals
 
@@ -229,9 +281,9 @@ refusal.
 
 | Role                  | Used by                                              | Rights                                            |
 |-----------------------|------------------------------------------------------|---------------------------------------------------|
-| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs`, `provenance trace` | `SELECT` on public tables; `INSERT` only on `correction_request` (revision 0007); nothing on `person_identifier`, `entity_resolution_candidate`, `audit_log` |
-| `judgemetrics_ingest` | `ingest run`, `seed`, `er …` (`JUDGEMETRICS_INGEST_DATABASE_URL`) | `SELECT, INSERT, UPDATE, DELETE` on every table except `audit_log` (`SELECT, INSERT`: append-only); no DDL |
-| `judgemetrics_admin`  | `db upgrade` / `downgrade` (`JUDGEMETRICS_ADMIN_DATABASE_URL`) | full control of the public schema (not a superuser) |
+| `judgemetrics_app`    | the API (`JUDGEMETRICS_DATABASE_URL`), `ingest runs`, `provenance trace` | `SELECT` on public tables; `INSERT` only on `correction_request` (revision 0007); nothing on `person_identifier`, `entity_resolution_candidate`, `audit_log`; no `USAGE` on the `restricted` schema (revision 0008) |
+| `judgemetrics_ingest` | `ingest run`, `seed`, `er …` (`JUDGEMETRICS_INGEST_DATABASE_URL`) | `SELECT, INSERT, UPDATE, DELETE` on every table except `audit_log` (`SELECT, INSERT`: append-only), `restricted.party_attribute` included (`USAGE` on `restricted`); no DDL |
+| `judgemetrics_admin`  | `db upgrade` / `downgrade` (`JUDGEMETRICS_ADMIN_DATABASE_URL`) | full control of the public and `restricted` schemas and `CREATE` on the database (a migration creates a schema; not a superuser) |
 
 The roles are created by `infra/docker/postgres/02-roles.sql`; migrations
 grant per table (`alembic/versions/0001_baseline.py`) and default
@@ -829,12 +881,17 @@ verification, and pipeline step 13 on top of them.
   disposed charges, attributed at that time, one per person with a
   disposed charge; the case), `sentence` (an attributed sentence at
   `sentence_at`; the sentence).
-- **Exposure** (`metrics.exposure`). Time at risk starts at the index
-  time; for the `disposition` and `sentence` kinds a sentence with a
-  positive `incarceration_days` defers it to `sentence_at +
-  incarceration_days` (the member sentence, or the latest term of the same
-  case and person). Only the index case's sentence defers exposure; other
-  terms the person serves are not modelled — a documented limitation.
+- **Exposure** (`metrics.exposure`, methodology 0.2). Time at risk starts
+  at the index time — for the `disposition` kind at the end of the index
+  case's own term (`sentence_at + incarceration_days`, the latest when
+  there are several) — and then moves past every incarceration term
+  `[sentence_at, sentence_at + incarceration_days)` of the same (merged)
+  person, in any case, that contains it, for every index kind: the first
+  instant no recorded term covers. The chain is vectorized (one join of
+  the starts to the person's terms per step, the containing term that
+  ends last applied each time) and `deferral_days` totals the terms
+  applied. Terms the source does not record are not modelled — the
+  documented limitation that remains.
 - **Windows and censoring** (`metrics.windows`, `metrics.censoring`). An
   outcome counts for window `w` when an event of the type occurs in
   `(exposure_start, exposure_start + w days]`; `new_case`, `new_charge`,
@@ -886,7 +943,8 @@ verification, and pipeline step 13 on top of them.
   deterministically, so the same data always yields the same hash; the
   directory is created with `mkdir(exist_ok=False)` and never
   overwritten — an export whose hash already exists reuses it. No
-  restricted table is read, every id is the canonical UUID as text, and
+  restricted table is read and no table of the `restricted` schema is
+  exported (`refuse_restricted`), every id is the canonical UUID as text, and
   every timestamp is stored as a naive UTC microsecond `Datetime` (DuckDB
   returns timezone-aware values only through `pytz`, which is not a
   dependency); the loader re-attaches `UTC`. `open_snapshot(settings,
@@ -1009,9 +1067,10 @@ verification, and pipeline step 13 on top of them.
   reports the manifest's `corpus` dates, `GENERATOR_VERSION` 2) fills
   `source.coverage_start`/`coverage_end`; both are written only when they
   differ.
-- **The truth generator** (`synthetic/truth.py`, `TRUTH_VERSION` 2) is
+- **The truth generator** (`synthetic/truth.py`, `TRUTH_VERSION` 3) is
   the independent oracle: windowed cohorts for every index kind with
-  exposure deferred by the index case's incarceration term, every
+  exposure deferred by every incarceration term of the person
+  (`deferred_start`, written independently of `metrics.exposure`), every
   outcome's fixed-window rate and Kaplan-Meier estimate per window,
   `release_violation` and `rearrest` under `not_observable`; it imports
   nothing from `metrics/`. `tests/unit/test_metrics_compute.py` proves

@@ -39,7 +39,7 @@
 # sample sizes the presentation rules require beside every rate, and a
 # count is not an unstable estimate of anything.
 version: 1
-methodology_version: "0.1"
+methodology_version: "0.2"
 
 known_limitations:
   - >-
@@ -316,7 +316,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -351,7 +352,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -386,7 +388,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -417,7 +420,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -452,7 +456,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time. Published only for a
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure). Published only for a
       source whose observable outcomes include release_violation.
     attribution:
       decision_type: pretrial_release
@@ -484,7 +489,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -516,7 +522,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time. Published only for a
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure). Published only for a
       source whose observable outcomes include rearrest (a separate arrest
       source).
     attribution:
@@ -552,7 +559,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -584,7 +592,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -617,7 +626,8 @@ metrics:
     eligibility: >-
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
-      time and the exposure start are the release time.
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -652,7 +662,8 @@ metrics:
       (court: the court's disposed cases); the index time is the case
       disposition time and the exposure start is deferred to sentence_at +
       incarceration_days when the case's sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -686,7 +697,8 @@ metrics:
       (court: the court's disposed cases); the index time is the case
       disposition time and the exposure start is deferred to sentence_at +
       incarceration_days when the case's sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -720,7 +732,8 @@ metrics:
       (court: the court's disposed cases); the index time is the case
       disposition time and the exposure start is deferred to sentence_at +
       incarceration_days when the case's sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -754,7 +767,8 @@ metrics:
       (court: the court's disposed cases); the index time is the case
       disposition time and the exposure start is deferred to sentence_at +
       incarceration_days when the case's sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -788,7 +802,8 @@ metrics:
       sentencing judge (court: the court's cases); the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -821,7 +836,8 @@ metrics:
       sentencing judge (court: the court's cases); the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -854,7 +870,8 @@ metrics:
       sentencing judge (court: the court's cases); the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
@@ -887,7 +904,8 @@ metrics:
       sentencing judge (court: the court's cases); the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
-      incarceration_days.
+      incarceration_days, then past every other incarceration term of the
+      person that contains it (Exposure).
     attribution:
       decision_type: null
       actor_types: null

@@ -66,6 +66,12 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
         "contact",
         "reason",
         "supporting_material",
+        # the restricted attributes (Phase 4 Step 1): the names of the two
+        # restricted.party_attribute kinds and the column that holds a value
+        # (never a bare `age`, which would redact `stage=` and `message=`)
+        "age_band",
+        "synthetic_group",
+        "attribute_value",
     }
 )
 

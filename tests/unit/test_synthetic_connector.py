@@ -33,6 +33,7 @@ from judgemetrics.ingest.base import (
     JurisdictionDraft,
     JusticeEventDraft,
     NormalizationError,
+    PartyAttributeDraft,
     PersonDraft,
     RawArtifact,
     SentenceDraft,
@@ -46,12 +47,17 @@ from judgemetrics.ingest.synthetic.connector import (
     check_relative_name,
     resolve_inside,
 )
-from judgemetrics.ingest.synthetic.normalize import SyntheticContext, normalize_record
+from judgemetrics.ingest.synthetic.normalize import (
+    SyntheticContext,
+    attribute_drafts,
+    normalize_record,
+)
 from judgemetrics.ingest.synthetic.parse import parse_file
 from judgemetrics.ingest.synthetic.schema import (
     EXPECTED_HEADERS,
     MANIFEST_FILE,
     PERSON_ATTRIBUTE_COLUMNS,
+    RESTRICTED_ATTRIBUTE_COLUMNS,
     SOURCE_FILES,
     artifact_id,
 )
@@ -118,7 +124,7 @@ def test_registered_with_synthetic_source_type_and_parser_version() -> None:
     assert connector.source_info.source_type == "synthetic"
     assert connector.source_info.terms_metadata["synthetic"] is True
     assert connector.source_info.terms_metadata["redistribution"] == "not_applicable"
-    assert ("synthetic", "1") in [(s.source_id, s.parser_version) for s in registered_sources()]
+    assert ("synthetic", "2") in [(s.source_id, s.parser_version) for s in registered_sources()]
     assert isinstance(connector, SupportsContext)
 
 
@@ -291,7 +297,7 @@ def test_parse_projects_rows_to_the_expected_columns_as_strings() -> None:
     assert tuple(first.payload) == EXPECTED_HEADERS["participants.csv"]
     assert all(isinstance(value, str) for value in first.payload.values())
     # The duplicate copy's trailing whitespace is trimmed at parse time.
-    copy = next(r for r in records if r.payload["case_number"] == "syn 2019 000005")
+    copy = next(r for r in records if r.payload["case_number"] == "syn 2019 000001")
     assert copy.payload["full_name"] == copy.payload["full_name"].strip()
 
 
@@ -310,6 +316,8 @@ def test_draft_counts_per_type(golden_drafts: list[CanonicalRecord]) -> None:
     assert counts["JudgeDraft"] == counts["JudgeServiceDraft"] == manifest["source/judges.csv"]
     assert counts["CaseDraft"] == manifest["source/cases.csv"] == 63
     assert counts["PersonDraft"] == counts["CasePartyDraft"] == manifest["source/participants.csv"]
+    # One age_band and one synthetic_group per participant row.
+    assert counts["PartyAttributeDraft"] == 2 * manifest["source/participants.csv"]
     assert counts["ChargeDraft"] == manifest["source/charges.csv"]
     assert counts["JudgeAssignmentDraft"] == manifest["source/assignments.csv"]
     assert counts["CourtEventDraft"] == manifest["source/events.csv"]
@@ -334,6 +342,8 @@ def test_planted_duplicates_collapse_onto_one_case_key(
     assert len(persons) == 42
     parties = Counter(d.natural_key for d in golden_drafts if isinstance(d, CasePartyDraft))
     assert len(parties) == 60
+    attributes = Counter(d.natural_key for d in golden_drafts if isinstance(d, PartyAttributeDraft))
+    assert len(attributes) == 120
     charges = Counter(d.natural_key for d in golden_drafts if isinstance(d, ChargeDraft))
     assert sum(charges.values()) - len(charges) == sum(
         1 for row in _rows("charges.csv") if row["case_number"].startswith("syn ")
@@ -353,7 +363,7 @@ def test_reference_drafts(golden_drafts: list[CanonicalRecord]) -> None:
     assert len(judges) == 6
     j4 = judges[("judge", "synthetic_judge_code", "J-0004")]
     assert j4.external_ids == {"synthetic_judge_code": "J-0004"}
-    assert j4.normalized_name == "cinnabar hornbill"
+    assert j4.normalized_name == "galena condor"
     assert j4.status == "active"  # transferred: the second service record is open
     assert judges[("judge", "synthetic_judge_code", "J-0001")].status == "active"
     ended = [code for code, active in _connector_context().judge_active.items() if not active]
@@ -430,7 +440,7 @@ def test_charge_decision_and_event_drafts(golden_drafts: list[CanonicalRecord]) 
         for d in prosecutor
     )
     unknown = [d for d in decisions if d.actor_type is ActorType.UNKNOWN]
-    assert {d.source_row_id for d in unknown} == {"DC-000025", "DC-000038", "DC-000062"}
+    assert {d.source_row_id for d in unknown} == {"DC-000086", "DC-000097", "DC-000125"}
     assert all(d.judicial_discretion_classification == "unknown" for d in unknown)
     bonded = next(d for d in pretrial if d.pretrial and d.pretrial.bond_amount)
     assert bonded.decision_value == {"release_type": "monetary_bond", "detained": False} or (
@@ -440,7 +450,7 @@ def test_charge_decision_and_event_drafts(golden_drafts: list[CanonicalRecord]) 
     assert set(with_conditions.pretrial.conditions.values()) == {True}  # type: ignore[union-attr]
 
     events = [d for d in golden_drafts if isinstance(d, CourtEventDraft)]
-    assert sum(1 for e in events if e.description is None) == 4  # planted missing_description
+    assert sum(1 for e in events if e.description is None) == 5  # planted missing_description
     fta = [e for e in events if e.event_type == "failure_to_appear"]
     assert fta and all(e.actor_type is ActorType.DEFENSE for e in fta)
 
@@ -453,8 +463,8 @@ def test_charge_decision_and_event_drafts(golden_drafts: list[CanonicalRecord]) 
 def test_justice_events_are_derived(golden_drafts: list[CanonicalRecord]) -> None:
     events = {d.natural_key: d for d in golden_drafts if isinstance(d, JusticeEventDraft)}
     by_type = Counter(e.event_type for e in events.values())
-    assert by_type["failure_to_appear"] == 2
-    assert by_type["revocation"] == 1
+    assert by_type["failure_to_appear"] == 14
+    assert by_type["revocation"] == 2
     assert by_type["new_case"] > 0
     assert by_type["reconviction"] > 0
     assert set(by_type) == {"failure_to_appear", "revocation", "new_case", "reconviction"}
@@ -504,11 +514,70 @@ def test_person_attribute_columns_never_reach_a_draft_field(
     golden_drafts: list[CanonicalRecord],
 ) -> None:
     assert PERSON_ATTRIBUTE_COLUMNS == {"full_name", "date_of_birth"}
+    assert RESTRICTED_ATTRIBUTE_COLUMNS == {"age_at_filing", "synthetic_group"}
     names = {row["full_name"].strip() for row in _rows("participants.csv")}
     dobs = {row["date_of_birth"] for row in _rows("participants.csv")} - {""}
     rendered = repr([d for d in golden_drafts if not isinstance(d, JudgeDraft)])
     assert not any(name in rendered for name in names)
     assert not any(dob in rendered for dob in dobs)
+    # The raw age and the group never reach a person or party draft field; the
+    # attribute drafts carry the band and the group, and their repr withholds it.
+    ages = {row["age_at_filing"] for row in _rows("participants.csv")} - {""}
+    groups = {row["synthetic_group"] for row in _rows("participants.csv")}
+    assert ages and groups == {"group_a", "group_b", "group_c"}
+    for draft in golden_drafts:
+        if isinstance(draft, PersonDraft | CasePartyDraft):
+            values = {str(getattr(draft, name)) for name in draft.__dataclass_fields__}
+            assert not values & ages, draft.natural_key
+            assert not values & groups, draft.natural_key
+            assert not any(group in repr(draft) for group in groups)
+    attributes = [d for d in golden_drafts if isinstance(d, PartyAttributeDraft)]
+    assert attributes
+    for attribute in attributes:
+        assert attribute.value not in repr(attribute)
+        assert attribute.value not in repr(attribute.natural_key)
+
+
+def test_parties_are_keyed_by_their_ordinal_not_the_participant_id(
+    golden_drafts: list[CanonicalRecord],
+) -> None:
+    parties = [d for d in golden_drafts if isinstance(d, CasePartyDraft)]
+    assert {p.source_row_id for p in parties} == {"defendant:1"}  # one defendant per case
+    participant_ids = {row["participant_id"] for row in _rows("participants.csv")}
+    for draft in golden_drafts:
+        if isinstance(draft, CasePartyDraft | PartyAttributeDraft):
+            assert not any(pid in repr(draft.natural_key) for pid in participant_ids)
+
+
+def test_attribute_drafts_band_the_age_and_check_the_group() -> None:
+    party = CasePartyDraft(
+        case_key=("case", "Court", "circuit", "SYN-2020-000001"),
+        person_key=None,
+        party_type="defendant",
+        source_party_label="defendant",
+        source_row_id="defendant:1",
+    )
+    drafts = attribute_drafts(party, {"age_at_filing": "34", "synthetic_group": "group_b"}, "p")
+    assert [(d.attribute, d.value) for d in drafts] == [
+        ("age_band", "25-34"),
+        ("synthetic_group", "group_b"),
+    ]
+    assert drafts[0].natural_key == (
+        "party_attribute",
+        "Court",
+        "circuit",
+        "SYN-2020-000001",
+        "defendant:1",
+        "age_band",
+    )
+    blank = attribute_drafts(party, {"age_at_filing": "", "synthetic_group": ""}, "p")
+    assert [(d.attribute, d.value) for d in blank] == [("age_band", "unknown")]
+    for bad_age in ("thirty", "-1", "131", "3.5"):
+        with pytest.raises(NormalizationError, match="age_at_filing") as caught:
+            attribute_drafts(party, {"age_at_filing": bad_age, "synthetic_group": ""}, "p")
+        assert bad_age not in str(caught.value)
+    with pytest.raises(NormalizationError, match="synthetic_group 'group_z'"):
+        attribute_drafts(party, {"age_at_filing": "40", "synthetic_group": "group_z"}, "p")
 
 
 # --- the seed skip rule ------------------------------------------------------------------

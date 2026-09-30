@@ -5,7 +5,15 @@ Each case is simulated from its filed date with seeded offsets from the
 ``cases`` stream (court, filing, charges, assignments, pretrial decision,
 disposition, sentence) and the ``events`` stream (hearings, failures to
 appear, bench warrants, revocations, descriptions), in a fixed order per
-case. Timestamps are strictly ordered by construction::
+case. GENERATOR_VERSION 3 plants the judges' effects through
+``effects.py``: the initial judge is drawn by the case's observable risk
+index and the judges' docket tilts, the release decision and the failure
+to appear are logistic in the case's observable features plus the deciding
+judge's effect (and, for a failure to appear, the latent propensity and
+the filing-age band), and the person's next filing is skewed by the
+releasing judge's new-case effect. Each case records what its draws knew
+(``Case.draws``) so ``truth.py`` can compute every probability exactly.
+Timestamps are strictly ordered by construction::
 
     filed_at < assignment start < arraignment < pretrial decision
              < disposition <= closed;  sentence > disposition;
@@ -22,19 +30,38 @@ from __future__ import annotations
 
 import random
 from bisect import bisect_right
+from collections.abc import Sequence
 from datetime import UTC, date, datetime, time, timedelta
 from itertools import accumulate
 
 from judgemetrics.synthetic.config import MAX_CASES_PER_PERSON, ScaleSpec
+from judgemetrics.synthetic.effects import (
+    RECOGNIZANCE_SHARE,
+    UNPOSTED_BOND_SHARE,
+    assignment_weights,
+    base_exponent,
+    exponent,
+    filing_age_band,
+    fta_base_logit,
+    logistic,
+    release_base_logit,
+    risk_features,
+    risk_index,
+    share_below,
+)
 from judgemetrics.synthetic.model import (
     Assignment,
     Case,
     Charge,
     Decision,
+    Draws,
     Event,
+    FilingDraw,
+    FtaDraw,
     Judge,
     Offense,
     Person,
+    ReleaseDraw,
     Sentence,
     World,
 )
@@ -66,11 +93,11 @@ FELONY_SHARE = 0.45
 CHARGE_COUNT_WEIGHTS: tuple[tuple[int, float], ...] = ((1, 0.55), (2, 0.30), (3, 0.15))
 
 STATUTORY_RELEASE_SHARE = 0.10
-# Base shares of recognizance and detention by case type; the judge's
-# release bias moves recognizance up and detention down.
-BASE_RECOGNIZANCE = {"felony": 0.30, "misdemeanor": 0.60}
-BASE_DETENTION = {"felony": 0.32, "misdemeanor": 0.08}
-BOND_POSTED_SHARE = 0.75
+# Minutes from the pretrial decision to the release (uniform, inclusive): a
+# recognizance or statutory release, and a posted bond. The judicial release
+# probability and the split are in effects.py (GENERATOR_VERSION 3).
+RECOGNIZANCE_RELEASE_MINUTES = (60, 720)
+BOND_RELEASE_MINUTES = (120, 120 * 60)
 BOND_AMOUNTS: tuple[int, ...] = (500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000)
 
 DAYS_TO_DISPOSITION = {"felony": (60, 540), "misdemeanor": (20, 240)}
@@ -85,8 +112,6 @@ VERDICT_CONVICTION_SHARE = 0.65
 
 HEARING_COUNT_WEIGHTS: tuple[tuple[int, float], ...] = ((0, 0.20), (1, 0.35), (2, 0.30), (3, 0.15))
 HEARINGS_START_AFTER_DAYS = 7
-FTA_BASE = 0.05
-FTA_PROPENSITY_WEIGHT = 0.12
 FTA_LEAD_DAYS = 13  # a failure to appear needs this many days before the disposition
 REVOCATION_BASE = 0.06
 REVOCATION_PROPENSITY_WEIGHT = 0.20
@@ -155,30 +180,48 @@ def _pick_court(
     return person.home_court
 
 
-def _filed_date(
-    spec: ScaleSpec,
-    person: Person,
-    ordinal: int,
-    total: int,
-    previous_anchor: date | None,
-    rng: random.Random,
-) -> date:
+def _latest_filing(spec: ScaleSpec, ordinal: int, total: int) -> date:
+    """Every filing leaves room for the person's later cases and its own assignment."""
     remaining = total - 1 - ordinal
-    # Every filing leaves room for its assignment before the corpus end.
-    latest = min(
+    return min(
         spec.corpus_end - timedelta(days=remaining * LATER_CASE_RESERVE_DAYS),
         spec.corpus_end - timedelta(days=FILING_MARGIN_DAYS),
     )
-    if ordinal == 0 or previous_anchor is None:
-        first_span = (latest - spec.corpus_start).days
-        return spec.corpus_start + timedelta(days=randint(rng, 0, first_span))
+
+
+def _first_filed_date(spec: ScaleSpec, total: int, rng: random.Random) -> date:
+    first_span = (_latest_filing(spec, 0, total) - spec.corpus_start).days
+    return spec.corpus_start + timedelta(days=randint(rng, 0, first_span))
+
+
+def _later_filing(
+    world: World,
+    person: Person,
+    ordinal: int,
+    total: int,
+    previous: Case,
+    previous_anchor: date,
+    rng: random.Random,
+) -> tuple[date, FilingDraw]:
+    """The next filing day, skewed by the previous case's releasing judge (``FilingDraw``)."""
+    latest = _latest_filing(world.spec, ordinal, total)
     earliest = previous_anchor + timedelta(days=MIN_GAP_DAYS)
     if latest < earliest:
         msg = f"{person.true_id}: no room for case {ordinal + 1} of {total} after {previous_anchor}"
         raise GenerationError(msg)
     span = (latest - earliest).days
-    fraction = skewed_fraction(rng, 1.0 + 2.0 * person.propensity)
-    return earliest + timedelta(days=int(fraction * (span + 1)))
+    decision = previous.pretrial_decision
+    judge_code = (
+        decision.judge_code
+        if decision is not None and decision.judicial_discretionary and decision.released
+        else None
+    )
+    effect = world.judge(judge_code).new_case_effect if judge_code is not None else 0.0
+    draws = _draws(previous)
+    base = base_exponent(draws.risk_index, person.propensity, draws.filing_age_band)
+    fraction = skewed_fraction(rng, exponent(base, effect))
+    filed = earliest + timedelta(days=int(fraction * (span + 1)))
+    return filed, FilingDraw(previous, judge_code, base, earliest, span)
 
 
 def _draw_charges(
@@ -197,8 +240,32 @@ def _lead_offense(charges: list[Charge]) -> Charge:
     return min(charges, key=lambda c: SEVERITY_RANK[c.offense.severity])
 
 
+def _draws(case: Case) -> Draws:
+    if case.draws is None:  # pragma: no cover - generate_case records the draws first
+        msg = f"a case of {case.person.true_id} has no draw record"
+        raise GenerationError(msg)
+    return case.draws
+
+
+def _bond_amount(case: Case, rng: random.Random) -> int:
+    lead = _lead_offense(case.charges)
+    rank = SEVERITY_RANK[lead.offense.severity]
+    # More severe lead charges draw from the upper end of the schedule.
+    low = max(0, len(BOND_AMOUNTS) - 3 - rank)
+    return choice(rng, BOND_AMOUNTS[low : low + 3])
+
+
+def released_before(case_type: str, decision_at: datetime, end_at: datetime) -> float:
+    """The chance a judicial release decided at ``decision_at`` takes effect before ``end_at``."""
+    gap = (end_at - decision_at) // timedelta(minutes=1)
+    recognizance = RECOGNIZANCE_SHARE[case_type]
+    return recognizance * share_below(*RECOGNIZANCE_RELEASE_MINUTES, gap) + (
+        1.0 - recognizance
+    ) * share_below(*BOND_RELEASE_MINUTES, gap)
+
+
 def _pretrial_decision(
-    case: Case, judge: Judge, decision_at: datetime, rng: random.Random
+    case: Case, judge: Judge, decision_at: datetime, end_at: datetime, rng: random.Random
 ) -> Decision:
     if chance(rng, STATUTORY_RELEASE_SHARE):
         return Decision(
@@ -209,13 +276,12 @@ def _pretrial_decision(
             judge_code=None,
             release_type="statutory",
             detained=False,
-            release_at=decision_at + _minutes(rng, 60, 720),
+            release_at=decision_at + _minutes(rng, *RECOGNIZANCE_RELEASE_MINUTES),
         )
-    recognizance = min(0.9, max(0.05, BASE_RECOGNIZANCE[case.case_type] + judge.release_bias))
-    detention = min(0.9, max(0.02, BASE_DETENTION[case.case_type] - judge.release_bias / 2))
-    bond = max(0.0, 1.0 - recognizance - detention)
-    release_type = weighted_choice(
-        rng, (("recognizance", recognizance), ("monetary_bond", bond), ("detained", detention))
+    draws = _draws(case)
+    base = release_base_logit(case.case_type, draws.features)
+    draws.release = ReleaseDraw(
+        judge.code, base, released_before(case.case_type, decision_at, end_at)
     )
     decision = Decision(
         decision_type="pretrial_release",
@@ -223,25 +289,23 @@ def _pretrial_decision(
         actor="judge",
         discretion="discretionary",
         judge_code=judge.code,
-        release_type=release_type,
     )
-    if release_type == "recognizance":
+    if chance(rng, logistic(base + judge.leniency)):
         decision.detained = False
-        decision.release_at = decision_at + _minutes(rng, 60, 720)
-        decision.conditions = _conditions(rng)
-    elif release_type == "monetary_bond":
-        lead = _lead_offense(case.charges)
-        rank = SEVERITY_RANK[lead.offense.severity]
-        # More severe lead charges draw from the upper end of the schedule.
-        low = max(0, len(BOND_AMOUNTS) - 3 - rank)
-        decision.bond_amount = choice(rng, BOND_AMOUNTS[low : low + 3])
-        if chance(rng, BOND_POSTED_SHARE):
-            decision.detained = False
-            decision.release_at = decision_at + _minutes(rng, 120, 120 * 60)
-            decision.conditions = _conditions(rng)
+        if chance(rng, RECOGNIZANCE_SHARE[case.case_type]):
+            decision.release_type = "recognizance"
+            decision.release_at = decision_at + _minutes(rng, *RECOGNIZANCE_RELEASE_MINUTES)
         else:
-            decision.detained = True
+            decision.release_type = "monetary_bond"
+            decision.bond_amount = _bond_amount(case, rng)
+            decision.release_at = decision_at + _minutes(rng, *BOND_RELEASE_MINUTES)
+        decision.conditions = _conditions(rng)
+    elif chance(rng, UNPOSTED_BOND_SHARE[case.case_type]):
+        decision.release_type = "monetary_bond"
+        decision.bond_amount = _bond_amount(case, rng)
+        decision.detained = True
     else:
+        decision.release_type = "detained"
         decision.detained = True
     return decision
 
@@ -476,14 +540,24 @@ def _plant_failure_to_appear(
     decision = case.pretrial_decision
     if decision is None or not decision.released:
         return
-    if not chance(rng, FTA_BASE + FTA_PROPENSITY_WEIGHT * case.person.propensity):
-        return
+    judge_code = decision.judge_code if decision.judicial_discretionary else None
+    effect = world.judge(judge_code).fta_effect if judge_code is not None else 0.0
+    draws = _draws(case)
+    base = fta_base_logit(draws.features, case.person.propensity, draws.filing_age_band)
     latest_day = disposed_at.date() - timedelta(days=FTA_LEAD_DAYS)
     candidates = [event for event in hearings if event.event_at.date() <= latest_day]
+    first_day = decision_at.date() + timedelta(days=HEARINGS_START_AFTER_DAYS)
+    if candidates:
+        draws.fta = FtaDraw(judge_code, base, candidates[0].event_at, None, None)
+    elif first_day <= latest_day:
+        draws.fta = FtaDraw(judge_code, base, None, first_day, latest_day)
+    else:
+        draws.fta = FtaDraw(judge_code, base, None, None, None)
+    if not chance(rng, logistic(base + effect)):
+        return
     if candidates:
         target = candidates[0]
     else:
-        first_day = decision_at.date() + timedelta(days=HEARINGS_START_AFTER_DAYS)
         if first_day > latest_day:
             return
         day = first_day + timedelta(days=randint(rng, 0, (latest_day - first_day).days))
@@ -531,12 +605,21 @@ def generate_case(
     *,
     force_other_court: bool,
     streams: Streams,
+    previous: Case | None = None,
+    history: Sequence[Case] = (),
 ) -> Case:
+    """One case of ``person``; ``previous`` and ``history`` are the person's earlier cases."""
     spec = world.spec
     rng = streams.cases
     ev = streams.events
     court_code = _pick_court(world, person, ordinal, force_other=force_other_court, rng=rng)
-    filed_date = _filed_date(spec, person, ordinal, total, previous_anchor, rng)
+    filing: FilingDraw | None = None
+    if ordinal == 0 or previous is None or previous_anchor is None:
+        filed_date = _first_filed_date(spec, total, rng)
+    else:
+        filed_date, filing = _later_filing(
+            world, person, ordinal, total, previous, previous_anchor, rng
+        )
     filed_at = business_time(rng, filed_date)
     case_type = "felony" if chance(rng, FELONY_SHARE) else "misdemeanor"
     case = Case(
@@ -548,12 +631,18 @@ def generate_case(
         filed_at=filed_at,
     )
     case.charges = _draw_charges(world, case_type, filed_at, rng)
+    features = risk_features(case, history)
+    index = risk_index(features)
+    case.draws = Draws(features, index, filing_age_band(case), filing=filing)
 
     assign_at = _later_business_time(rng, filed_at, 0, 2)
-    initial = choice(rng, world.judges_serving(court_code, assign_at.date()))
+    # The initial judge by the observable risk index alone (planted confounding).
+    initial = weighted_choice(
+        rng, assignment_weights(world.judges_serving(court_code, assign_at.date()), index)
+    )
     arraignment_at = _later_business_time(rng, assign_at, 1, 5)
     decision_at = _later_business_time(rng, arraignment_at, 0, 3)
-    pretrial = _pretrial_decision(case, initial, decision_at, rng)
+    pretrial = _pretrial_decision(case, initial, decision_at, spec.corpus_end_at, rng)
     case.decisions.append(pretrial)
     case.events.append(
         Event("arraignment", arraignment_at, "judge", initial.code, ARRAIGNMENT_DESCRIPTION)
@@ -653,6 +742,7 @@ def build_cases(world: World, streams: Streams) -> None:
             force_cross_court = True
             reserved += 1
         previous_anchor: date | None = None
+        history: list[Case] = []
         for ordinal in range(total):
             case = generate_case(
                 world,
@@ -662,8 +752,11 @@ def build_cases(world: World, streams: Streams) -> None:
                 previous_anchor,
                 force_other_court=force_cross_court and ordinal == 1,
                 streams=streams,
+                previous=history[-1] if history else None,
+                history=history,
             )
             world.cases.append(case)
+            history.append(case)
             decision = case.pretrial_decision
             anchor_at = (
                 decision.decision_at if decision is not None else case.filed_at + timedelta(days=10)

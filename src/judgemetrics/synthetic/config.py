@@ -7,6 +7,11 @@ changed constant, a manifest schema change); the golden fixture under
 ``tests/fixtures/golden/`` is then regenerated, never hand-edited
 (docs/SYNTHETIC_DATA.md). Version ``2`` (Phase 3 Step 2) adds the corpus
 dates to the manifest; ``source/`` is byte-identical to version ``1``.
+Version ``3`` (Phase 4 Step 1) plants the judges' effects and the
+observable-only case-mix confounding (``effects.py``), adds the
+``effects`` and ``attributes`` streams, writes ``synthetic_group`` to
+``participants.csv``, and leaves ``age_at_filing`` blank when the date of
+birth is unknown.
 """
 
 from __future__ import annotations
@@ -14,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-GENERATOR_VERSION = "2"
+GENERATOR_VERSION = "3"
 
 # The brief's synthetic demo dataset minimums (<synthetic_demo_dataset>).
 BRIEF_MINIMUM_COURTS = 5

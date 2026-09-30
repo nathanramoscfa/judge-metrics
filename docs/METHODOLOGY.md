@@ -4,7 +4,7 @@
      registry and re-render. -->
 # Methodology
 
-Registry version 1; methodology version 0.1; 33 metrics.
+Registry version 1; methodology version 0.2; 33 metrics.
 
 This document is rendered from the versioned metric registry
 (`data/reference/metric_registry.yaml`), the contract every published number is
@@ -54,17 +54,21 @@ assigned at that time; one index event per person with a disposed charge in the
 case. sentence: an attributed sentence at sentence_at, attributed to the
 sentencing judge. A court's index events are those of the court's cases.
 
-**Exposure.** Time at risk starts at the index time. For the disposition and
-sentence kinds, when the sentence carries a positive incarceration_days,
-exposure starts at sentence_at + incarceration_days instead: the incarceration
-term defers time at risk. For the sentence kind the deferring sentence is the
-index sentence itself; for the disposition kind it is the sentence of the same
-case and person, the latest term end when there are several. The
-pretrial_release kind is never deferred. Documented limitation: only the
-sentence of the index case defers exposure; other terms the same person serves -
-an earlier sentence still running, a term in another case or jurisdiction - are
-not modelled, so time at risk is overstated for such persons and their rates are
-biased downward.
+**Exposure.** Time at risk starts at the index time and is deferred by
+incarceration, because a person who is incarcerated cannot accrue a new case in
+the community. An incarceration term is [sentence_at, sentence_at +
+incarceration_days) of a sentence with a positive incarceration_days. For the
+disposition kind the start first moves to the end of the index case's own term
+(the sentence of the same case and person, the latest term end when there are
+several), because the sentence follows the disposition. Then, for every kind -
+pretrial_release included - while a term of the same person in any case contains
+the start, the start moves to the end of the containing term that ends last, so
+exposure begins at the first instant at or after the index time that no recorded
+term of the person covers; for the sentence kind the member's own term is the
+first. Documented limitation: only terms the source records are applied - a term
+served in another jurisdiction, or under a sentence the source does not publish,
+is not modelled, so time at risk is overstated for such persons and their rates
+are biased downward.
 
 **Outcomes and windows.** An outcome counts for a window w when an event of the
 outcome type occurs in (exposure start, exposure start + w days]: strictly after
@@ -252,7 +256,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: failure_to_appear; windows: 30, 90,
@@ -272,7 +277,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: new_case; windows: 30, 90, 180, 365,
@@ -292,7 +298,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: new_charge; windows: 30, 90, 180, 365,
@@ -312,7 +319,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: reconviction; windows: 30, 90, 180,
@@ -332,7 +340,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time. Published only for a
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure). Published only for a
   source whose observable outcomes include release_violation.
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
@@ -353,7 +362,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: revocation; windows: 30, 90, 180, 365,
@@ -374,7 +384,8 @@ rule states how a row is tied to the subject.
   strictly before the coverage end).
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time. Published only for a
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure). Published only for a
   source whose observable outcomes include rearrest (a separate arrest source).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
@@ -397,7 +408,8 @@ rule states how a row is tied to the subject.
   whichever comes first.
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: failure_to_appear; windows: 30, 90,
@@ -419,7 +431,8 @@ rule states how a row is tied to the subject.
   the coverage end, whichever comes first.
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: new_case; windows: 30, 90, 180, 365,
@@ -441,7 +454,8 @@ rule states how a row is tied to the subject.
   person or the coverage end, whichever comes first.
 - Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
   gate of pretrial_decisions) with detained = false and a release time; the
-  index time and the exposure start are the release time.
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
 - Attribution: decision type pretrial_release; actor judge; discretion
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Index event: pretrial_release; outcome: reconviction; windows: 30, 90, 180,
@@ -463,7 +477,8 @@ rule states how a row is tied to the subject.
   disposed case attributed to the judge assigned at the case disposition time
   (court: the court's disposed cases); the index time is the case disposition
   time and the exposure start is deferred to sentence_at + incarceration_days
-  when the case's sentence carries a positive incarceration_days.
+  when the case's sentence carries a positive incarceration_days, then past
+  every other incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the judge assigned at the event time (the time falls in one
   of the judge's assignment intervals on the case, start <= t < end, an open end
   unbounded).
@@ -486,7 +501,8 @@ rule states how a row is tied to the subject.
   disposed case attributed to the judge assigned at the case disposition time
   (court: the court's disposed cases); the index time is the case disposition
   time and the exposure start is deferred to sentence_at + incarceration_days
-  when the case's sentence carries a positive incarceration_days.
+  when the case's sentence carries a positive incarceration_days, then past
+  every other incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the judge assigned at the event time (the time falls in one
   of the judge's assignment intervals on the case, start <= t < end, an open end
   unbounded).
@@ -509,7 +525,8 @@ rule states how a row is tied to the subject.
   disposed case attributed to the judge assigned at the case disposition time
   (court: the court's disposed cases); the index time is the case disposition
   time and the exposure start is deferred to sentence_at + incarceration_days
-  when the case's sentence carries a positive incarceration_days.
+  when the case's sentence carries a positive incarceration_days, then past
+  every other incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the judge assigned at the event time (the time falls in one
   of the judge's assignment intervals on the case, start <= t < end, an open end
   unbounded).
@@ -532,7 +549,8 @@ rule states how a row is tied to the subject.
   disposed case attributed to the judge assigned at the case disposition time
   (court: the court's disposed cases); the index time is the case disposition
   time and the exposure start is deferred to sentence_at + incarceration_days
-  when the case's sentence carries a positive incarceration_days.
+  when the case's sentence carries a positive incarceration_days, then past
+  every other incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the judge assigned at the event time (the time falls in one
   of the judge's assignment intervals on the case, start <= t < end, an open end
   unbounded).
@@ -554,7 +572,8 @@ rule states how a row is tied to the subject.
 - Eligibility: The sentence cohort: one index event per sentence attributed to
   the sentencing judge (court: the court's cases); the index time is sentence_at
   and the exposure start is deferred to sentence_at + incarceration_days when
-  the sentence carries a positive incarceration_days.
+  the sentence carries a positive incarceration_days, then past every other
+  incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the sentencing judge (the sentence's judge is the subject).
 - Index event: sentence; outcome: new_case; windows: 30, 90, 180, 365, 730, 1095
   days.
@@ -574,7 +593,8 @@ rule states how a row is tied to the subject.
 - Eligibility: The sentence cohort: one index event per sentence attributed to
   the sentencing judge (court: the court's cases); the index time is sentence_at
   and the exposure start is deferred to sentence_at + incarceration_days when
-  the sentence carries a positive incarceration_days.
+  the sentence carries a positive incarceration_days, then past every other
+  incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the sentencing judge (the sentence's judge is the subject).
 - Index event: sentence; outcome: new_charge; windows: 30, 90, 180, 365, 730,
   1095 days.
@@ -594,7 +614,8 @@ rule states how a row is tied to the subject.
 - Eligibility: The sentence cohort: one index event per sentence attributed to
   the sentencing judge (court: the court's cases); the index time is sentence_at
   and the exposure start is deferred to sentence_at + incarceration_days when
-  the sentence carries a positive incarceration_days.
+  the sentence carries a positive incarceration_days, then past every other
+  incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the sentencing judge (the sentence's judge is the subject).
 - Index event: sentence; outcome: reconviction; windows: 30, 90, 180, 365, 730,
   1095 days.
@@ -614,7 +635,8 @@ rule states how a row is tied to the subject.
 - Eligibility: The sentence cohort: one index event per sentence attributed to
   the sentencing judge (court: the court's cases); the index time is sentence_at
   and the exposure start is deferred to sentence_at + incarceration_days when
-  the sentence carries a positive incarceration_days.
+  the sentence carries a positive incarceration_days, then past every other
+  incarceration term of the person that contains it (Exposure).
 - Attribution: gate: the sentencing judge (the sentence's judge is the subject).
 - Index event: sentence; outcome: revocation; windows: 30, 90, 180, 365, 730,
   1095 days.
@@ -785,3 +807,5 @@ presentation:
   dismissal rate, and the medians; right-censoring at the source's coverage end;
   incarceration deferral; Wilson and Greenwood intervals; suppression below a
   denominator of 10.
+- 0.2 - Exposure is deferred by every incarceration term of the person, not the
+  index case's alone (Phase 3 finding 1.4).

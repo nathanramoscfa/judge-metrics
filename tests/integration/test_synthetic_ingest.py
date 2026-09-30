@@ -8,7 +8,10 @@ case-level row references a source record whose sha256 is the fixture
 file's, the person table holds pseudonyms and hashes only, prosecutor
 dismissals keep their actor, the planted data-quality issues exist, no
 log line carries a participant attribute, and the real connector is
-refused in production. The ``seed`` CLI tests commit nothing: in
+refused in production. Phase 4 Step 1: every case party gets exactly one
+``age_band`` and one ``synthetic_group`` row in ``restricted.party_attribute``
+(the source's values, banded), parties are keyed ``<party_type>:<ordinal>``,
+and neither a band nor a group reaches a log line. The ``seed`` CLI tests commit nothing: in
 production the run is refused before anything is generated.
 
 Phase 3 Step 2: the run writes the source's coverage window and
@@ -48,8 +51,10 @@ from typer.testing import CliRunner
 from judgemetrics.cli import app
 from judgemetrics.config import Settings
 from judgemetrics.db.models import (
+    RESTRICTED_SCHEMA,
     Base,
     Case,
+    CaseParty,
     Charge,
     CourtEvent,
     DataQualityIssue,
@@ -73,6 +78,8 @@ from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.ingest.synthetic.connector import SyntheticConnector
 from judgemetrics.ingest.synthetic.schema import SOURCE_FILES
 from judgemetrics.logging import configure_logging
+from judgemetrics.normalization.age_bands import age_band
+from judgemetrics.normalization.case_numbers import normalize_case_number
 from judgemetrics.security.identifiers import hash_identifier, name_dob_value
 from tests.conftest import TEST_IDENTIFIER_PEPPER
 from tests.integration.conftest import FJC_FIXTURES, purge_source, purge_synthetic
@@ -83,6 +90,7 @@ GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "golden"
 SOURCE_ID = "synthetic"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 PEPPER = SecretStr(TEST_IDENTIFIER_PEPPER)
+PARTY_ATTRIBUTE = Base.metadata.tables[f"{RESTRICTED_SCHEMA}.party_attribute"]
 
 # Table → (source file, row-id column): how a row traces to its file.
 CASE_LEVEL_FILES: dict[str, tuple[str, str]] = {
@@ -263,7 +271,7 @@ def test_first_run_creates_the_manifest_counts_minus_duplicates_with_provenance(
     assert run.records_seen == sum(manifest["counts"][f"source/{name}"] for name in SOURCE_FILES)
     assert run.records_rejected == 0
     assert run.records_updated == 0
-    assert run.parser_version == "1"
+    assert run.parser_version == "2"
 
     expected = _expected_counts()
     assert _counts(session) == expected
@@ -275,7 +283,12 @@ def test_first_run_creates_the_manifest_counts_minus_duplicates_with_provenance(
     # the two planted split persons, which drops their duplicated name and
     # date-of-birth hashes (three per merge) from the live table.
     expected_identifiers = sum(len(hashes) for hashes in _expected_hashes().values())
-    assert run.records_created == sum(expected.values()) + justice_events + expected_identifiers
+    # One age_band and one synthetic_group row per case party (restricted schema).
+    attributes = 2 * expected["case_party"]
+    assert session.scalar(select(func.count()).select_from(PARTY_ATTRIBUTE)) == attributes
+    assert run.records_created == (
+        sum(expected.values()) + justice_events + expected_identifiers + attributes
+    )
     assert _count(session, "person_identifier") == expected_identifiers - 2 * 3
 
     source = session.scalar(select(Source).where(Source.name == SOURCE_ID))
@@ -322,6 +335,51 @@ def test_first_run_creates_the_manifest_counts_minus_duplicates_with_provenance(
     for value_hash in session.scalars(select(PersonIdentifier.value_hash)):
         assert value_hash not in rendered
     assert TEST_IDENTIFIER_PEPPER not in rendered
+    # Nor does a restricted attribute's value.
+    for group in ("group_a", "group_b", "group_c"):
+        assert group not in rendered
+    for band in ("18-24", "25-34", "35-44", "45-54", "55+"):
+        assert band not in rendered
+
+
+def test_every_party_has_one_age_band_and_one_group_and_an_ordinal_key(
+    clean_session: Session, store: FilesystemRawObjectStore
+) -> None:
+    session = clean_session
+    run = _run(session, store)
+    assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
+    # The source's values per case (duplicate copies carry the same values).
+    expected: dict[str, dict[str, str]] = {}
+    for row in _rows("participants.csv"):
+        age = int(row["age_at_filing"]) if row["age_at_filing"] else None
+        values = {"age_band": age_band(age), "synthetic_group": row["synthetic_group"]}
+        assert expected.setdefault(normalize_case_number(row["case_number"]), values) == values
+    parties = session.execute(
+        select(CaseParty.id, CaseParty.party_type, CaseParty.source_row_id, Case.case_number)
+        .join(Case, Case.id == CaseParty.case_id)
+        .join(SourceRecord, SourceRecord.id == CaseParty.source_record_id)
+        .where(SourceRecord.ingest_run_id == run.id)
+    ).all()
+    assert len(parties) == len(expected) == 60
+    attributes: dict[Any, dict[str, str]] = {}
+    for party_id, attribute, value in session.execute(
+        select(
+            PARTY_ATTRIBUTE.c.case_party_id, PARTY_ATTRIBUTE.c.attribute, PARTY_ATTRIBUTE.c.value
+        )
+    ):
+        assert attribute not in attributes.setdefault(party_id, {}), (party_id, attribute)
+        attributes[party_id][attribute] = value
+    for party_id, party_type, source_row_id, case_number in parties:
+        assert source_row_id == f"{party_type}:1"  # one defendant per case
+        assert not source_row_id.startswith("PT-")
+        assert attributes[party_id] == expected[normalize_case_number(case_number)], case_number
+    bands = {values["age_band"] for values in attributes.values()}
+    assert "unknown" in bands  # a withheld age (unknown date of birth) is its own band
+    assert bands <= {"18-24", "25-34", "35-44", "45-54", "55+", "unknown"}
+    assert {v["synthetic_group"] for v in attributes.values()} == {"group_a", "group_b", "group_c"}
+    # A rerun over unchanged files writes no attribute row.
+    again = _run(session, store)
+    assert again.records_created == again.records_updated == 0
 
 
 def test_person_rows_hold_pseudonyms_and_hashes_only(
@@ -404,7 +462,7 @@ def test_actors_attribution_and_children(
     unknown = list(
         session.scalars(select(Decision).where(Decision.actor_type == ActorType.UNKNOWN))
     )
-    assert {d.source_row_id for d in unknown} == {"DC-000025", "DC-000038", "DC-000062"}
+    assert {d.source_row_id for d in unknown} == {"DC-000086", "DC-000097", "DC-000125"}
 
     releases = list(session.scalars(select(PretrialRelease)))
     assert len(releases) == _expected_counts()["pretrial_release"]
@@ -425,26 +483,26 @@ def test_actors_attribution_and_children(
     assert pending and all(c.disposed_at is None and c.disposition_actor is None for c in pending)
 
     # The duplicate case keeps the original spelling and one set of children.
-    duplicate = session.scalar(select(Case).where(Case.case_number_normalized == "SYN-2019-000005"))
+    duplicate = session.scalar(select(Case).where(Case.case_number_normalized == "SYN-2019-000004"))
     assert duplicate is not None
-    assert duplicate.case_number == "SYN-2019-000005"
+    assert duplicate.case_number == "SYN-2019-000004"
     assert len(duplicate.parties) == 1
     assert {c.source_row_id for c in duplicate.charges} == {
         r["charge_id"]
         for r in _rows("charges.csv")
-        if r["case_number"].upper().replace(" ", "-") == "SYN-2019-000005"
+        if r["case_number"].upper().replace(" ", "-") == "SYN-2019-000004"
     }
     linked = list(
         session.scalars(select(Case).where(Case.related_case_number_normalized.is_not(None)))
     )
     assert {c.related_case_number_normalized for c in linked} == {
-        "SYN-2020-000005",
-        "SYN-2021-000007",
+        "SYN-2020-000014",
+        "SYN-2021-000006",
     }
 
     events = Counter(e.event_type for e in session.scalars(select(JusticeEvent)))
-    assert events["failure_to_appear"] == 2
-    assert events["revocation"] == 1
+    assert events["failure_to_appear"] == 14
+    assert events["revocation"] == 2
     assert events["new_case"] > 0 and events["reconviction"] > 0
     assert all(e.related_case_id is not None for e in session.scalars(select(JusticeEvent)))
 
@@ -499,7 +557,11 @@ def test_a_changed_file_updates_only_its_changed_rows(
     with sentences.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.reader(handle))
     header = rows[0]
-    rows[1][header.index("probation_days")] = "999"
+    # Two distinct sentences of cases that are not planted duplicates (a
+    # duplicate's copy follows its original with the same sentence id).
+    copied = {row[0] for row in rows[1:] if row[header.index("case_number")].startswith("syn ")}
+    edit, other = [index for index, row in enumerate(rows) if index and row[0] not in copied][:2]
+    rows[edit][header.index("probation_days")] = "999"
     out = io.StringIO()
     csv.writer(out, lineterminator="\n").writerows(rows)
     sentences.write_text(out.getvalue(), encoding="utf-8")
@@ -509,13 +571,13 @@ def test_a_changed_file_updates_only_its_changed_rows(
 
     second = _run(session, store, fixture=edited)
     assert second.status is IngestRunStatus.SUCCEEDED, second.failure_reason
-    assert second.records_seen == 21  # only sentences.csv was re-parsed
+    assert second.records_seen == 36  # only sentences.csv was re-parsed
     assert (second.records_created, second.records_updated) == (0, 1)
-    changed = session.scalar(select(Sentence).where(Sentence.source_row_id == rows[1][0]))
+    changed = session.scalar(select(Sentence).where(Sentence.source_row_id == rows[edit][0]))
     assert changed is not None and changed.probation_days == 999
     record = session.get(SourceRecord, changed.source_record_id)
     assert record is not None and record.ingest_run_id == second.id
-    untouched = session.scalar(select(Sentence).where(Sentence.source_row_id == rows[2][0]))
+    untouched = session.scalar(select(Sentence).where(Sentence.source_row_id == rows[other][0]))
     assert untouched is not None
     assert session.get(SourceRecord, untouched.source_record_id).ingest_run_id == first.id  # type: ignore[union-attr]
 

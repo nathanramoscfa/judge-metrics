@@ -28,14 +28,16 @@ from tests.integration.conftest import GoldenFixture
 
 pytestmark = pytest.mark.integration
 
-# SYN-2020-000005 at C-0003 before J-0003: a judicial detention decision, a
-# prosecutor's dismissal of two charges, a judicial disposition of the third
-# (plea), a sentence of 113 days probation, and a later revocation event.
-CASE = "SYN-2020-000005"
-# The case the source links to it (`related_case_number`): the planted split
-# person PT-000042 / PT-000017 that entity resolution merges.
-RELATED_CASE = "SYN-2020-000013"
-JUDGE = "J-0003"
+# SYN-2020-000012 at C-0001 before J-0001 (GENERATOR_VERSION 3): a judicial
+# detention decision (an unposted bond), a prosecutor's dismissal of one
+# charge, a judicial disposition of the other two (plea), a sentence of 521
+# days probation, and a later revocation event.
+CASE = "SYN-2020-000012"
+JUDGE = "J-0001"
+JUDGE_NAME = "Scheelite Kite"
+# A planted split person (PT-000022 / PT-000042): the second case cites the
+# first in `related_case_number`, and entity resolution merges the two.
+SPLIT_CASES = ("SYN-2020-000014", "SYN-2020-000017")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RESTRICTED_NAMES = (
     "value_hash",
@@ -85,10 +87,10 @@ def test_detail_carries_every_section_and_synthetic_provenance(
         "provenance",
     }
     assert body["case_number"] == CASE
-    assert body["court"]["id"] == str(golden_fixture.court_ids["C-0003"])
+    assert body["court"]["id"] == str(golden_fixture.court_ids["C-0001"])
     assert body["court"]["court_type"] == "circuit"
-    assert (body["case_type"], body["status"]) == ("misdemeanor", "closed")
-    assert (body["filed_date"], body["closed_date"]) == ("2020-06-20", "2020-09-29")
+    assert (body["case_type"], body["status"]) == ("felony", "closed")
+    assert (body["filed_date"], body["closed_date"]) == ("2020-08-23", "2021-06-14")
     assert body["synthetic"] is True
 
     (party,) = body["parties"]
@@ -99,23 +101,24 @@ def test_detail_carries_every_section_and_synthetic_provenance(
     (assignment,) = body["assignments"]
     assert assignment["judge"] == {
         "id": str(golden_fixture.judge_ids[JUDGE]),
-        "canonical_name": "Puce Wingnut",
+        "canonical_name": JUDGE_NAME,
     }
     assert assignment["assignment_type"] == "initial"
-    assert assignment["start_at"] == "2020-06-21T16:50:00Z"
+    assert assignment["start_at"] == "2020-08-24T12:44:00Z"
 
     charges = {charge["statute_code"]: charge for charge in body["charges"]}
-    assert set(charges) == {"SYN-505", "SYN-205", "SYN-101"}
-    assert (charges["SYN-505"]["disposition"], charges["SYN-505"]["disposition_actor"]) == (
+    assert set(charges) == {"SYN-203", "SYN-304", "SYN-501"}
+    assert (charges["SYN-203"]["disposition"], charges["SYN-203"]["disposition_actor"]) == (
         "convicted_plea",
         "judge",
     )
-    assert (charges["SYN-205"]["disposition"], charges["SYN-205"]["disposition_actor"]) == (
+    assert (charges["SYN-304"]["disposition"], charges["SYN-304"]["disposition_actor"]) == (
         "dismissed",
         "prosecutor",
     )
-    assert charges["SYN-101"]["offense_category"] == "drug"
-    assert charges["SYN-101"]["violent_flag"] is False
+    assert charges["SYN-304"]["offense_category"] == "person"
+    assert charges["SYN-304"]["violent_flag"] is True
+    assert charges["SYN-501"]["violent_flag"] is False
 
     decisions = [
         (d["decision_type"], d["actor_type"], d["judicial_discretion_classification"])
@@ -128,15 +131,16 @@ def test_detail_carries_every_section_and_synthetic_provenance(
         ("sentencing", "judge", "discretionary"),
     ]
     pretrial, dismissal, disposition, _ = body["decisions"]
-    assert pretrial["judge"]["canonical_name"] == "Puce Wingnut"
+    assert pretrial["judge"]["canonical_name"] == JUDGE_NAME
     assert pretrial["pretrial_release"] == {
-        "release_type": "detained",
-        "bond_amount": None,
+        "release_type": "monetary_bond",
+        "bond_amount": pretrial["pretrial_release"]["bond_amount"],
         "conditions": {},
         "release_at": None,
         "detained_flag": True,
     }
-    assert pretrial["decision_value"] == {"release_type": "detained", "detained": True}
+    assert float(pretrial["pretrial_release"]["bond_amount"]) == 10_000
+    assert pretrial["decision_value"] == {"release_type": "monetary_bond", "detained": True}
     # A prosecutor's dismissal names no judge; a judicial disposition does.
     assert dismissal["judge"] is None
     assert disposition["judge"]["id"] == str(golden_fixture.judge_ids[JUDGE])
@@ -144,10 +148,10 @@ def test_detail_carries_every_section_and_synthetic_provenance(
 
     (sentence,) = body["sentences"]
     assert sentence == {
-        "sentence_at": "2020-09-29T10:02:00Z",
-        "judge": {"id": str(golden_fixture.judge_ids[JUDGE]), "canonical_name": "Puce Wingnut"},
+        "sentence_at": "2021-06-14T15:13:00Z",
+        "judge": {"id": str(golden_fixture.judge_ids[JUDGE]), "canonical_name": JUDGE_NAME},
         "incarceration_days": None,
-        "probation_days": 113,
+        "probation_days": 521,
         "fine_amount": None,
         "components": sentence["components"],
     }
@@ -194,13 +198,13 @@ def test_timeline_is_chronological_with_every_kind_the_case_contains(
     assert {entry["kind"] for entry in entries} == set(TIMELINE_KIND_ORDER)
 
     assert entries[0]["kind"] == "filed"
-    assert entries[0]["at"] == "2020-06-20T00:00:00Z"
-    assert entries[0]["detail"]["date"] == "2020-06-20"
+    assert entries[0]["at"] == "2020-08-23T00:00:00Z"
+    assert entries[0]["detail"]["date"] == "2020-08-23"
     # The closing date sorts at the end of its own day, after that day's
-    # sentencing; the revocation event of 2020-11-22 follows the closing.
+    # sentencing; the revocation event of 2021-11-04 follows the closing.
     kinds = [entry["kind"] for entry in entries]
     closed = kinds.index("closed")
-    assert entries[closed]["at"].startswith("2020-09-29T23:59:59")
+    assert entries[closed]["at"].startswith("2021-06-14T23:59:59")
     assert kinds[closed - 1] == "sentence"
     assert kinds[closed + 1 :] == ["event"]
     assert entries[-1]["detail"]["event_type"] == "revocation"
@@ -215,10 +219,10 @@ def test_timeline_is_chronological_with_every_kind_the_case_contains(
     assert disposed == {("prosecutor", "dismissed"), ("judge", "convicted_plea")}
     assert all(entry["judge"] is None for entry in by_kind["filed"] + by_kind["closed"])
     assert all(
-        entry["judge"]["canonical_name"] == "Puce Wingnut"  # type: ignore[index]
+        entry["judge"]["canonical_name"] == JUDGE_NAME  # type: ignore[index]
         for entry in by_kind["assignment_start"] + by_kind["event"] + by_kind["sentence"]
     )
-    assert by_kind["sentence"][0]["label"] == "Sentence: 113 days probation"
+    assert by_kind["sentence"][0]["label"] == "Sentence: 521 days probation"
     sources = {entry["source"]["external_record_id"] for entry in entries}
     assert "source/events.csv" in sources and "source/cases.csv" in sources
     assert all(entry["source"]["synthetic"] is True for entry in entries)
@@ -236,7 +240,7 @@ def test_no_restricted_field_name_or_merged_key_in_any_response(
     assert merged_keys, "the golden fixture plants split persons that merge"
 
     surviving: set[str] = set()
-    for number in (CASE, RELATED_CASE):
+    for number in (CASE, *SPLIT_CASES):
         case_id = golden_fixture.case_ids[number]
         for path in (f"/api/v1/cases/{case_id}", f"/api/v1/cases/{case_id}/timeline"):
             response = api.get(path)
@@ -245,8 +249,9 @@ def test_no_restricted_field_name_or_merged_key_in_any_response(
             assert not any(name in text for name in RESTRICTED_NAMES), path
             assert not (_keys(json.loads(text)) & set(RESTRICTED_NAMES)), path
             assert not (merged_keys & set(re.findall(r'"public_person_key":\s*"([^"]+)"', text)))
-        detail = api.get(f"/api/v1/cases/{case_id}").json()
-        surviving |= {party["public_person_key"] for party in detail["parties"]}
+        if number in SPLIT_CASES:
+            detail = api.get(f"/api/v1/cases/{case_id}").json()
+            surviving |= {party["public_person_key"] for party in detail["parties"]}
     # The two linked cases belong to one resolved person under one public key.
     assert len(surviving) == 1
 

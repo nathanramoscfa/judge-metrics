@@ -158,7 +158,7 @@ def test_exact_case_number_matches_and_a_partial_one_does_not(
 def test_synthetic_judges_and_courts_are_flagged_in_search(
     api: TestClient, golden_fixture: GoldenFixture
 ) -> None:
-    body = api.get("/api/v1/search", params={"q": "Puce Wingnut"}).json()
+    body = api.get("/api/v1/search", params={"q": "Goethite Warta"}).json()
     top = body["items"][0]
     assert top["entity_type"] == "judge"
     assert top["id"] == str(golden_fixture.judge_ids["J-0003"])

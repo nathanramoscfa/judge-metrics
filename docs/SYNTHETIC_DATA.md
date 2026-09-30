@@ -49,12 +49,15 @@ the golden fixture under `tests/fixtures/golden/` is tracked.
   regenerates the golden fixture into a temporary directory and compares
   each file byte for byte.
 - `Streams(seed)` (`rng.py`) derives one `random.Random` per named
-  stream — `world`, `persons`, `cases`, `events`, `edge_cases` — from
+  stream — `world`, `persons`, `cases`, `events`, `edge_cases`, and
+  (`GENERATOR_VERSION` 3) `effects` and `attributes` — from
   `sha256(f"{seed}:{name}")`, so adding a draw to one stage cannot move
-  another stage's output. The helpers in `rng.py` (`randint`, `choice`,
-  `weighted_choice`, `shuffled`, `sample`, `skewed_fraction`) call only
-  `Random.random()`, the one method whose sequence Python guarantees
-  stable across versions for a given seed.
+  another stage's output; a unit test re-seeds the `attributes` stream
+  alone and finds only `synthetic_group` changed. The helpers in
+  `rng.py` (`randint`, `choice`, `weighted_choice`, `shuffled`,
+  `sample`, `skewed_fraction`) call only `Random.random()`, the one
+  method whose sequence Python guarantees stable across versions for a
+  given seed.
 - Nothing in the package calls module-level `random` functions,
   `datetime.now`, `uuid.uuid4`, or `os.urandom`; every iteration over a
   mapping or set is sorted; identifiers are formatted counters assigned
@@ -93,7 +96,10 @@ plant. What a spec cannot validate is the random draw: a two-court
 courts, and the same-date-of-birth ambiguous plant then falls back to a
 same-court pair (below) rather than failing the generation, so every
 seed generates at every scale (3,000 consecutive seeds checked at
-`tiny` and `golden`).
+`tiny` and `golden`, again at `GENERATOR_VERSION` 3; seed 117 is the
+`tiny` seed the unit test pins for the fallback). `DEMO` keeps its size
+at version 3: the planted effects were calibrated to it ("Planted
+effects").
 
 ## The world model
 
@@ -107,18 +113,21 @@ judge of each court is an anchor serving the whole span, so every court
 always has a sitting judge; other judges start at the corpus start or
 later, some end inside the corpus, some transfer to another court or
 are promoted in place (the first non-anchor judge always has two
-records). Each judge carries three latent tendencies that later phases
-can test against (Phase 4's planted effects): a release bias added to
-the recognizance share, a dismissal bias added to the
-judicial-dismissal share, and a severity multiplier on incarceration
-lengths.
+records). Each judge carries two latent tendencies from the `world`
+stream — a dismissal bias added to the judicial-dismissal share and a
+severity multiplier on incarceration lengths — and, from the `effects`
+stream, the four planted effects of "Planted effects" below: a
+release leniency, a new-case effect, a failure-to-appear effect, and a
+docket tilt.
 
 **Persons.** Each person has a true identity (`P-`), a unique composed
 name, a date of birth drawn inside an age band (18–24, 25–34, 35–44,
 45–54, 55+ at the corpus start), a latent propensity (`random() ** 2`,
-mean one third) that drives subsequent behaviour, and a home court.
-Names are unique across judges and persons; only the edge-case planter
-creates a collision, and it records it. Every person appears in one to
+mean one third) that drives subsequent behaviour, a home court, and
+(`GENERATOR_VERSION` 3, the `attributes` stream) a `synthetic_group` that
+no draw reads ("Restricted controls"). Names are unique across judges
+and persons; only the edge-case planter creates a collision, and it
+records it. Every person appears in one to
 four cases: one each, then the extra cases distributed by propensity,
 so subsequent cases exist and the demo's 3,200 persons carry 5,200
 cases.
@@ -126,7 +135,9 @@ cases.
 **Cases.** A person's cases are chronological: the first is filed on a
 random day of the corpus (leaving room for later ones), each later one
 at least fourteen days after the previous case's pretrial decision,
-sooner for higher propensities. The first case sits in the home court;
+sooner for a higher propensity, a riskier previous case, a younger
+filing age, and a releasing judge with a larger new-case effect ("Planted
+effects"). The first case sits in the home court;
 later cases stay there 65% of the time (the persons the split-person
 plant will use always get a second court for their second case). Then,
 in a fixed draw order per case:
@@ -137,17 +148,20 @@ in a fixed draw order per case:
    case type's severity class, add-ons from any class for felonies. All
    charges are filed with the case.
 2. **Assignment.** An initial assignment to a judge serving at the
-   court, within two days of filing; an arraignment one to five days
-   later; a pretrial decision within three days of that (business hours
-   throughout).
+   court, within two days of filing, drawn by the case's observable risk
+   index and the serving judges' docket tilts ("Planted effects"); an
+   arraignment one to five days later; a pretrial decision within three
+   days of that (business hours throughout).
 3. **Pretrial decision.** A statutory release in 10% of cases
    (`actor = legislature_or_mandatory_rule`, `discretion = mandatory`,
    `release_type = statutory`, no judge); otherwise the assigned judge
-   decides (`actor = judge`, `discretion = discretionary`):
-   `recognizance`, `monetary_bond` with an amount from the schedule
-   (posted 75% of the time, else the defendant stays `detained`), or
-   `detained`. Felonies are detained more; the judge's release bias
-   moves the shares. Released defendants get zero to two conditions.
+   decides (`actor = judge`, `discretion = discretionary`): a release
+   with the logistic probability of "Planted effects" (the case's
+   observable features plus the judge's leniency), split into a
+   `recognizance` or a posted `monetary_bond`, or a refusal, split into an
+   unposted `monetary_bond` (the defendant stays `detained`) or a
+   `detained`. A bond's amount comes from the schedule by the lead
+   charge's severity. Released defendants get zero to two conditions.
 4. **Disposition.** Sixty to 540 days after the decision for felonies,
    twenty to 240 for misdemeanors, along one of four tracks: a plea
    (55%: the lead charge `convicted_plea`, other charges dismissed by
@@ -169,14 +183,17 @@ in a fixed draw order per case:
    drawn by the lead convicted charge's severity and scaled by the
    judge's severity multiplier.
 7. **Events** (the `events` stream): the arraignment; zero to three
-   hearings at least seven days after the pretrial decision; in a share
-   of released cases growing with propensity, one hearing becomes a
-   `failure_to_appear` (`actor = defense`, the defendant) followed by a
-   `bench_warrant` one to ten days later; a `trial` for the trial
-   track; a `plea_hearing` or dismissal `hearing` at the disposition; a
-   `sentencing_hearing`; and, for a share of probation sentences
-   growing with propensity, a `revocation` thirty days or more after
-   sentencing (after the case closed).
+   hearings at least seven days after the pretrial decision; in a
+   released case, with the logistic probability of "Planted effects"
+   (observable features, propensity, filing-age band, and the releasing
+   judge's failure-to-appear effect), the first hearing thirteen days or
+   more before the disposition (or a random day in that range when there
+   is none) becomes a `failure_to_appear` (`actor = defense`, the
+   defendant) followed by a `bench_warrant` one to ten days later; a
+   `trial` for the trial track; a `plea_hearing` or dismissal `hearing`
+   at the disposition; a `sentencing_hearing`; and, for a share of
+   probation sentences growing with propensity, a `revocation` thirty
+   days or more after sentencing (after the case closed).
 8. **Closing and the corpus end.** A case closes at its sentence or, if
    none, its disposition. Everything at or after the corpus end
    (`ScaleSpec.corpus_end_at`, midnight after 31 December of the last
@@ -184,6 +201,115 @@ in a fixed draw order per case:
    the case is `open` with no `closed_date`, its charges `pending`, its
    last assignment open-ended, later events absent, a release not yet
    posted shown as `detained`.
+
+## Planted effects
+
+`GENERATOR_VERSION` 3 (Phase 4 Step 1) gives the world a known answer:
+per-judge effects on the release decision and on two later outcomes,
+and case-mix confounding that makes raw rates mislead, planted so that
+adjusting for observable case features recovers the effects
+(`src/judgemetrics/synthetic/effects.py`; every constant below is
+recorded in `truth/effects.json` under `parameters`).
+
+**Risk features and the risk index.** At a case's filing the generator
+reads, from the person's corpus records strictly before the start of the
+filing day (00:00 UTC — the instant the analytic frame's `cases.filed_at`
+carries; the corpus holds no earlier history, so a first case has none):
+the lead charge's severity (code 4 for `felony_1` down to 0 for
+`misdemeanor_b`), the charge count (1, 2, 3+ → 0, 1, 2), prior cases (0,
+1, 2, 3+), prior convictions (other cases with a conviction disposed
+before the filing: 0, 1, 2+), prior failures to appear (0, 1+), and a
+pending case (another case filed earlier and not disposed by the filing:
+0, 1) — the resolution Phase 4 Step 2's feature specification adopts.
+The risk index is `R = 0.25·severity + 0.20·charges + 0.35·prior cases +
+0.30·prior convictions + 0.50·prior FTA + 0.40·pending`. Nothing else
+enters it: never the propensity, the age, or the group, and never a row
+at or after the filing (a property test rewrites a person's later cases,
+events, and sentences and finds every earlier index unchanged).
+
+**Judge effects** (the `effects` stream, judges in code order): `leniency`
+uniform on (−1.8, 1.8) in release log-odds, `new_case_effect` on (−3.0,
+3.0) in the next filing's skew exponent, `fta_effect` on (−1.2, 1.2) in
+failure-to-appear log-odds, and a raw docket tilt on (−2.5, 2.5).
+Within each court (a judge's first service record) the raw tilts are
+reassigned in descending order to the judges in ascending order of
+`new_case_effect`, so the judge whose released defendants are least
+likely to file again draws the riskiest docket: **planted confounding**.
+
+**Assignment.** The initial judge is a weighted choice among the judges
+serving the court that day with weight `exp(docket_tilt · R)`; planned
+and forced reassignments are unchanged. Assignment reads observable
+features only, which is what makes the judges comparable after
+adjusting on them.
+
+**Release** (a judge's discretionary decision):
+`logistic(r0[case type] + r·x + leniency)` with `r0` = 1.6 (felony), 2.4
+(misdemeanor) and `r` = −0.30 per severity code, −0.20 per extra charge,
+−0.25 per prior case, −0.30 per prior conviction, −0.80 for a prior
+failure to appear, −0.50 for a pending case. A release is a recognizance
+(45% of felony and 70% of misdemeanor releases) or a posted bond; a
+refusal is an unposted bond (45% / 55%) or a detention.
+
+**Failure to appear** (a released case):
+`logistic(−2.0 + f·x + 1.5·propensity + a[band] + fta_effect)` with `f`
+= −0.05 per severity code, 0.10 per extra charge, 0.15 per prior case,
+0.10 per prior conviction, 0.80 for a prior failure to appear, 0.30 for
+a pending case; `fta_effect` is the releasing judge's (none for a
+statutory release).
+
+**Next filing.** When the allocation gives the person another case, it
+is filed `int(U^k · (span + 1))` days into its span (`U` uniform on
+[0, 1), the span from fourteen days after the previous case's pretrial
+decision to the latest day that leaves room for the person's later
+cases) with `k = max(0.25, 0.6 + 3.0·R + 2·propensity + b[band] +
+new_case_effect)`, `R` being the previous case's risk index and the
+effect its releasing judge's (none unless a judge released the person):
+a larger `k` files sooner. The risk term is a judgement call beyond the
+step's literal formula (`k0 + 2·propensity + b[band] + effect`): without
+an observable term the filing time reads nothing the docket tilt
+selects on, and the raw new-case rates ranked the planted effects as
+well as any adjustment could (Spearman 0.83-0.94 across seeds), leaving
+nothing for Step 3's adjustment to correct.
+
+**The age effects** (`a` on the failure-to-appear log-odds, `b` on the
+exponent) are by the band of the age at the index case's filing — the
+band the connector publishes, not the band drawn at the corpus start:
+18-24 +0.60 / +0.60, 25-34 +0.30 / +0.30, 35-44 0 / 0, 45-54 −0.30 /
+−0.20, 55+ −0.60 / −0.40. The generator always knows the true age, so
+the band of a person whose date of birth the source withholds is still
+drawn from the true age (the connector publishes `unknown` for it); the
+ambiguous same-date-of-birth plant rewrites a date of birth after the
+simulation, so its second person's published band can differ from the
+band its draws used.
+
+**Calibration.** The magnitudes were set by sweeping the demo world
+(seed `20260916`) and five to seven other seeds so that the oracle
+ratios rank the court-centered effects with Spearman at least 0.9 for
+the release target and 0.8 for the 365-day new-case and
+failure-to-appear targets, the oracle's expected totals match the draws
+within 10%, at least one same-court judge pair's raw 365-day new-case
+rates rank opposite to their effects, and the raw new-case rates rank
+the effects clearly worse than the oracle does (demo seed: release
+0.944, new case 0.846, failure to appear 0.933; totals within 1.6%; raw
+new-case ranking 0.716). `tests/unit/test_synthetic_effects.py` asserts
+the first four on the demo world.
+
+## Restricted controls
+
+- **`age_band`** — the positive control. The age at filing moves both
+  later outcomes (above), and no model feature carries it (the Phase 4
+  specification excludes every restricted attribute), so subgroup
+  calibration by age band must show the model's residual (Phase 4 Step 4).
+- **`synthetic_group`** (`group_a`, `group_b`, `group_c`, equally likely)
+  — the negative control, an abstract attribute drawn per person on the
+  `attributes` stream after the persons and read by no draw, so its
+  subgroup calibration must show nothing.
+
+Both are restricted: the connector publishes them only into
+`restricted.party_attribute` (`docs/DATA_MODEL.md` "The restricted
+schema"), as `age_band` (from `age_at_filing`, blank → `unknown`) and
+`synthetic_group`; neither ever reaches a public table, a snapshot, a log
+line, or a model feature.
 
 Timestamps are timezone-aware UTC ISO 8601 (`2019-03-04T14:30:00+00:00`)
 at minute resolution; dates are `YYYY-MM-DD`. The order is enforced by
@@ -205,7 +331,7 @@ connector maps these files onto the case-level drafts.
 | `courts.csv`        | `court_code`, `name`, `court_type` (`circuit`), `jurisdiction` (`Synthetic State`), `state_code` (`ZZ`) |
 | `judges.csv`        | `judge_code`, `full_name`, `court_code`, `position`, `start_date`, `end_date` — one row per service record, so a judge with two records has two rows |
 | `cases.csv`         | `case_number`, `court_code`, `case_type`, `filed_date`, `closed_date`, `status` (`open` / `closed`), `related_case_number` (the split-person link) |
-| `participants.csv`  | `participant_id`, `case_number`, `court_code`, `party_type` (`defendant`), `full_name`, `date_of_birth`, `age_at_filing` (whole years; present even when the date of birth is missing, as sources often carry an age without a birth date) |
+| `participants.csv`  | `participant_id`, `case_number`, `court_code`, `party_type` (`defendant`), `full_name`, `date_of_birth`, `age_at_filing` (whole years; blank when the date of birth is withheld, `GENERATOR_VERSION` 3), `synthetic_group` (`GENERATOR_VERSION` 3; the restricted negative control) |
 | `charges.csv`       | `charge_id`, `case_number`, `court_code`, `participant_id`, `statute_code` (`SYN-###`), `description`, `offense_category`, `severity`, `violent_flag`, `filed_at`, `disposed_at`, `disposition`, `disposition_actor` |
 | `assignments.csv`   | `assignment_id`, `case_number`, `court_code`, `judge_code`, `assignment_type` (`initial` / `reassignment`), `start_at`, `end_at` (empty while open) |
 | `events.csv`        | `event_id`, `case_number`, `court_code`, `participant_id`, `judge_code` (the judge presiding), `event_type`, `event_at`, `actor`, `description` |
@@ -233,7 +359,8 @@ fixture untouched.
 ## Vocabulary
 
 `synthetic/vocabulary.py` fixes the values (`CASE_VOCABULARY_VERSION =
-1`); Phase 2 Step 2 writes the same values to
+2` since Phase 4 Step 1 added the restricted vocabularies); Phase 2
+Step 2 writes the same values to
 `data/reference/case_vocabulary.yaml`, which must equal these
 constants, and Phase 5's real connectors map onto them.
 
@@ -255,6 +382,9 @@ constants, and Phase 5's real connectors map onto them.
 | `position`                           | `circuit_judge`, `associate_judge` |
 | `sentence_component`                 | `incarceration`, `probation`, `fine` |
 | `release_condition`                  | `check_in`, `no_contact`, `travel_restriction`, `drug_testing`, `electronic_monitoring` |
+| `restricted_attribute` (restricted)  | `age_band`, `synthetic_group` |
+| `age_band` (restricted)              | `18-24`, `25-34`, `35-44`, `45-54`, `55+`, `unknown` |
+| `synthetic_group` (restricted)       | `group_a`, `group_b`, `group_c` |
 
 `non_judicial` marks a decision taken by a non-judicial actor (a
 prosecutor's dismissal, a jury's verdict), for which a judicial
@@ -302,11 +432,14 @@ lists.
 
 `truth/` documents the simulation. It is written beside `source/`, it is
 never read by any connector (Step 2 discovers `source/` only), and it
-never enters the database. `TRUTH_VERSION` is `2` (Phase 3 Step 2: the
-windowed cohorts of every index kind, below); `GENERATOR_VERSION` is `2`
-(the manifest carries `corpus.start` and `corpus.end`, the first and last
-day a case can be filed, which the synthetic connector reports as the
-source's coverage window; `source/` is byte-identical to version `1`).
+never enters the database. `TRUTH_VERSION` is `3` (Phase 4 Step 1:
+exposure deferred by every incarceration term of the person, and
+`effects.json`; version `2`, Phase 3 Step 2, added the windowed cohorts
+of every index kind, below); `GENERATOR_VERSION` is `3` (the planted
+effects and the restricted controls; version `2` added `corpus.start`
+and `corpus.end` to the manifest, the first and last day a case can be
+filed, which the synthetic connector reports as the source's coverage
+window).
 
 | File                          | Columns / contents |
 |-------------------------------|--------------------|
@@ -315,7 +448,58 @@ source's coverage window; `source/` is byte-identical to version `1`).
 | `resolution_expectations.csv` | `left_participant_id`, `right_participant_id` (ordered), `expected_decision` (`matched` / `rejected` / `review`), `reason`. |
 | `planted.csv`                 | `kind`, `ids`, `expected_behaviour` (above). |
 | `metrics.json`                | `truth_version`, `generator_version`, `seed`, `scale`, `corpus` (`start`, `end`, `end_exclusive_at`), `windows_days`, `index_kinds`, `observable_outcomes`, `not_observable` (`outcome`, `reason`), `definitions` (every metric's definition string), and the metric set under `judges.<judge_code>` and `courts.<court_code>`. |
+| `effects.json`                | The planted effects and the oracle (`TRUTH_VERSION` 3, below). Aggregates per judge, court, and band only — never a per-person row. |
 | `README.md`                   | How to read the files; the count of planted items per kind; for scales with at most 100 planted items (golden, tiny) the full hand-checkable list; the metric definitions. |
+
+### The planted effects and the oracle (`effects.json`)
+
+`truth_version`, `generator_version`, `seed`, `scale`, `windows_days`,
+`definitions` (the prose of every block), and:
+
+- `parameters` — every constant of "Planted effects": the effect ranges,
+  the features and their codes, the risk weights, the release,
+  failure-to-appear, and next-filing forms, and the age effects.
+- `judges.<J-code>` — `courts`, `leniency`, `new_case_effect`,
+  `fta_effect`, `docket_tilt`, `centered` (each effect minus the
+  decision-weighted mean of its courts' means: the effect the ratios
+  rank), and `decisions_by_court` (the judicial discretionary release
+  decisions the generator drew for the judge per court, the weights).
+- `courts.<C-code>` — `mean` (the case-weighted mean of each effect over
+  the judges who drew the court's judicial release decisions) and
+  `decisions_by_judge`.
+- `targets.pretrial_release.judges.<J-code>` — over the judge's
+  attributed discretionary decisions: `decisions`, `released`,
+  `expected` (the sum of `p = logistic(base + leniency)` times the chance
+  the release takes effect before the corpus end), `expected_centered`
+  (the same with the court's mean leniency: `sum(p0)`, the centered
+  oracle), `oracle_ratio` (`released / expected_centered`), and
+  `true_ratio` (`expected / expected_centered`).
+- `targets.new_case` and `targets.failure_to_appear` — per window of the
+  six and judge, over `metrics.json`'s pretrial-release cohort under the
+  Phase 3 cohort and follow-up rules: `cohort`, `followed`, `observed`
+  (the fixed-window numerator), `expected` and `expected_centered` summed
+  over the followed members, `oracle_ratio`, and `true_ratio`. A member's
+  `p` is the probability of its outcome in `(exposure_start,
+  exposure_start + w]` under the generator's draws, given the realized
+  exposure start: for `new_case`, 0 without a next case, else the exact
+  chance the next filing (its day from the skewed draw, then a business
+  minute) falls in the window, plus the chance it falls before the
+  exposure start times whether a later case was filed in the window; for
+  `failure_to_appear`, `1 - (1 - q)(1 - o)` with `q` the own draw's
+  probability times the chance its date falls in the window and `o` = 1
+  when another case of the person records a failure to appear there.
+  Other cases' outcomes enter as realized, so the oracle is exact for the
+  draws the judge's effect enters and unbiased in total (the unit test's
+  10% tolerance).
+- `controls` — the age effects by filing-age band (the positive
+  control) and the `synthetic_group` values with `feeds_no_draw` (the
+  negative control).
+
+A unit test holds every cohort and observed count equal to
+`metrics.json`'s for the same judge and window, on the demo, golden, and
+committed golden worlds; a property test proves the draw probabilities
+lie strictly inside (0, 1) and that zeroing every judge effect makes `p`
+equal `p0`.
 
 ### The metric set (`metrics.json`)
 
@@ -338,14 +522,17 @@ carries the same text):
 - `index_events.<pretrial_release|disposition|sentence>.windows.<30|90|180|365|730|1095>`
   (`TRUTH_VERSION` `2`) — the windowed cohort of each index kind exactly
   as `docs/METHODOLOGY.md` states: `pretrial_release` members are the
-  attributed released decisions (`index_at = release_at`, never
-  deferred); `disposition` members are the disposed cases at the case
-  disposition time, attributed to the judge assigned at that time
-  (court: the court's disposed cases), one per defendant; `sentence`
-  members are the attributed sentences at `sentence_at`. Exposure starts
-  at the index time and is deferred to `sentence_at + incarceration_days`
-  for the `disposition` and `sentence` kinds when the index case's
-  sentence carries a positive `incarceration_days`. Per window `w`:
+  attributed released decisions (`index_at = release_at`);
+  `disposition` members are the disposed cases at the case disposition
+  time, attributed to the judge assigned at that time (court: the
+  court's disposed cases), one per defendant; `sentence` members are the
+  attributed sentences at `sentence_at`. Exposure (`TRUTH_VERSION` 3,
+  methodology 0.2) starts at the index time — for the `disposition` kind
+  at the end of the index case's own incarceration term when it has one
+  — and then moves past every incarceration term `[sentence_at,
+  sentence_at + incarceration_days)` of the person, in any case, that
+  contains it (`truth.deferred_start`, written independently of the
+  engine's `metrics/exposure.py`). Per window `w`:
   `cohort`, `followed` (`exposure_start + w days` strictly before
   `corpus.end_exclusive_at`), `<outcome>_rate` (`numerator`,
   `denominator` = followed, `value`) and `<outcome>_survival` (`value` =
@@ -452,6 +639,12 @@ connector produces from them:
   per participant hash and creates nothing the second time; equal
   `source_participant_id` hashes are exactly the pairs that share a
   person, and `lookup_by_identity` returns the same map.
+- **The planted effects' oracle is well formed**
+  (`test_effects_invariants.py`, `tiny`): every draw probability lies
+  strictly inside (0, 1) and every window probability inside [0, 1];
+  zeroing every judge effect makes `p` equal `p0` for every target,
+  judge, and window; and a case's risk index never changes when a later
+  case, event, or sentence of the person changes.
 - **Rerunning an ingestion produces no duplicates**
   (`test_ingest_idempotent.py`, integration, five derandomized seeds):
   after the first ingest every row of the dataset's own
@@ -504,14 +697,21 @@ counts it lists changed, and record the bump in `docs/ROADMAP.md`.
 
 - One defendant per case; all charges are filed with the case; no
   charge is added or amended later.
-- `age_at_filing` is present even when `date_of_birth` is missing.
+- `age_at_filing` is withheld with `date_of_birth` (`GENERATOR_VERSION`
+  3); a source that carries an age without a birth date is Phase 5's
+  concern.
 - A revocation is recorded after its case closed (the case does not
   reopen); a bench warrant may be absent when the corpus ends within
   ten days of the failure to appear.
-- Time at risk is deferred by the index case's own incarceration term
-  only (`index_events.disposition` and `.sentence`); an earlier sentence
-  still running, or a term in another case, is not modelled — the same
-  documented limitation as the metrics engine's, so the two agree.
+- Time at risk is deferred by every incarceration term the source
+  records (`TRUTH_VERSION` 3, methodology 0.2); a term served elsewhere is
+  not modelled — the same documented limitation as the metrics engine's,
+  so the two agree. The generator itself lets a person be released, and
+  file again, while a term of another case runs; the deferral is what
+  keeps such time out of the risk window.
+- The oracle's `p` counts other cases' outcomes as realized (above), so
+  it is exact for the draws a judge's effect enters and unbiased in total,
+  not a closed form for every path of the simulation.
 - `new_case` is the case's `filed_at`, a business-hour instant the
   source publishes only through its charges (`cases.csv` carries the
   date); the engine derives it as the earliest charge filing of the case,

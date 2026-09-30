@@ -68,6 +68,10 @@ RESTRICTED_NAMES: tuple[str, ...] = (
     "raw_object_path",
     "identifier_pepper",
     "merged_into_person_id",
+    # Phase 4 Step 1: the restricted attributes and their table.
+    "age_band",
+    "synthetic_group",
+    "party_attribute",
 )
 
 
