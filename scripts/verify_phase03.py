@@ -1011,7 +1011,7 @@ def check_43() -> str | None:
 
 
 def check_44() -> str | None:
-    return _screenshots("step5", captures=False)
+    return _screenshots("step5-alarm-exercise", captures=False)
 
 
 def check_45() -> str | None:
