@@ -131,7 +131,7 @@ uv run poe lint            # ruff check
 uv run poe fmt             # ruff format
 uv run poe typecheck       # mypy --strict
 uv run poe gate            # the security gate: all hooks + pre-push stage
-uv run poe up              # docker compose: postgres + minio healthy, bucket
+uv run poe up              # docker compose: minio volume owner, postgres + minio healthy, bucket, scratch DB
 uv run poe down            # docker compose down
 uv run poe kit             # refresh the planning kit
 uv run poe migrate         # alembic upgrade head as the admin role
@@ -171,14 +171,20 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   an export of `uv.lock` (`scripts/audit_deps.py`), not over the live
   environment: the editable `judgemetrics` project is not on PyPI, so
   a raw `pip-audit --strict` fails for the wrong reason.
-- `up` is a sequence task: `docker compose up -d --wait postgres minio`
-  and then `docker compose run --rm minio-init`, because `--wait`
+- `up` is a sequence task: `docker compose run --rm minio-volume-init`,
+  `docker compose up -d --wait postgres minio`, and then `docker compose
+  run --rm minio-init` and `postgres-test-init`, because `--wait`
   treats a cleanly exited one-shot job as a failure.
 - MinIO images come from Chainguard (`cgr.dev/chainguard/minio`,
   `cgr.dev/chainguard/minio-client:latest-dev`) pinned by digest: MinIO
   no longer serves its own images anonymously (Docker Hub repository
   removed, `quay.io/minio` answers 401). Only the `latest`/`latest-dev`
-  tags are free, so bump by updating the digest.
+  tags are free, so bump by updating the digest. The Chainguard MinIO
+  image runs as uid 65532 (`nonroot`); a volume created by the earlier
+  root-running image is owned by root and MinIO then exits "Unable to
+  write to the backend", so `up` starts with `up-volumes`, the one-shot
+  `minio-volume-init` service (profile `init`, root for the `chown`
+  only). Never give the `minio` service a `user:` override instead.
 - Host ports are overridable in `.env` (`POSTGRES_PORT`,
   `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`); the maintainer's machine has
   a native PostgreSQL on 5432 and Windows reserves 9000.
@@ -752,6 +758,30 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   migrations' revokes for every restricted table that exists. A script
   that grants on `ALL TABLES` and can run after the migrations must do
   the same.
+- Phase 3 verification (Phase 3 Step 6, docs/phase03-qa-findings.md):
+  `scripts/verify_phase03.py` keeps the Phase 2 chassis (49 static
+  checks, `phase-verify (03)` required beside `test`, `(01)`, `(02)`).
+  Its static mode stays standard-library only by reading the registry's
+  `known_limitations` with a minimal line reader and the brief's
+  warnings with a regular expression over the one XML element (an XML
+  parser is SAST-flagged); `test_phase03_verification.py` pins both
+  against `yaml.safe_load`. Each phase's unit test and matrix check
+  assert its own entries as a subset of the matrix, never the exact
+  list, so a later phase's entry never fails an earlier phase's check.
+  `--post` runs every writing probe (items 3–5 `up`/`migrate`/`seed`,
+  the `bootstrap` rerun, the seed and compute idempotency probes,
+  `metrics verify`, a random `provenance trace`) inside
+  `probe_environment()`, which points the three role URLs at
+  `JUDGEMETRICS_TEST_DATABASE_URL` and `JUDGEMETRICS_SNAPSHOT_DIR` at
+  `data/snapshots/scratch-test-db` (persistent, git-ignored: the scratch
+  database's observations cite their snapshots, so a deleted temporary
+  directory would fail a later `metrics verify` there; captured children
+  get `PYTHONIOENCODING=utf-8` because a piped CLI writes cp1252 on
+  Windows), and only then the Python suites and item 17
+  (`poe check`), which purge the scratch database's synthetic source;
+  items 6–7 and the Playwright suites need `dev-api` and `dev-web`
+  running and report `SKIP` otherwise. GitHub's required-checks
+  endpoint is `PATCH …/protection/required_status_checks`.
 
 ## End-of-session report (from the brief)
 

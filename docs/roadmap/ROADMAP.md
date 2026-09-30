@@ -1,7 +1,8 @@
 # JudgeMetrics — Roadmap to a Reproducible Judicial-Outcomes Platform
 
 > **Status:** Draft v2.1 (v2 supersedes v1, same day, after the full
-> brief arrived; v2.1 adds the post-launch Phase 9)
+> brief arrived; v2.1 adds the post-launch Phase 9); Phases 1–3
+> complete (Phase 3, the first milestone, on 2026-09-29); Phase 4 not started
 > **Owner:** Nathan Ramos, founder and sole maintainer
 > **Audience:** Maintainer and the AI coding agents executing phase steps;
 > public once the repository is published
@@ -480,9 +481,9 @@ strategy's property tests and golden dataset.
 
 ---
 
-### Phase 3 — Metrics Engine and the Complete Local Demo (First Milestone)
+### Phase 3 — Metrics Engine and the Complete Local Demo (First Milestone) ✅
 
-**Status:** In progress — [`docs/roadmap/phase03-roadmap.md`](phase03-roadmap.md)
+**Status:** Complete — 2026-09-29
 
 **Goal:** Publish reproducible descriptive and longitudinal metrics from
 a versioned registry with exact golden expectations, a provenance trace
@@ -576,10 +577,25 @@ milestone.
 - Every published observation has a complete provenance trace (test).
 - A correction request round-trips through the form, is stored with an
   encrypted contact, and is unreadable by the public role.
-- `scripts/verify_phase03.py --fast` exits 0 in CI.
-- **Security:** gate clean; no per-person rows from any metrics
-  endpoint (contract test); the encryption key is read from settings
-  and absent from every log line.
+- The registry, engine, API, and page suites (`pytest` unit,
+  integration, property, and golden; `pnpm lint`, `typecheck`, `build`,
+  `test`; the smoke, metrics, and first-milestone Playwright suites over
+  the demo seed) and `scripts/verify_phase03.py --fast` are green in CI;
+  `phase-verify (03)` is a required context on `main` beside `test`,
+  `phase-verify (01)`, and `phase-verify (02)`; `--post` (the V1–V6
+  matrix, the first-milestone items 1–7 and 17, the `bootstrap` rerun,
+  the seed and compute idempotency probes, `metrics verify`, and a
+  provenance trace of a random current observation) is green on the
+  maintainer's machine before the tag.
+- **Operations:** the analytics snapshot has a health signal
+  (`/api/v1/ready` `metrics.snapshot_hash`; `metrics verify` green) and
+  an alarm (`metrics verify` non-zero on a tampered observation, named
+  by id and column) that was seen to fire once.
+- **Security:** gate clean (`verify_phase03.py --security`: secret scan,
+  SAST over `src`, `alembic`, and `scripts`, dependency audits); no
+  per-person rows from any metrics endpoint (contract test); the
+  corrections grant is `INSERT` only; the encryption key is read from
+  settings and absent from every log line.
 
 ---
 
@@ -1623,7 +1639,7 @@ court-level comparison arrive with Phase 7.
 |-------|------------------------------------------------------|------------|-----------------------------------------------------------------|--------|
 | 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
-| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | In progress — docs/roadmap/phase03-roadmap.md |
+| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | Complete — 2026-09-29 |
 | 4     | Risk adjustment and validation                       | High       | Fable 5.1 (Claude Code) for methodology and validation; Opus 5 implementation | Not started |
 | 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |

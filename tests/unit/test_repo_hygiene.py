@@ -413,6 +413,12 @@ def test_compose_defines_postgres_and_minio() -> None:
     assert "healthcheck" in services["minio"]
     assert "minio" in services["minio"]["image"]
     assert services["minio-init"]["depends_on"]["minio"]["condition"] == "service_healthy"
+    # The volume init runs only on demand (profile) and hands the volume to
+    # the MinIO image's non-root uid; MinIO itself never runs as root.
+    volume_init = services["minio-volume-init"]
+    assert volume_init["profiles"] == ["init"]
+    assert volume_init["command"] == ["chown -R 65532:65532 /data"]
+    assert "user" not in services["minio"]
     init_script = "\n".join(services["minio-init"]["command"])
     assert "version enable" in init_script
     assert {"postgres-data", "minio-data"} <= compose["volumes"].keys()
@@ -534,7 +540,8 @@ def test_command_interface_targets_present() -> None:
         assert body is not None and body.group(1) == f"uv run poe {target}", target
     assert tasks["down"] == "docker compose down"
     assert "docker compose up -d --wait" in tasks["up-services"]
-    assert tasks["up"] == ["up-services", "up-init", "up-test-db"]
+    assert tasks["up"] == ["up-volumes", "up-services", "up-init", "up-test-db"]
+    assert tasks["up-volumes"] == "docker compose run --rm minio-volume-init"
     assert tasks["up-test-db"] == "docker compose run --rm postgres-test-init"
     assert tasks["gate"] == ["gate-commit", "gate-push"]
     assert tasks["gate-commit"] == "pre-commit run --all-files"
