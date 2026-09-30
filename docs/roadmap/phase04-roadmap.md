@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase04-roadmap.md -->
 # Phase 4 Roadmap — Risk Adjustment and Statistical Validation
 
-**Status:** Not started
+**Status:** In progress
 
 ## Overview
 
@@ -909,9 +909,9 @@ phase has no steps drawn in parallel.
 
 ---
 
-## Step 1 — Planted Effects, Synthetic Restricted Attributes, and the Restricted Schema
+## Step 1 — Planted Effects, Synthetic Restricted Attributes, and the Restricted Schema ✅
 
-**Status:** Not started
+**Status:** Complete — PR #37 (2026-09-30)
 
 > **Goal:** Give the synthetic world a known answer and give restricted
 > attributes a home. The generator (`GENERATOR_VERSION` `3`, new named streams
@@ -7245,7 +7245,7 @@ workflow above maps directly to the corresponding row below.
 
 | Step | Scope                                          | Model    | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | -------- | ----------- | -------------- | -------- | ---- | ----------- |
-| 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
