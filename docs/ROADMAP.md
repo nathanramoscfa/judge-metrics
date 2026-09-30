@@ -11,25 +11,19 @@ file at the end of every step (Stage 6 of the step lifecycle).
 
 ## Current phase
 
-**Phase 3 — Metrics Engine and the Complete Local Demo (First
-Milestone).** In progress: Step 1 (the metric registry, the analytic
-frame, migration `0005`, and the generated `docs/METHODOLOGY.md`)
-merged on 2026-09-18; Step 2 (the snapshot export, the computation
-engine, `metrics compute|verify`, pipeline step 13, `TRUTH_VERSION` 2,
-and the golden metric tests) merged on 2026-09-19; Step 3 (the
-provenance trace, the metrics API, coverage v1, the corrections intake
-with migration `0007`, word similarity for surname-only search, and the
-regenerated OpenAPI and web client types) merged on 2026-09-19; Step 4
-(the judge metric panels, the compare page, the methodology page, the
-coverage page, and the banner's coverage cache) merged on 2026-09-20;
-Step 5 (the corrections form, the court and jurisdiction pages,
-`bootstrap`, the `e2e` job on the demo seed, and the first-milestone
-walkthrough) merged on 2026-09-20; Step 6 (QA, `scripts/verify_phase03.py`,
-`phase-verify (03)`, and the `v0.3.0-phase-3` tag) is next, in a fresh
-conversation from [`docs/roadmap/phase03-roadmap.md`](roadmap/phase03-roadmap.md). Phase 2 (Synthetic
-Justice Dataset, Entity Resolution, and Case Timelines) completed on
-2026-09-18 with Step 6 (QA and `scripts/verify_phase02.py`) and is
-tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
+**Phase 4 — Risk Adjustment and Statistical Validation.** Not started:
+its execution roadmap (`docs/roadmap/phase04-roadmap.md`) is written
+next, from a re-exported planning kit, in a fresh conversation. Phase 3
+(Metrics Engine and the Complete Local Demo — the first milestone)
+completed on 2026-09-29 with Step 6 (QA, `scripts/verify_phase03.py`,
+and `phase-verify (03)` as a required context) and is tagged
+`v0.3.0-phase-3` on the squash-merged commit: the metric registry and
+generated methodology, the snapshot and computation engine with exact
+golden expectations, the provenance trace, the metrics API and
+corrections intake, every remaining public page, `uv run poe
+bootstrap`, and the brief's seventeen-item walkthrough. Phase 2
+(Synthetic Justice Dataset, Entity Resolution, and Case Timelines)
+completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 (Foundation, Canonical Schema, and the FJC Judge Slice) completed on
 2026-09-16 and is tagged `v0.1.0-phase-1`.
 
@@ -45,6 +39,7 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-09-29 | **Phase 3 Step 6 — Phase 3 complete.** `scripts/verify_phase03.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 49 static checks — 44 over Steps 1–5 and 5 self-checks — using only `pathlib`, `re`, `json`, `hashlib`, and `git ls-files`: the registry's slugs and its eight `known_limitations` read with a minimal line reader and compared verbatim with the brief's XML warnings and `docs/METHODOLOGY.md`, migration `0005`'s tables and grants, `0007`'s INSERT-only grant, the golden manifest's versions and digests, the six Phase 3 OpenAPI paths as a subset, no person field in the metrics schemas or the metrics package, the web deliverables, the `bootstrap` sequence, the seventeen milestone items, the `e2e` job's seed and `$GITHUB_ENV` secrets, and the security wiring and key-material backstop; `--post` runs the first-milestone items 1–7 and 17 as subprocess steps, the `bootstrap` rerun, the seed and compute idempotency probes, `metrics verify`, and a `provenance trace` of a random current observation against the scratch database with its own snapshot directory, then the suites and the V1–V6 matrix with `gh pr checks`); `tests/unit/test_phase03_verification.py` (the static mode, the matrix, and the standard-library reader against `yaml.safe_load`); `.github/workflows/phase-verify.yml` matrix `["01", "02", "03"]` and `phase-verify (03)` added to the required contexts (`CONTRIBUTING.md`); `docs/phase03-qa-findings.md` (Steps 1–6 rollups with class and guard, the two alarm exercises, pre-ship items, the Phase 4 carry-over checklist); the Phase 2 unit test's exact matrix pin relaxed to a subset; the root roadmap's Phase 3 acceptance criteria aligned with V1–V6. Implementation bug fixed in-step: PR #28's Chainguard MinIO runs as uid 65532 and could not write to a volume the earlier root-running image created, so `uv run poe up` failed on every existing machine; `up` now starts with the one-shot `minio-volume-init` (`chown` as root, MinIO itself stays non-root). Verified: see `docs/phase03-qa-findings.md` (`--fast` 49/49, `--security`, the alarm exercises, and `--post` on the maintainer's machine). |
 | 2026-09-20 | **Phase 3 Step 5.** The corrections form, the court and jurisdiction pages, `bootstrap`, the `e2e` job on the demo seed, and the first-milestone walkthrough (`docs/ARCHITECTURE.md` "Web tier", `docs/API.md` "Corrections", `web/AGENTS.md`, `README.md` "Quick start" and "The first milestone"). Web: `/corrections` (`app/corrections/page.tsx`, a server page reading `target_type`, `target_id`, `label`, looking the target up for a summary, and explaining the process) hosting `components/correction-form.tsx` (read-only prefilled target, the reason and contact with the API's limits from `lib/corrections.ts`, an optional http(s) supporting-material link — no file upload —, the consent line, submit disabled until valid, pending and error states, the API's field errors beside the fields, the 429 wait) posting to the route handler `app/api/corrections/route.ts` (`lib/corrections-handler.ts`: validates, forwards exactly `ALLOWED_FIELDS` with the caller's `X-Forwarded-For` through `submitCorrection(body, { forwardedFor })`, answers `{id, status}` or the API's error body under its status, no cookie, no log line) and `/corrections/received?id=` (the id, the status, what happens next, nothing submitted); "Report a data error" (`components/report-error-link.tsx`) on the judge, court, and case headers and on every `MetricPanel` (`reportObservationId`, the panel's first observation from `firstObservationId`); `/courts/[courtId]` rebuilt with the court's own panels (`COURT_PANELS`, the court-only `statutory_release_count` and `unknown_actor_pretrial_count` in Pretrial, windowed metrics by `index_event` through `panelDefinitions`), "Comparable judges" (`CompareTable` for `?metric=` and `?window=`, "Open in Compare", `EmptyState` for an empty cohort), the jurisdiction link, then the judges-serving table; `/jurisdictions/[jurisdictionId]` v0 (name and type, the courts table, available years and data completeness from the `/coverage` rows of the jurisdiction's sources — `lib/jurisdictions.ts` —, "no case data" for an FJC-only jurisdiction, the jurisdiction-level compare table); `/coverage` lists every jurisdiction linked. Command interface: `bootstrap = ["up", "migrate", "ingest-fjc", "seed", "compute-metrics"]` and `make bootstrap` (`install` first); `judgemetrics seed --out DIR`. CI: the `e2e` job generates a throwaway pepper and Fernet key into `$GITHUB_ENV`, seeds the demo dataset into `data/synthetic/ci`, runs `metrics compute`, and runs the smoke, metrics, and first-milestone suites; `verify_phase02.py` check 33 and the hygiene test accept the new shape. Tests: Vitest +32 (`corrections.test.ts` — the validator, the link builder, the 422 parser, the handler's allow-list, forwarded chain, status mapping, and a spy on every console method asserting nothing is logged; `correction-form.test.tsx`; `jurisdictions.test.ts`; `metrics.test.ts` and `metric-stat.test.tsx` for the panels and the report link; 102 total), Playwright `first-milestone.spec.ts` (+10: items 8–16 and the corrections submission; 21 total, green locally), `test_seed_out_generates_ingests_and_is_idempotent` (integration). Screenshots in `docs/screenshots/phase03-step5/`. The `bootstrap` probe against the scratch database from a clean state: first run 249 s (`up` 5 s, `migrate` 2 s, `ingest-fjc` 9 s, `seed` 206 s — generation plus the ingest with pipeline step 13 publishing 3,426 observations over 822,777 members —, `compute-metrics` 27 s, a no-op), second run 48 s with `created=0 updated=0` on both ingests and `observations=0 subjects_unchanged=29` on the compute; identical row counts. Findings: the corrections limiter keys every browser behind one web server on the web server's address unless `JUDGEMETRICS_TRUST_PROXY` is set (documented on the Compose `web` service and below); `CourtSummary` carries no provenance, so the jurisdiction page infers a synthetic source from a synthetic court (`lib/jurisdictions.ts`); the API's `metrics compute` never needs the contact key, so `bootstrap` does not check it and `dev-api` does; **security finding, fixed in-step:** `infra/docker/postgres/03-test-database.sql` reruns on every `uv run poe up` and its blanket `GRANT SELECT ON ALL TABLES` re-opened the restricted tables (`person_identifier`, `correction_request`, `audit_log`, `entity_resolution_candidate`) to the app role in the scratch database after the migrations had revoked them — surfaced by the `bootstrap` probe, which ran `up` after the suite's migrations; the script now re-applies the migrations' revokes for every restricted table that exists (hygiene test). The `bootstrap` probe also leaves the live FJC ingest in the scratch database when run there, which the suite's own FJC-fixture purge removes; `test_misspelled_surname_alone_finds_a_long_full_name` fails while a live "Douglas Howard Ginsburg" outranks the fixture's Ruth Bader Ginsburg, so the probe is followed by the suite, not interleaved with it. Deployed & verified 2026-09-20 after the squash-merge (PR #23, `f8c16e9`; CI e2e: seed 120 s, compute 20 s, the three suites 23 s): `uv run poe bootstrap` on the maintainer's database was a no-op end to end (`created=0 updated=0` on both ingests, `subjects_unchanged=29`), then `judgemetrics serve` and `pnpm build && pnpm start`, `pnpm e2e` passed 21 of 21, and the correction the walkthrough submitted is present as `judgemetrics_admin` with `status = received` and a Fernet-encrypted contact. |
 | 2026-09-20 | **Phase 3 Step 4.** The metric surfaces (`docs/ARCHITECTURE.md` "Web tier", `web/AGENTS.md`, `docs/API.md` "Metrics"). API: `GET /metrics` gains `windows_days`, `how_to_read`, `semantics`, `attribution_notes`, `gate_descriptions`, and `changelog` — the renderer's own constants (`metrics/methodology.py`, with the changelog moved into `CHANGELOG`) so the web page and `docs/METHODOLOGY.md` share one source; `docs/openapi.json` and `web/lib/api/schema.d.ts` regenerated. Web: `lib/metrics.ts` (`groupObservations` by slug → window → dimension, `pickWindow`/`pickObservation`, `windowsFromRegistry`/`resolveWindow` with the 365-day default, `formatRate`/`formatInterval`/`formatDays`/`formatCount`/`formatPeriod`/`formatCoverage`/`formatFraction`/`primaryFigure` null-safe, `isSuppressed`, `COHORTS`/`cohortLabel`/`parseCohort`, `methodologyHref`, `cohortPosition`, `JUDGE_PANELS`, the case and compare link builders, `ASSOCIATION_STATEMENT`); `components/metric-stat.tsx` (`MetricStat` — the presentation-rule component: label, figure by kind, numerator / denominator, eligible, interval with method, period, coverage, sample size, methodology anchor, synthetic badge, the suppression notice with the threshold and no figure slot; `MetricNotObservable`), `metric-panel.tsx` (`MetricPanel` with the anchor and the "View eligible cases" link, `MetricRow` placing the court's pooled stat beside the judge's, `CohortPositionLine`), `query-select.tsx` + `cohort-selector.tsx` (GET-form selectors that submit on change), `compare-table.tsx` (the API's order, `sort`/`order` header links with `aria-sort`, suppressed rows marked, coverage warnings); pages: `/judges/[judgeId]` (statement, Cases, Pretrial, Outcomes after qualifying release with the window and cohort selectors, Disposition and Sentencing with their after-event outcomes, `?cohort=court|jurisdiction`, `?window=`, one `/metrics/compare` per compared metric under `Promise.all`, `/courts/{id}/metrics` for the pooled value, per-panel `ErrorState`s, then the service, cases, and provenance panels), `/compare` (query-string state validated against the registry, controls as a GET form over `/courts` × 2 pages and `/jurisdictions`, the table, pagination, "Comparison notes"), `/methodology` (`force-dynamic` from `GET /metrics`: statement unchanged, principles, how to read, semantics, attribution, one `<section id="<slug>">` per definition, suppression, the eight limitations verbatim, changelog, links; the Phase 3 status note removed), `/coverage` v1 (Snapshot card; per source the coverage window, observable and not-observable outcomes from the registry, latest snapshot, methodology version); `lib/coverage-cache.ts` (sixty-second in-process cache behind the banner, failures never cached, bypassed under `NODE_ENV=test`); Compare in the site header. Tests: Vitest +42 (`metrics.test.ts`, `metric-stat.test.tsx` incl. the digit-free suppressed stat and the compare table, `methodology-page.test.tsx`, `coverage-cache.test.ts` with fake timers; 70 total), Playwright `metrics.spec.ts` (+3; 11 total, green locally over the demo seed), `test_api_metrics.py` and `test_openapi.py` extended for the registry fields, the hygiene test allows `NODE_ENV`. Screenshots in `docs/screenshots/phase03-step4/`. Findings: the cases route has no pretrial, disposition, or sentence filter, so the Disposition and Sentencing "View eligible cases" links carry `status=closed` and the others are unfiltered (recorded under Not in scope); the compare page's court chooser is two `/courts` pages, a search arrives with a larger registry (Phase 5) — both listed under the phase roadmap's Not in scope. Deployed & verified 2026-09-20 after the squash-merge (PR #21, `3daf010`): the API and the Next.js dev server over the demo seed rendered a synthetic judge's panels, `/compare`, `/methodology`, and `/coverage` with zero `ErrorState`s, and `pnpm e2e --grep metrics` passed (3 of 3). |
 | 2026-09-19 | **Phase 3 Step 3.** The provenance trace, the metrics API, coverage v1, and the corrections intake (`docs/PROVENANCE.md`, `docs/API.md` "Metrics" and "Corrections", `docs/ARCHITECTURE.md` "Public API v1", `docs/DATA_MODEL.md` "Grants"). `metrics/provenance.py` (`trace` reconstructs the brief's chain in three statements — the observation with its definition, snapshot, and source; the members outer-joined to their canonical rows for `case_id` and `source_record_id`; the distinct source records with their sources — and `complete` re-checks `check_chain`'s rule against the live tables; `render` prints it top-down; `judgemetrics provenance trace <id> [--json]` exits 1 when incomplete); `schemas/metrics.py` (`Registry`, `MetricDefinitionOut`, `Observation` with numerator, denominator, eligible count, period, coverage, rate, interval and method, suppression flag and threshold, methodology version and link, snapshot hash; `SubjectMetrics` keyed by slug; `ComparePage`/`CompareRow`/`CompareCohort`; `ObservationProvenance`; `CorrectionIn`, `CorrectionAccepted`) with suppression enforced by a validator that nulls the numbers of any suppressed row; `repositories/metrics.py` (one-statement subject observations; the compare page as one statement with a `LATERAL` cohort court, `count(*) OVER ()`, the modal reference period, and suppression-safe sort columns; the `list_judge_cases` fallback for an empty page), `repositories/corrections.py` (target lookup; `insert(CorrectionRequest)` with a client `uuid4()` and no `RETURNING`), `services/metrics.py`, `services/corrections.py` (encrypt with `encrypt_contact`, insert, commit — the API's one write), `api/routes/metrics.py` (`GET /metrics`, `/metrics/compare`, `/metrics/{id}/provenance`), `/judges/{id}/metrics` and `/courts/{id}/metrics`, `api/routes/corrections.py` (`POST`, 202, `no-store`, 503 `corrections_unavailable` without a key); `/coverage` v1 (coverage window, observable outcomes, latest snapshot and methodology version per source, registry versions on top); `/ready` with the latest snapshot; migration `0007_corrections_intake` (`GRANT INSERT` only); `Settings.correction_contact_key` required by `create_app` outside `env == test` (`require_contact_key`, fail-fast naming the variable; `judgemetrics.main.app` built lazily); a second token bucket `app.state.corrections_limiter` (`per_hour`, default 5/5); the scrubber denylist plus `correction_contact_key`, `contact`, `reason`, `supporting_material` (operational log lines renamed `failure`/`refusal`/`because`); word similarity (`<%`, `JUDGEMETRICS_SEARCH_WORD_SIMILARITY_THRESHOLD` 0.5) for one-token search and judges `q` queries ("Ginsberg" finds Ruth Bader Ginsburg); `docs/openapi.json` and `web/lib/api/schema.d.ts` regenerated with six new paths, `web/lib/api/client.ts` helpers for them; tests: `test_schemas_metrics.py`, `test_app_startup.py`, `test_openapi.py` (18 routes, the POST), `test_logging.py` (a bound line redacts the submitted fields), `test_ratelimit.py` (`per_hour`), `test_api_metrics.py`, `test_api_corrections.py` (202 round trip, the app role inserts and cannot `SELECT`/`UPDATE`/`DELETE`/`RETURNING`, 422 per field, 429, 503), `test_api_search.py` (surname alone), `test_query_counts.py` (subject metrics 2, compare 2, provenance 6 — three in practice, corrections 2 with no `RETURNING`), `test_golden_provenance.py` (every current observation traces complete; a deleted member row makes it incomplete; `check_chain` refuses a foreign id; CLI = endpoint), `test_public_contract.py` (no person key or unknown hash from any metrics route; suppressed rows null). The methodology renderer's "Sample size" prose now says the denominator is withheld with a suppressed number. |
@@ -201,12 +196,17 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   "Exposure"). `release_violation` and `rearrest` are not observable for
   the synthetic source and are published for no subject until a source
   documents them.
-- The metrics engine computes nothing yet: `metric_definition` holds the
-  registry once `sync_definitions` runs (Step 2's publish calls it),
-  `metric_snapshot`, `metric_observation`, and
-  `metric_observation_member` are empty, and `source.coverage_start`,
-  `coverage_end`, and `observable_outcomes` are null and `[]` until Step
-  2's connectors fill them.
+- Methodology `0.1` publishes descriptive statistics only: no expected
+  count, expected rate, observed-to-expected ratio, or adjusted interval
+  exists until Phase 4's methodology `1.0`. Suppression thresholds are
+  fixed at 10 for every share, rate, survival estimate, and median
+  before any real data (revisited per metric in Phase 5).
+- Snapshots live on the local filesystem (`JUDGEMETRICS_SNAPSHOT_DIR`,
+  git-ignored, never overwritten); the object-store variant is Phase 8.
+- Correction contacts are Fernet-encrypted with a symmetric key the
+  public API process holds, and no admin reader exists: requests stay
+  `received` and only the admin role can read the table, by hand, until
+  Phase 6 (which also brings envelope or asymmetric encryption).
 - `.secrets.baseline` allowlists the sha256 digests in
   `tests/fixtures/golden/manifest.json` (`detect-secrets` flags
   64-character hex strings), so regenerating the golden fixture ends
@@ -227,11 +227,9 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   warning) the purge still removes the demo seed and each golden
   ingest's merges leave append-only `audit_log` rows (ids and counts
   only), so run `uv run poe seed` afterwards there.
-- The demo-data banner reads `/coverage` on every request from the root
-  layout, so every page is server-rendered on demand (no page is
-  prerendered) and each page view costs one extra API call; a cached
-  read (Next's `"use cache"` or an in-process TTL) is a later
-  improvement.
+- The demo-data banner reads `/coverage` through a sixty-second
+  in-process cache (`web/lib/coverage-cache.ts`); the root layout is
+  still `force-dynamic`, so no page is prerendered.
 - A case timeline places date-only facts at the start (`filed`) or end
   (`closed`) of their day; an event recorded after the closing date (a
   synthetic revocation) follows the `closed` entry, which is the record.
@@ -261,14 +259,11 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
 - A `.env` written before Step 3 may name an S3 application user that
   MinIO does not know; `uv run poe up` (its `minio-init` job) now
   creates that user, so run it once more on such machines.
-- Search similarity is computed over the whole normalized name with
-  the `%` operator at threshold 0.3, so a misspelt surname finds a
-  judge when the surname is a large share of the full name
-  ("Sotomayer" → Sonia Sotomayor) but a short token against a long
-  name ("Ginsberg" → "ruth bader ginsburg", 0.26) does not. Word
-  similarity (`<%`, also GIN-indexable) would fit surname-only queries
-  better; the search page (Step 5) uses the API as it is, so this
-  remains an API-side improvement for a later step.
+- Search uses word similarity (`<%`, threshold 0.5) for a one-token
+  query and whole-name similarity (`%`, 0.3) for several tokens, so a
+  misspelt surname alone finds a long name ("Ginsberg" → Ruth Bader
+  Ginsburg) while a misspelt multi-word query still needs most of the
+  name.
 - The web tier inlines `NEXT_PUBLIC_API_BASE_URL` at build time, so the
   image is built per API origin (the Compose service bakes
   `http://api:8000`); a runtime-configurable origin needs a server-side
@@ -303,8 +298,8 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   database enum; the brief fixes only the enums the baseline creates.
   The versioned attribution rules of Phase 5 map real sources onto it.
 - `correction_request.requester_contact` is Fernet-encrypted under
-  `JUDGEMETRICS_CORRECTION_CONTACT_KEY` (`judgemetrics.security.crypto`);
-  the corrections workflow that writes it arrives in Phase 3.
+  `JUDGEMETRICS_CORRECTION_CONTACT_KEY` (`judgemetrics.security.crypto`)
+  by `POST /api/v1/corrections`, the API's one write.
 - The API image reports `git_sha: unknown` unless built with
   `--build-arg GIT_SHA=…` (CI passes `GITHUB_SHA`; Compose reads
   `GIT_SHA` from the environment).
@@ -312,10 +307,14 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   5432 and 5433 and Windows reserves 9000, so the local `.env` overrides
   `POSTGRES_PORT` (5440) and `MINIO_API_PORT`; CI and fresh machines use
   the defaults.
-- MinIO's community images are pulled from `quay.io/minio` (Docker Hub
-  no longer serves them) and MinIO has announced maintenance mode for
-  the community edition; the raw store is S3-compatible, so swapping
-  the local object store later is a Compose change only.
+- MinIO's images come from Chainguard, pinned by digest (Docker Hub and
+  `quay.io/minio` no longer serve them anonymously), and MinIO has
+  announced maintenance mode for the community edition; the raw store is
+  S3-compatible, so swapping the local object store later is a Compose
+  change only. The Chainguard image runs as uid 65532, so `uv run poe
+  up` first hands the MinIO volume to that uid (`minio-volume-init`); a
+  volume created by the earlier root-running image otherwise stops MinIO
+  with "Unable to write to the backend".
 - The first real state-court corpus (Cook County) is frozen at
   2024-12-30, lacks judge attribution on pretrial decisions, and has no
   failure-to-appear, rearrest, or release-violation events.
@@ -340,25 +339,33 @@ tagged `v0.2.0-phase-2` on the squash-merged commit. Phase 1
   the golden fixture. Its `--py` mode runs the `property` and `golden`
   markers as well as `integration`, so the database-backed property
   and golden tests run twice there (about 40 s more).
+- `scripts/verify_phase03.py --post` writes to the scratch database
+  when `JUDGEMETRICS_TEST_DATABASE_URL` is configured (the three role
+  URLs pointed at it, snapshots under `data/snapshots/scratch-test-db`),
+  else to the
+  configured database, which it names; items 3–5 and the `bootstrap`
+  rerun `SKIP` without Docker, items 6–7 and the Playwright suites
+  without `dev-api` and `dev-web` running (V4.3 and V5.2 then read the
+  PR's `e2e` job), and V3.4 and V6.1 come from `gh pr checks`. The
+  whole sweep re-seeds the scratch database, so it takes tens of
+  minutes. More than five `--e2e` runs an hour against a local API make
+  the walkthrough's corrections test answer 429 (the limiter, not the
+  page).
 
 ## Next milestones
 
-1. **Phase 3 Step 6.** `scripts/verify_phase03.py` (`--fast`, `--py`,
-   `--node`, `--e2e`, `--security`, `--all`, `--post`; the V-matrix, the
-   seed and compute idempotency probes, `metrics verify`, a random
-   `provenance trace`, the first-milestone items 1–7 and 17 as
-   subprocess steps), `docs/phase03-qa-findings.md`, `"03"` in the
-   `phase-verify.yml` matrix as a required context, and the
-   `v0.3.0-phase-3` tag.
-2. **First milestone (`v0.3.0-phase-3`).** The metrics registry with
-   the brief's outcome definitions (done in Step 1), provenance tracing
-   (`judgemetrics provenance trace`), `compute-metrics`, the methodology
-   page's known limitations, and the brief's seventeen-item checklist
-   passing end to end on synthetic data plus FJC judges from
-   `uv run poe bootstrap` alone; the metric expectations in the golden
-   `truth/metrics.json` reproduced by the registry. (Phase 2 exit
-   `v0.2.0-phase-2` reached 2026-09-18; Phase 1 exit `v0.1.0-phase-1`
-   2026-09-16.)
+1. **Phase 4 roadmap.** Re-export the planning kit (`uv run poe kit`)
+   and write `docs/roadmap/phase04-roadmap.md` (Risk Adjustment and
+   Statistical Validation) from `docs/roadmap/ROADMAP.md` §4 Phase 4 and
+   the carry-over checklist in `docs/phase03-qa-findings.md`.
+2. **Phase 4 exit (`v0.4.0-phase-4`).** Methodology `1.0`: the
+   expected-outcome model, expected counts and rates, observed-to-expected
+   ratios with adjusted intervals, planted judge effects in the
+   generator under a new `TRUTH_VERSION` recovered on the golden fixture,
+   and the statistical validation the root roadmap names.
 3. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metric published with a
-   complete provenance trace; the Florida acquisition plan written.
+   complete provenance trace; per-metric suppression thresholds
+   revisited; the Florida acquisition plan written. (First milestone
+   `v0.3.0-phase-3` reached 2026-09-29; Phase 2 exit `v0.2.0-phase-2`
+   2026-09-18; Phase 1 exit `v0.1.0-phase-1` 2026-09-16.)

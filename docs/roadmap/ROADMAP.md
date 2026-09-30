@@ -576,10 +576,25 @@ milestone.
 - Every published observation has a complete provenance trace (test).
 - A correction request round-trips through the form, is stored with an
   encrypted contact, and is unreadable by the public role.
-- `scripts/verify_phase03.py --fast` exits 0 in CI.
-- **Security:** gate clean; no per-person rows from any metrics
-  endpoint (contract test); the encryption key is read from settings
-  and absent from every log line.
+- The registry, engine, API, and page suites (`pytest` unit,
+  integration, property, and golden; `pnpm lint`, `typecheck`, `build`,
+  `test`; the smoke, metrics, and first-milestone Playwright suites over
+  the demo seed) and `scripts/verify_phase03.py --fast` are green in CI;
+  `phase-verify (03)` is a required context on `main` beside `test`,
+  `phase-verify (01)`, and `phase-verify (02)`; `--post` (the V1–V6
+  matrix, the first-milestone items 1–7 and 17, the `bootstrap` rerun,
+  the seed and compute idempotency probes, `metrics verify`, and a
+  provenance trace of a random current observation) is green on the
+  maintainer's machine before the tag.
+- **Operations:** the analytics snapshot has a health signal
+  (`/api/v1/ready` `metrics.snapshot_hash`; `metrics verify` green) and
+  an alarm (`metrics verify` non-zero on a tampered observation, named
+  by id and column) that was seen to fire once.
+- **Security:** gate clean (`verify_phase03.py --security`: secret scan,
+  SAST over `src`, `alembic`, and `scripts`, dependency audits); no
+  per-person rows from any metrics endpoint (contract test); the
+  corrections grant is `INSERT` only; the encryption key is read from
+  settings and absent from every log line.
 
 ---
 

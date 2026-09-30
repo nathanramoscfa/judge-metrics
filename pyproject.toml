@@ -129,12 +129,15 @@ gate = ["gate-commit", "gate-push"]
 gate-commit = "pre-commit run --all-files"
 gate-push = "pre-commit run --all-files --hook-stage pre-push"
 kit = "roadmodel export-kit . --force"
-# Local services: PostgreSQL 17 (pg_trgm, three roles) and MinIO. `up` waits
+# Local services: PostgreSQL 17 (pg_trgm, three roles) and MinIO. `up` first
+# hands the MinIO volume to the non-root uid the Chainguard image runs as (a
+# volume created by the earlier root-running image is owned by root), waits
 # for the long-running services to be healthy, then runs the one-shot
 # bucket-creation job (`--wait` alone treats a cleanly exited job as failure)
 # and the one-shot scratch-database job (`judgemetrics_test` for the test
 # suite, idempotent; a volume created before Phase 2 Step 5 gets it here).
-up = ["up-services", "up-init", "up-test-db"]
+up = ["up-volumes", "up-services", "up-init", "up-test-db"]
+up-volumes = "docker compose run --rm minio-volume-init"
 up-services = "docker compose up -d --wait postgres minio"
 up-init = "docker compose run --rm minio-init"
 up-test-db = "docker compose run --rm postgres-test-init"

@@ -6445,6 +6445,11 @@ Additionally not in scope for this phase:
 - A court search on `/compare`: the chooser lists two `/courts` pages
   (164 courts today); a `q` filter on `/courts` arrives with the Phase 5
   registries.
+- One `metric_observation_member` row per metric with per-window flags
+  instead of one per observation (the demo seed writes 822,777 members
+  for 3,426 observations; `docs/phase03-qa-findings.md` finding 2.6);
+  Phase 5 if Cook County scale needs it, else Phase 8's performance
+  work.
 
 ---
 

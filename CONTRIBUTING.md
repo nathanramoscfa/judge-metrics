@@ -207,7 +207,7 @@ gh api -X PUT repos/nathanramoscfa/judge-metrics/branches/main/protection \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["test", "phase-verify (01)", "phase-verify (02)"]
+    "contexts": ["test", "phase-verify (01)", "phase-verify (02)", "phase-verify (03)"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
@@ -231,16 +231,17 @@ JSON
 
 `required_pull_request_reviews` is `null` because the project has a
 single maintainer; the required status checks and `enforce_admins` are
-what keep unreviewed or red changes off `main`. Three contexts are
-required: `test`, the aggregate of `ci.yml`, and `phase-verify (01)`
-and `phase-verify (02)`, the Phase 1 and Phase 2 entries of
-`.github/workflows/phase-verify.yml` (added by each phase's Step 6).
+what keep unreviewed or red changes off `main`. Four contexts are
+required: `test`, the aggregate of `ci.yml`, and `phase-verify (01)`,
+`phase-verify (02)`, and `phase-verify (03)`, the Phase 1 to Phase 3
+entries of `.github/workflows/phase-verify.yml` (added by each phase's
+Step 6).
 Each later phase adds its matrix entry to the required contexts with
 the same call, replacing the whole list:
 
 ```sh
 gh api -X PATCH repos/nathanramoscfa/judge-metrics/branches/main/protection/required_status_checks   --input - <<'JSON'
-{ "strict": true, "contexts": ["test", "phase-verify (01)", "phase-verify (02)"] }
+{ "strict": true, "contexts": ["test", "phase-verify (01)", "phase-verify (02)", "phase-verify (03)"] }
 JSON
 ```
 

@@ -78,6 +78,23 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  minio-volume-init:
+    # Runs once before MinIO starts (`uv run poe up` runs it first): hands
+    # the data volume to the uid the Chainguard MinIO image runs as
+    # (65532, `nonroot`). A volume created by the earlier root-running
+    # image is owned by root, and MinIO then exits with "Unable to write
+    # to the backend"; a fresh volume is unaffected. Root only for the
+    # chown, never for MinIO itself. Idempotent; then exits.
+    profiles: ["init"]
+    image: cgr.dev/chainguard/minio-client:latest-dev@sha256:614e083a12c6dc779f13f97e01b13afda4021a8ce3f4021a2fcf23ec86f46837
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - chown -R 65532:65532 /data
+    volumes:
+      - minio-data:/data
+    restart: "no"
+
   minio-init:
     # Runs once after MinIO is healthy: creates the raw-lake bucket with
     # object versioning enabled (the brief's "object-store versioning for
