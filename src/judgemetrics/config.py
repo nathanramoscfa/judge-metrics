@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess  # nosec B404 - fixed argv `git rev-parse`, see _git_sha_from_checkout
+import subprocess  # fixed argv `git rev-parse`, see _git_sha_from_checkout  # nosec B404
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
