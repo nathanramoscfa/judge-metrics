@@ -89,9 +89,13 @@ class Manifest:
         )
 
 
-def build_dataset(seed: int, spec: ScaleSpec) -> tuple[World, Any]:
-    """The in-memory world with identifiers assigned and edge cases planted."""
-    streams = Streams(seed)
+def build_dataset(seed: int, spec: ScaleSpec, streams: Streams | None = None) -> tuple[World, Any]:
+    """The in-memory world with identifiers assigned and edge cases planted.
+
+    ``streams`` defaults to ``Streams(seed)``; a test passes its own to prove
+    that re-seeding one stream moves only that stream's draws.
+    """
+    streams = streams if streams is not None else Streams(seed)
     world = build_world(spec, seed, streams)
     build_cases(world, streams)
     assign_identifiers(world)

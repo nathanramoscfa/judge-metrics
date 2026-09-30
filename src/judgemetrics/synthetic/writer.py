@@ -57,6 +57,7 @@ SOURCE_HEADERS: dict[str, tuple[str, ...]] = {
         "full_name",
         "date_of_birth",
         "age_at_filing",
+        "synthetic_group",
     ),
     "charges.csv": (
         "charge_id",
@@ -199,7 +200,9 @@ def _case_rows(case: Case, *, copy: bool) -> dict[str, list[Row]]:
             "defendant",
             name,
             fmt_date(person.date_of_birth) if person.dob_known else "",
-            str(person.age_on(case.filed_date)),
+            # Withheld with the date of birth (GENERATOR_VERSION 3).
+            str(person.age_on(case.filed_date)) if person.dob_known else "",
+            person.synthetic_group,
         ]
     )
     for charge in case.charges:

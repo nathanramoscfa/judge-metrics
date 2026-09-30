@@ -13,7 +13,8 @@ earliest charge filing of each case, ``new_charge`` per charge, and
 ``reconviction`` per convicted charge — keyed by their own case — and
 never carries a stored other-case row or a person beyond an id. The
 module's source names no restricted table, installs or loads no DuckDB
-extension, and nothing under ``metrics/`` names a restricted attribute.
+extension, refuses every table of the ``restricted`` schema by its schema,
+and nothing under ``metrics/`` (recursively) names a restricted attribute.
 """
 
 from __future__ import annotations
@@ -30,8 +31,10 @@ import polars as pl
 import pytest
 
 from judgemetrics.config import REPO_ROOT, Settings
+from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.metrics import snapshot as snapshot_module
 from judgemetrics.metrics.snapshot import (
+    EXPORTED_TABLES,
     MANIFEST_NAME,
     PARQUET_SCHEMAS,
     RESTRICTED_TABLES,
@@ -42,12 +45,22 @@ from judgemetrics.metrics.snapshot import (
     code_version,
     content_hash_of,
     open_snapshot,
+    refuse_restricted,
     validate_content_hash,
 )
 
 pytestmark = pytest.mark.unit
 
-RESTRICTED_ATTRIBUTES = ("value_hash", "date_of_birth", "full_name", "encrypted_value")
+RESTRICTED_ATTRIBUTES = (
+    "value_hash",
+    "date_of_birth",
+    "full_name",
+    "encrypted_value",
+    # Phase 4 Step 1: the restricted attributes and their table.
+    "age_band",
+    "synthetic_group",
+    "party_attribute",
+)
 METRICS_DIR = REPO_ROOT / "src" / "judgemetrics" / "metrics"
 SOURCE_ID = "11111111-1111-1111-1111-111111111111"
 SURVIVOR = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -346,7 +359,20 @@ def test_snapshot_module_loads_no_extension_and_names_no_restricted_table() -> N
 
 
 def test_no_module_under_metrics_names_a_restricted_attribute() -> None:
-    for path in sorted(METRICS_DIR.glob("*.py")):
+    modules = sorted(METRICS_DIR.glob("**/*.py"))
+    assert modules
+    for path in modules:
         text = path.read_text(encoding="utf-8")
         for name in RESTRICTED_ATTRIBUTES:
-            assert name not in text, f"{path.name} names {name}"
+            assert name not in text, f"{path.relative_to(METRICS_DIR)} names {name}"
+
+
+def test_the_snapshot_refuses_every_table_of_the_restricted_schema() -> None:
+    restricted = [table for table in Base.metadata.tables.values() if table.schema]
+    assert restricted, "the restricted schema has at least one table"
+    assert all(table.schema == RESTRICTED_SCHEMA for table in restricted)
+    for table in restricted:
+        with pytest.raises(SnapshotError, match="restricted schema"):
+            refuse_restricted([*EXPORTED_TABLES, table])
+    refuse_restricted(EXPORTED_TABLES)  # the export's own tables pass
+    assert all(table.schema is None for table in EXPORTED_TABLES)

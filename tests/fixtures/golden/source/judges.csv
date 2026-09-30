@@ -1,8 +1,9 @@
 judge_code,full_name,court_code,position,start_date,end_date
 J-0001,Scheelite Kite,C-0001,circuit_judge,2019-01-01,
-J-0002,Periwinkle Hoopoe,C-0002,circuit_judge,2019-01-01,
-J-0003,Puce Wingnut,C-0003,circuit_judge,2019-01-01,
-J-0004,Cinnabar Hornbill,C-0001,circuit_judge,2019-01-01,2021-05-18
-J-0004,Cinnabar Hornbill,C-0002,circuit_judge,2021-05-19,
-J-0005,Hornblende Stikine,C-0003,circuit_judge,2019-01-01,
-J-0006,Cuprite Kookaburra,C-0001,circuit_judge,2019-07-29,2021-09-03
+J-0002,Hematite Sycamore,C-0002,circuit_judge,2019-01-01,
+J-0003,Goethite Warta,C-0003,circuit_judge,2019-01-01,
+J-0004,Galena Condor,C-0003,circuit_judge,2019-01-01,2020-05-10
+J-0004,Galena Condor,C-0001,circuit_judge,2020-05-11,
+J-0005,Vermilion Platte,C-0003,associate_judge,2020-02-11,2020-12-02
+J-0005,Vermilion Platte,C-0001,associate_judge,2020-12-03,
+J-0006,Realgar Junco,C-0002,associate_judge,2019-01-01,

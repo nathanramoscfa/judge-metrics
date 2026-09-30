@@ -77,6 +77,10 @@ RESTRICTED_PROPERTY_NAMES = {
     "person_identifier",
     "raw_object_path",
     "requester_contact",
+    # Phase 4 Step 1: the restricted attributes and their table.
+    "age_band",
+    "synthetic_group",
+    "party_attribute",
 }
 
 

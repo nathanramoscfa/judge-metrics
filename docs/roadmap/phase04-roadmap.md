@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase04-roadmap.md -->
 # Phase 4 Roadmap — Risk Adjustment and Statistical Validation
 
-**Status:** Not started
+**Status:** In progress
 
 ## Overview
 
@@ -909,9 +909,9 @@ phase has no steps drawn in parallel.
 
 ---
 
-## Step 1 — Planted Effects, Synthetic Restricted Attributes, and the Restricted Schema
+## Step 1 — Planted Effects, Synthetic Restricted Attributes, and the Restricted Schema ✅
 
-**Status:** Not started
+**Status:** Complete — PR #37 (2026-09-30)
 
 > **Goal:** Give the synthetic world a known answer and give restricted
 > attributes a home. The generator (`GENERATOR_VERSION` `3`, new named streams
@@ -2510,6 +2510,37 @@ Conversation is New per phase-boundary hygiene.
       demo dataset
       (`data/synthetic/20260916`) is
       regenerated at version 3.
+    - Note from Step 1 (the history
+      instant): the generator's risk
+      features read the person's rows
+      strictly before 00:00 UTC of
+      the index case's filing date —
+      the instant the frame's
+      `cases.filed_at` carries — not
+      the charge's business-hour
+      `filed_at`; `prior_cases`
+      counts other cases filed on an
+      earlier date, `pending_case`
+      one whose case disposition (the
+      latest `disposed_at` of its
+      disposed charges) is null or at
+      or after that instant, and
+      `lead_severity` breaks no tie
+      the generator reads (it takes
+      the most severe level). Evaluate
+      every history feature at that
+      same instant so the model's
+      features are exactly what
+      assignment read
+      (`synthetic/effects.py`
+      `risk_features`;
+      `test_synthetic_effects.py`
+      recomputes them on the final
+      world). The next filing's
+      exponent also carries `3.0 · R`
+      (R the index case's risk index;
+      docs/SYNTHETIC_DATA.md "Planted
+      effects").
     - The analytic frame
       (`metrics/frame.py`) holds
       `cases`, `assignments`,
@@ -3585,6 +3616,26 @@ phase-boundary hygiene.
     Current state (as of Phase 4
     Step 2):
 
+    - Note from Step 1 (the planted
+      answer's strength on the demo
+      world, seed `20260916`): the
+      oracle ratios (observed / the
+      court-centered oracle
+      `sum(p0)`) rank the centered
+      effects with Spearman 0.944
+      (release), 0.846 (365-day new
+      case), and 0.933 (365-day
+      failure to appear) over the
+      judges with at least 30
+      members; the raw 365-day
+      new-case rates rank them at
+      0.716. The adjusted ratios can
+      only approach the oracle's, so
+      set the `recovery` tolerances
+      below those values, and expect
+      the raw-versus-adjusted margin
+      on the new-case target to be
+      about 0.1 at best.
     - `data/reference/outcome_model.yaml`
       (version 1,
       `expected-logit-v1`) defines
@@ -7194,7 +7245,7 @@ workflow above maps directly to the corresponding row below.
 
 | Step | Scope                                          | Model    | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | -------- | ----------- | -------------- | -------- | ---- | ----------- |
-| 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |

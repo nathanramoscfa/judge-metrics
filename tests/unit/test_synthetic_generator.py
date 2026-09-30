@@ -319,7 +319,8 @@ def test_every_name_token_is_listed(dataset: Dataset) -> None:
         name = row["full_name"]
         assert is_listed_name(name), name
         assert normalize_person_name(name) == name.lower()
-        assert not name.startswith(("Hon", "Judge"))
+        # No honorific as the first token ("Honeydew" is a listed colour word).
+        assert name.split()[0].rstrip(".") not in {"Hon", "Honorable", "Judge"}
 
 
 def test_names_are_unique_except_planted_collisions(dataset: Dataset) -> None:
@@ -502,7 +503,7 @@ def test_ambiguous_pairs_are_distinct_persons(dataset: Dataset) -> None:
 # A tiny-scale seed (found by tests/property) whose world holds no two unused
 # persons in disjoint courts: the same-date-of-birth plant falls back to a
 # same-court pair rather than failing the generation.
-TINY_SEED_WITHOUT_DISJOINT_COURTS = 511
+TINY_SEED_WITHOUT_DISJOINT_COURTS = 117
 
 
 def test_tiny_seed_without_disjoint_courts_plants_a_same_court_ambiguous_pair(

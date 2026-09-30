@@ -2,10 +2,12 @@
 """The in-memory world the generator builds before anything is written.
 
 Plain mutable dataclasses: ``world.py`` fills courts, judges, and persons,
-``cases.py`` fills cases with their children, ``edge_cases.py`` mutates and
-marks them, ``truth.py`` reads them, and ``writer.py`` renders them. Every
-timestamp is a timezone-aware UTC ``datetime``; every identifier is a
-formatted counter assigned by ``assign_identifiers`` in a fixed order.
+``effects.py`` draws the judges' planted effects, ``cases.py`` fills cases
+with their children and records on each case what its draws knew
+(``Draws``, GENERATOR_VERSION 3), ``edge_cases.py`` mutates and marks them,
+``truth.py`` reads them, and ``writer.py`` renders them. Every timestamp is
+a timezone-aware UTC ``datetime``; every identifier is a formatted counter
+assigned by ``assign_identifiers`` in a fixed order.
 """
 
 from __future__ import annotations
@@ -57,12 +59,19 @@ class Judge:
     given: str
     family: str
     services: list[ServiceRecord] = field(default_factory=list)
-    # Latent tendencies (Phase 4's planted effects): added to the recognizance
-    # share, added to the judicial-dismissal share, multiplied into
-    # incarceration lengths.
-    release_bias: float = 0.0
+    # Latent tendencies: added to the judicial-dismissal share, multiplied
+    # into incarceration lengths (the ``world`` stream).
     dismissal_bias: float = 0.0
     severity_bias: float = 1.0
+    # The planted effects (GENERATOR_VERSION 3, the ``effects`` stream;
+    # docs/SYNTHETIC_DATA.md "Planted effects"): a shift of the release
+    # decision's log-odds, of the next filing's skew exponent, and of the
+    # failure-to-appear log-odds for the cases the judge releases, and the
+    # judge's preference for high-risk dockets.
+    leniency: float = 0.0
+    new_case_effect: float = 0.0
+    fta_effect: float = 0.0
+    docket_tilt: float = 0.0
 
     @property
     def full_name(self) -> str:
@@ -104,6 +113,8 @@ class Person:
     propensity: float
     home_court: str
     dob_known: bool = True
+    # The restricted negative control (the ``attributes`` stream): feeds no draw.
+    synthetic_group: str = ""
     # Source participant ids by alias (0 = the primary id; a split person
     # carries alias 1 for the cases of its second court).
     participant_ids: dict[int, str] = field(default_factory=dict)
@@ -195,6 +206,81 @@ class Sentence:
     sentence_id: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class RiskFeatures:
+    """A case's observable features at its filing, at the bands Step 2's model adopts.
+
+    Every history feature counts the person's corpus records strictly before
+    the start of the filing day (``effects.risk_features``).
+    """
+
+    lead_severity: str
+    charge_count: int  # 1, 2, 3 (3 = three or more)
+    prior_cases: int  # 0..3 (3 = three or more)
+    prior_convictions: int  # 0..2 (2 = two or more)
+    prior_failures_to_appear: int  # 0..1 (1 = one or more)
+    pending_case: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseDraw:
+    """A judicial discretionary release decision's probability without the judge's effect.
+
+    ``observed_share`` is the chance a release the draw grants is still a
+    release in the export (a release time at or after the corpus end is
+    shown as detained).
+    """
+
+    judge_code: str
+    base_logit: float
+    observed_share: float
+
+
+@dataclass(frozen=True, slots=True)
+class FtaDraw:
+    """A released case's failure-to-appear draw: its log-odds without the judge and its date.
+
+    The date is ``fixed_at`` (the first hearing the rule picks) or uniform
+    over the days ``first_day``..``last_day`` at a business-hour minute;
+    all three ``None`` means no day could hold one (the probability is 0).
+    """
+
+    judge_code: str | None
+    base_logit: float
+    fixed_at: datetime | None
+    first_day: date | None
+    last_day: date | None
+
+
+@dataclass(frozen=True, slots=True)
+class FilingDraw:
+    """How a later case's filing day was drawn, from the previous case's release.
+
+    The day is ``earliest + int(U ** exponent * (span + 1))`` with
+    ``exponent = max(floor, base_exponent + effect)``, the effect being the
+    releasing judge's ``new_case_effect`` (``judge_code``; ``None`` when the
+    previous case was not released by a judge), then a business-hour minute.
+    """
+
+    previous: Case
+    judge_code: str | None
+    base_exponent: float
+    earliest: date
+    span: int
+
+
+@dataclass(slots=True)
+class Draws:
+    """What the case's draws knew: the oracle ``truth.py`` computes probabilities from."""
+
+    features: RiskFeatures
+    risk_index: float
+    filing_age_band: str
+    release: ReleaseDraw | None = None
+    fta: FtaDraw | None = None
+    filing: FilingDraw | None = None
+
+
 @dataclass(slots=True)
 class Case:
     person: Person
@@ -215,6 +301,8 @@ class Case:
     sentence: Sentence | None = None
     # Set by the edge-case planter: the writer emits a second, reformatted copy.
     duplicate: bool = False
+    # Set by the case simulation (GENERATOR_VERSION 3); never written to source/.
+    draws: Draws | None = None
 
     @property
     def participant_id(self) -> str:

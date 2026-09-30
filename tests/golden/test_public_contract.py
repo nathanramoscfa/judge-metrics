@@ -14,7 +14,11 @@ Step 3) is the metrics surface: no response of ``/metrics``,
 or ``/metrics/{id}/provenance`` over the golden observations carries a
 ``public_person_key``, a ``person_id``, or a 64-character hex string
 other than the artifact and snapshot hashes, and every suppressed
-observation leaves the API with its numbers null.
+observation leaves the API with its numbers null. The fifth (Phase 4
+Step 1) is the data itself: as the app role, no text or JSON column it can
+read anywhere in the golden database holds a participant id (``PT-`` and
+six digits) — the case party's key is its ordinal, and the restricted
+schema is out of the app role's reach altogether.
 """
 
 from __future__ import annotations
@@ -39,6 +43,8 @@ from tests.golden.conftest import RESTRICTED_NAMES, GoldenFixture, GoldenMetrics
 pytestmark = [pytest.mark.golden, pytest.mark.integration]
 
 OPENAPI_SNAPSHOT = REPO_ROOT / "docs" / "openapi.json"
+PARTICIPANT_ID = "PT-[0-9]{6}"
+TEXT_TYPES = ("text", "character varying", "character", "json", "jsonb")
 PUBLIC_KEY = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 HEX64 = re.compile(r"[0-9a-f]{64}")
 
@@ -92,6 +98,45 @@ def test_the_app_role_cannot_select_from_a_restricted_table(
             connection.execute(text(f"SELECT * FROM {table} LIMIT 1"))  # noqa: S608 - fixed name
         assert isinstance(caught.value.orig, InsufficientPrivilege), table
         assert "permission denied" in str(caught.value.orig)
+
+
+def test_no_app_readable_text_column_holds_a_participant_id(
+    golden_fixture: GoldenFixture, app_engine: Engine
+) -> None:
+    with app_engine.connect() as connection:
+        if connection.execute(text("SELECT current_user")).scalar() != "judgemetrics_app":
+            pytest.skip("the test database URL does not connect as judgemetrics_app")
+        columns = connection.execute(
+            text(
+                "SELECT c.table_schema, c.table_name, c.column_name "
+                "FROM information_schema.columns AS c "
+                "JOIN information_schema.tables AS t "
+                "  ON t.table_schema = c.table_schema AND t.table_name = c.table_name "
+                "WHERE t.table_type = 'BASE TABLE' "
+                "  AND c.table_schema NOT IN ('pg_catalog', 'information_schema') "
+                "  AND c.data_type = ANY(:types) "
+                "  AND has_schema_privilege(c.table_schema, 'USAGE') "
+                "  AND has_column_privilege("
+                "      quote_ident(c.table_schema) || '.' || quote_ident(c.table_name), "
+                "      c.column_name, 'SELECT') "
+                "ORDER BY 1, 2, 3"
+            ),
+            {"types": list(TEXT_TYPES)},
+        ).all()
+        scanned = {(schema, table) for schema, table, _ in columns}
+        assert ("public", "case_party") in scanned
+        assert ("public", "data_quality_issue") in scanned
+        assert not any(schema == "restricted" for schema, _ in scanned)
+        for schema, table, column in columns:
+            # Identifiers come from the catalog and are quoted; the pattern is bound.
+            found = connection.execute(
+                text(
+                    f'SELECT count(*) FROM "{schema}"."{table}" '  # noqa: S608 - catalog names
+                    f'WHERE "{column}"::text ~ :pattern'
+                ),
+                {"pattern": PARTICIPANT_ID},
+            ).scalar()
+            assert found == 0, f"{schema}.{table}.{column} holds a participant id"
 
 
 def test_every_golden_case_carries_public_keys_only(

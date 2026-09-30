@@ -31,11 +31,17 @@ created by the Alembic revisions under `alembic/versions/`:
   the snapshot pipeline step 13 published a run's impacted subjects from;
 - `0007_corrections_intake` — `GRANT INSERT` on `correction_request` to
   `judgemetrics_app` (and nothing else), the one write the public API
-  makes (`docs/API.md` "Corrections").
+  makes (`docs/API.md` "Corrections");
+- `0008_restricted_schema` — the PostgreSQL schema `restricted` with
+  `restricted.party_attribute` and grants that give the app role no
+  `USAGE`, and `case_party.source_row_id` rewritten to the party's ordinal
+  within its case (below, "The restricted schema").
 
 `uv run alembic check` must report no drift between the models and the
-head. Every table has a UUID `id` (`gen_random_uuid()` server default)
-and server-set `created_at` / `updated_at` (timezone-aware), except
+head; `alembic/env.py` sets `include_schemas` (filtered to `public` and
+`restricted`), so the check covers the restricted schema too. Every
+table has a UUID `id` (`gen_random_uuid()` server default) and
+server-set `created_at` / `updated_at` (timezone-aware), except
 `metric_observation_member`, whose `id` is a bigint identity and which
 carries no timestamps (a member row is immutable and lives with its
 observation).
@@ -51,7 +57,7 @@ observation).
 | `person`                       | Internal resolved person: `public_person_key` (the only public handle, `secrets.token_urlsafe(12)` assigned once at insert), `resolution_status` (`deterministic`, `rule`, `probabilistic`, `review`, or `merged`), `resolution_confidence`, `merged_into_person_id` (0004: set on a merged person, whose row stays as history and which every public query filters out). No name, no date of birth — ever. | `source_record_id` (0003) |
 | `person_identifier`            | Peppered sha256 hashes of a person's source identifiers by `identifier_type` (`source_participant_id`, `full_name`, `date_of_birth`, `name_dob`); `encrypted_value` NULL in Phase 2. **Restricted.** | `source_record_id`  |
 | `court_case`                   | The brief's `case` (reserved word): court, case number (raw and normalized), type, dates, status, `related_case_number_normalized` (0003). | `source_record_id`   |
-| `case_party`                   | A party to a case, optionally resolved to a person; `source_row_id` (0003).         | `source_record_id`            |
+| `case_party`                   | A party to a case, optionally resolved to a person; `source_row_id` (0003) is `<party_type>:<ordinal>` from 0008 — never a participant id. | `source_record_id` |
 | `judge_assignment`             | A judge's assignment to a case with an interval and confidence; `source_row_id`.    | `source_record_id`            |
 | `charge`                       | One charge against one person: statute, category, severity, filing, disposition, `disposition_actor` (0003); `source_row_id`. | `source_record_id` |
 | `court_event`                  | A dated event on a case with the acting `actor_type`; `source_row_id`.              | `source_record_id`            |
@@ -70,6 +76,7 @@ observation).
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
 | `correction_request`           | A public correction request (`POST /api/v1/corrections`): `target_type` (`judge`, `court`, `case`, `metric_observation`), `target_id`, `requester_contact` (Fernet ciphertext under `JUDGEMETRICS_CORRECTION_CONTACT_KEY`, never plaintext), `reason`, `supporting_material_path` (an optional http(s) URL), `status` (`received` at intake), `resolved_at`. **Restricted**: the app role inserts and never reads. | — |
 | `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
+| `restricted.party_attribute`   | A case party's restricted attribute (0008): `case_party_id` (→ `case_party`, `ON DELETE CASCADE`), `attribute` (a `restricted_attribute` value), `value` (a value of that kind). In the `restricted` schema, which the app role cannot use. | `source_record_id` |
 
 The `Source of provenance` column shows how every fact row traces to raw
 bytes: `source_record` → `ingest_run` → the immutable object in the raw
@@ -94,6 +101,7 @@ was computed from (Phase 3 Step 2 writes both; Step 3's
 | `person_identifier`| `(person_id, identifier_type, value_hash)`: one row per hash per person                         | `uq_person_identifier_person_type_hash`      |
 | `court_case`       | `(court_id, case_number_normalized)`                                                            | `court_case_number`                          |
 | `case_party`, `judge_assignment`, `charge`, `court_event`, `decision`, `sentence` | `(case_id, source_row_id)` — the source's own row id within the case | `uq_<table>_case_source_row` |
+| `restricted.party_attribute` | `(case_party_id, attribute)`                                                          | `uq_party_attribute_case_party_attribute`    |
 | `pretrial_release` | `decision_id`                                                                                   | unique column                                |
 | `justice_event`    | `(person_id, event_type, event_at, related_case_id)`, `NULLS NOT DISTINCT`                      | `uq_justice_event_natural`                   |
 | `entity_resolution_candidate` | `(entity_type, left_record_id, right_record_id, model_version)`, with `left_record_id < right_record_id` | `uq_er_candidate_pair_version`, `ck_entity_resolution_candidate_ordered_pair` |
@@ -172,7 +180,7 @@ stay free text until their registries exist; the FJC connector uses:
 ## Vocabularies
 
 The case-level vocabulary is versioned in
-`data/reference/case_vocabulary.yaml` (`version: 1`), loaded once by
+`data/reference/case_vocabulary.yaml` (`version: 2`), loaded once by
 `judgemetrics.normalization.vocabulary` (`yaml.safe_load`) and equal to
 the constants of `judgemetrics.synthetic.vocabulary` (unit test). Every
 connector maps its source values onto these kinds before a draft leaves
@@ -182,10 +190,22 @@ Kinds: `case_type`, `case_status`, `party_type`, `assignment_type`,
 `event_type`, `decision_type`, `judicial_discretion_classification`,
 `release_type`, `charge_disposition`, `severity`, `offense_category`,
 `justice_event_type`, `actor_type` (the brief's enum verbatim),
-`position`, `sentence_component`, `release_condition`. `unknown` is a
-listed value only where the brief allows an explicit unknown
-(`actor_type`, `judicial_discretion_classification`); the
-`unknown_category_measured` check counts it per field.
+`position`, `sentence_component`, `release_condition`, and (version 2,
+Phase 4 Step 1) the **restricted vocabularies** `restricted_attribute`
+(`age_band`, `synthetic_group`: the attributes `restricted.party_attribute`
+may hold), `age_band` (`18-24`, `25-34`, `35-44`, `45-54`, `55+`,
+`unknown`), and `synthetic_group` (`group_a`, `group_b`, `group_c`, the
+synthetic source's abstract negative control). A restricted vocabulary's
+values appear only in the `restricted` schema, are never a model feature
+(Step 2's specification reads the attribute names from
+`restricted_attribute`, so no module under `metrics/` names one), and are
+read only by the aggregate fairness analysis. `unknown` is a listed value
+only where the brief allows an explicit unknown (`actor_type`,
+`judicial_discretion_classification`) and in `age_band`, where it names an
+absent age (the synthetic source withholds the age with the date of
+birth); the `unknown_category_measured` check counts it per field.
+`normalization/age_bands.py` maps an age at filing (a bounded integer,
+0-130; anything else rejects the row) onto `age_band`.
 
 Phase 5's real-source connectors map onto this vocabulary and never
 extend it silently: adding, renaming, or removing a value bumps
@@ -204,11 +224,15 @@ extend it silently: adding, renaming, or removing a value bumps
 | `justice_event.event_type`              | `justice_event_type`                  |
 | `judge_service.position_type` (synthetic) | `position`                          |
 | `source.observable_outcomes` entries    | `justice_event_type`                  |
+| `restricted.party_attribute.attribute`  | `restricted_attribute`                |
+| `restricted.party_attribute.value`      | the kind the attribute names (`age_band`, `synthetic_group`) |
 
 ### Metric registry
 
 `data/reference/metric_registry.yaml` (`version: 1`,
-`methodology_version: "0.1"`) is the second versioned reference file:
+`methodology_version: "0.2"` since Phase 4 Step 1 deferred exposure by
+every incarceration term of the person) is the second versioned
+reference file:
 the contract every published number is computed against
 (`docs/METHODOLOGY.md` is rendered from it; `docs/ARCHITECTURE.md`
 "Metrics engine"). `judgemetrics.metrics.registry.load_registry` loads it
@@ -257,11 +281,20 @@ Restricted attributes never appear in any of these columns.
 
 ## Grants
 
-| Role                  | `person_identifier` | `correction_request`                          | Every other table                       |
-|-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
-| `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all |
+| Role                  | `person_identifier` | `correction_request`                          | The `restricted` schema (0008)          | Every other table                       |
+|-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|-----------------------------------------|
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
+| `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all, and by default privilege on later tables | all |
+
+`PUBLIC` holds nothing on `restricted` (revoked by 0008).
+`tests/integration/test_restricted_schema.py` proves the split in the
+scratch database and in the configured one: as the app role naming the
+table raises `InsufficientPrivilege` and `has_schema_privilege` answers
+false; the ingest role reads and writes it. `03-test-database.sql`, which
+reruns on every `uv run poe up`, revokes the app role's schema usage again
+whenever the schema exists. Creating the schema needs `CREATE` on the
+database, which the Compose init scripts grant the admin role.
 
 `tests/integration/test_api_corrections.py` proves the split: as the app
 role an `INSERT` succeeds and a `SELECT`, `UPDATE`, `DELETE`, or
@@ -308,4 +341,42 @@ source, window, and dimension and keep superseded rows as history, the
 published number to eligible events, as rows), and
 `source.coverage_start`, `coverage_end`, `observable_outcomes` (the
 window follow-up is censored at and the outcomes a source can document,
-which every connector must declare from Phase 5).
+which every connector must declare from Phase 5). Revision 0008 creates
+the `restricted` schema the root roadmap's data classification names for
+restricted attributes, with `restricted.party_attribute` (the brief lists
+no field for them: they are kept out of every public table by design),
+and changes the meaning of `case_party.source_row_id`: it was the
+source's participant id — a plaintext identifier in an app-readable
+column, the security finding Phase 4 Step 1 owns — and is now
+`<party_type>:<ordinal>`, the party's 1-based position within its case and
+party type in code-point order of the normalized participant ids (the
+order the migration ranked the old keys in, `COLLATE "C"`). The
+participant id reaches the database only as its peppered hash in
+`person_identifier`; a downgrade keeps the ordinal keys.
+
+## The restricted schema
+
+`restricted` is the PostgreSQL schema for the attributes the root
+roadmap classifies as restricted (ROADMAP.md "Data classification"):
+reachable by the ingest and admin roles only, never by the public API's
+role, never in a snapshot (the snapshot refuses every table of the schema
+by its schema, `metrics/snapshot.py` `refuse_restricted`), never in a log
+line (`age_band`, `synthetic_group`, and `attribute_value` are on the
+scrubber's denylist), and never a model feature. Its one table:
+
+| Column             | Type          | Notes |
+|--------------------|---------------|-------|
+| `id`               | UUID          | `gen_random_uuid()` |
+| `case_party_id`    | UUID          | → `public.case_party.id`, `ON DELETE CASCADE` |
+| `attribute`        | text          | a `restricted_attribute` value (`age_band`, `synthetic_group`) |
+| `value`            | text          | a value of the attribute's kind; the source's raw value (an age, a birth date) never reaches it |
+| `source_record_id` | UUID          | → `source_record.id`; indexed (`ix_party_attribute_source_record_id`) |
+| `created_at`, `updated_at` | timestamptz | server-set |
+
+The ingest runner writes one row per case party per attribute after the
+parties, upserting on `(case_party_id, attribute)` with the `IS DISTINCT
+FROM` guard, inside the ingest transaction. The synthetic connector
+publishes `age_band` (from `participants.csv`'s `age_at_filing`, blank →
+`unknown`) and `synthetic_group`. `RESTRICTED_SCHEMA_TABLES`
+(`db/models/__init__.py`) lists the schema's tables beside
+`RESTRICTED_TABLES`; the twenty-six `CANONICAL_TABLES` stay public.

@@ -21,7 +21,15 @@ import hashlib
 import random
 from collections.abc import Sequence
 
-STREAM_NAMES: tuple[str, ...] = ("world", "persons", "cases", "events", "edge_cases")
+STREAM_NAMES: tuple[str, ...] = (
+    "world",
+    "persons",
+    "cases",
+    "events",
+    "edge_cases",
+    "effects",
+    "attributes",
+)
 
 
 def derive_stream(seed: int, name: str) -> random.Random:
@@ -35,7 +43,16 @@ def derive_stream(seed: int, name: str) -> random.Random:
 class Streams:
     """One independent stream per stage of the simulation."""
 
-    __slots__ = ("cases", "edge_cases", "events", "persons", "seed", "world")
+    __slots__ = (
+        "attributes",
+        "cases",
+        "edge_cases",
+        "effects",
+        "events",
+        "persons",
+        "seed",
+        "world",
+    )
 
     def __init__(self, seed: int) -> None:
         self.seed = seed
@@ -44,6 +61,10 @@ class Streams:
         self.cases = derive_stream(seed, "cases")
         self.events = derive_stream(seed, "events")
         self.edge_cases = derive_stream(seed, "edge_cases")
+        # GENERATOR_VERSION 3: the judges' planted effects, and the restricted
+        # attributes no other draw reads (``synthetic_group``).
+        self.effects = derive_stream(seed, "effects")
+        self.attributes = derive_stream(seed, "attributes")
 
 
 def uniform(rng: random.Random, low: float, high: float) -> float:

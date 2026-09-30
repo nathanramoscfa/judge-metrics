@@ -9,13 +9,15 @@ before its exposure start; a followed member is a cohort member and
 monotone non-decreasing in the window for a fixed cohort; ``1 - S(w)`` is
 in ``[0, 1]``, monotone non-decreasing in ``w``, and equals the
 fixed-window rate when every member is followed for ``w``; the exposure
-start is never before the index time and equals ``sentence_at +
-incarceration_days`` when the sentence incarcerates; a statutory release
-never appears in a judge's attributed decisions; and, against
-``synthetic/truth.py`` on the same world, the pretrial-release cohort,
-followed counts, and the ``failure_to_appear`` / ``new_case`` /
-``reconviction`` numerators per subject and window are equal (the truth
-is the oracle). A world builds in about a millisecond, so every example
+start is never before the index time and is the first instant at or
+after it (after the disposition kind's own term) that no incarceration
+term of the person covers, with ``deferral_days`` the days of the terms
+applied (methodology 0.2); a statutory release never appears in a judge's
+attributed decisions; and, against ``synthetic/truth.py`` on the same
+world, every index kind's cohort, followed counts, and the
+``failure_to_appear`` / ``new_case`` / ``reconviction`` numerators per
+subject and window are equal (the truth is the oracle, with its own
+implementation of the any-term deferral). A world builds in about a millisecond, so every example
 builds its own; the window invariants are checked in one pass per cohort
 because computing the cohorts dominates; the oracle test is derandomized
 so CI is reproducible.
@@ -23,7 +25,8 @@ so CI is reproducible.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Any
 
 import polars as pl
 import pytest
@@ -174,43 +177,54 @@ def test_window_and_survival_invariants_hold_for_every_cohort(seed: int) -> None
                         assert point.events == rate.numerator
 
 
+def _reference_start(
+    row: dict[str, Any], kind: str, terms: list[tuple[str, str, datetime, datetime, int]]
+) -> tuple[datetime, int | None]:
+    """The any-term rule written out: own term first (disposition), then every containing term."""
+    start: datetime = row["index_at"]
+    total = 0
+    if kind == DISPOSITION:
+        own = [
+            (end, days)
+            for case_id, person_id, _, end, days in terms
+            if case_id == row["case_id"] and person_id == row["person_id"]
+        ]
+        if own:
+            start, total = max(own)
+    person = [(begin, end, days) for _, who, begin, end, days in terms if who == row["person_id"]]
+    while containing := [term for term in person if term[0] <= start < term[1]]:
+        _, start, days = max(containing, key=lambda term: (term[1], term[2]))
+        total += days
+    return start, (total or None)
+
+
 @given(seed=seeds)
-def test_exposure_starts_at_the_index_unless_a_sentence_incarcerates(seed: int) -> None:
+def test_exposure_is_deferred_past_every_incarceration_term_of_the_person(seed: int) -> None:
     world, frame = _world_and_frame(seed)
-    terms = frame.sentences.select(
-        "id", "case_id", "person_id", "sentence_at", "incarceration_days"
-    )
+    terms = [
+        (case_id, person_id, at, at + timedelta(days=days), days)
+        for case_id, person_id, at, days in frame.sentences.select(
+            "case_id", "person_id", "sentence_at", "incarceration_days"
+        ).iter_rows()
+        if days is not None and days > 0
+    ]
     for subject in _subjects(world):
         for kind in INDEX_KINDS:
             cohort = _cohort(frame, kind, subject)
             assert (cohort["exposure_start"] >= cohort["index_at"]).all(), (seed, subject, kind)
             for row in cohort.iter_rows(named=True):
-                if kind == PRETRIAL_RELEASE:
-                    assert row["exposure_start"] == row["index_at"]
-                    assert row["deferral_days"] is None
-                    continue
-                if kind == SENTENCE:
-                    own = terms.filter(pl.col("id") == row["member_id"])
-                else:
-                    own = terms.filter(
-                        (pl.col("case_id") == row["case_id"])
-                        & (pl.col("person_id") == row["person_id"])
-                    )
-                incarcerating = own.filter(
-                    pl.col("incarceration_days").is_not_null() & (pl.col("incarceration_days") > 0)
+                expected = _reference_start(row, kind, terms)
+                assert (row["exposure_start"], row["deferral_days"]) == expected, (
+                    seed,
+                    subject,
+                    kind,
+                    row["member_id"],
                 )
-                if incarcerating.height == 0:
-                    assert row["exposure_start"] == row["index_at"]
-                    assert row["deferral_days"] is None
-                else:
-                    ends = [
-                        sentence_at + timedelta(days=days)
-                        for sentence_at, days in incarcerating.select(
-                            "sentence_at", "incarceration_days"
-                        ).iter_rows()
-                    ]
-                    assert row["exposure_start"] == max(ends)
-                    assert row["deferral_days"] in incarcerating["incarceration_days"].to_list()
+                # No term of the person covers the exposure start.
+                assert not any(
+                    who == row["person_id"] and begin <= row["exposure_start"] < end
+                    for _, who, begin, end, _ in terms
+                ), (seed, subject, kind)
 
 
 @given(seed=seeds)
@@ -240,11 +254,23 @@ def test_pretrial_release_windows_equal_the_truth_on_the_same_world(seed: int) -
     end = frame.coverage_end_exclusive_at
     timelines = build_timelines(world)
     for subject in _subjects(world):
-        expected = (
+        block = (
             judge_metrics(world, timelines, subject.subject_id)
             if subject.subject_type == "judge"
             else court_metrics(world, timelines, subject.subject_id)
-        )["pretrial"]
+        )
+        expected = block["pretrial"]
+        # Every index kind's windowed cohort, under the any-term deferral on both sides.
+        for kind in (DISPOSITION, SENTENCE):
+            kind_cohort = _cohort(frame, kind, subject)
+            for outcome in TRUTH_OUTCOMES:
+                firsts = first_outcomes(frame, kind_cohort, outcome)
+                for rate in fixed_window_rates(firsts, end):
+                    window = block["index_events"][kind]["windows"][str(rate.window_days)]
+                    truth_rate = window[f"{outcome}_rate"]
+                    assert rate.eligible == window["cohort"], (seed, subject, kind, rate)
+                    assert rate.followed == window["followed"], (seed, subject, kind, rate)
+                    assert rate.numerator == truth_rate["numerator"], (seed, subject, kind)
         cohort = _cohort(frame, PRETRIAL_RELEASE, subject)
         assert cohort.height == expected["released_count"], (seed, subject)
         decisions = attributed_decisions(frame, PRETRIAL_RULE, subject)

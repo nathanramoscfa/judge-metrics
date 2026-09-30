@@ -130,6 +130,14 @@ def _courts_of(world: World, person: Person) -> set[str]:
     return {case.court_code for case in world.cases if case.person is person}
 
 
+def _courts_by_person(world: World) -> dict[str, set[str]]:
+    """``_courts_of`` for every person in one pass over the cases."""
+    courts: dict[str, set[str]] = {person.true_id: set() for person in world.persons}
+    for case in world.cases:
+        courts[case.person.true_id].add(case.court_code)
+    return courts
+
+
 def _expectation(left: str, right: str, decision: str, reason: str) -> ResolutionExpectation:
     first, second = sorted((left, right))
     return ResolutionExpectation(first, second, decision, reason)
@@ -177,7 +185,8 @@ def _ambiguous_pair(
     world: World, rng: random.Random, available: list[Person], *, same_dob: bool
 ) -> tuple[Person, Person] | None:
     """Two unused persons; with ``same_dob`` their cases must sit in disjoint courts."""
-    courts = {p.true_id: _courts_of(world, p) for p in available}
+    everyone = _courts_by_person(world)
+    courts = {p.true_id: everyone[p.true_id] for p in available}
     for first in shuffled(rng, available):
         for candidate in shuffled(rng, [p for p in available if p is not first]):
             if not same_dob or not (courts[candidate.true_id] & courts[first.true_id]):

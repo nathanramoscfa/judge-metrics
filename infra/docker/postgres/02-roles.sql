@@ -8,10 +8,14 @@
 --   judgemetrics_app     the public API: read-only on public tables
 --   judgemetrics_ingest  the ingest runner: reads and writes public tables
 --   judgemetrics_admin   migrations and admin tools: full control of the
---                        public schema (not a superuser)
+--                        public schema and CREATE on the database, which
+--                        revision 0008 needs for the `restricted` schema
+--                        (not a superuser)
 --
--- The `restricted` schema (Phase 5) is granted separately when it is created;
--- judgemetrics_app never receives access to it.
+-- The `restricted` schema is created and granted by migration 0008
+-- (alembic/versions/0008_restricted_schema.py): USAGE for judgemetrics_ingest
+-- and judgemetrics_admin only. judgemetrics_app never receives access to it,
+-- and nothing below grants on it (every grant here is IN SCHEMA public).
 
 \set ON_ERROR_STOP on
 \getenv app_password JUDGEMETRICS_APP_DB_PASSWORD
@@ -26,6 +30,8 @@ CREATE ROLE judgemetrics_admin LOGIN PASSWORD :'admin_password';
 
 GRANT CONNECT ON DATABASE :"db_name" TO judgemetrics_app, judgemetrics_ingest, judgemetrics_admin;
 GRANT TEMPORARY ON DATABASE :"db_name" TO judgemetrics_admin;
+-- Migrations create schemas (revision 0008: `restricted`) as the admin role.
+GRANT CREATE ON DATABASE :"db_name" TO judgemetrics_admin;
 
 -- Admin: full control of the public schema (DDL for migrations).
 GRANT ALL ON SCHEMA public TO judgemetrics_admin;

@@ -172,11 +172,11 @@ def test_coverage_needs_at_most_three_statements(
     assert all("person_identifier" not in statement for statement in counter.statements)
     assert _count(counted, "/api/v1/search", q=GOLDEN_CASE) <= 2
     # A one-word query costs the same two: the word threshold and the union.
-    assert _count(counted, "/api/v1/search", q="wingnut") <= 2
+    assert _count(counted, "/api/v1/search", q="warta") <= 2
     # The setting name is a bound parameter; the union itself names the function and operator.
     assert any("set_config" in s for s in counter.statements)
     assert any("word_similarity(" in s and "<%" in s for s in counter.statements)
-    assert _count(counted, "/api/v1/judges", q="wingnut") <= 2
+    assert _count(counted, "/api/v1/judges", q="warta") <= 2
 
 
 # --- Phase 3 Step 3: metrics, compare, provenance, corrections --------------------------

@@ -10,6 +10,10 @@ entity_resolution_candidate, metric_definition, metric_observation,
 data_quality_issue, correction_request — the append-only audit_log the
 brief's security requirements ask for (revision 0004), and the metrics
 engine's metric_snapshot and metric_observation_member (revision 0005).
+
+Beside them, the ``restricted`` PostgreSQL schema (revision 0008) holds
+``restricted.party_attribute``; its tables are listed in
+``RESTRICTED_SCHEMA_TABLES``, not among the twenty-six public tables.
 """
 
 from judgemetrics.db.base import Base
@@ -53,6 +57,7 @@ from judgemetrics.db.models.provenance import (
 )
 from judgemetrics.db.models.reference import Court, Judge, JudgeService, Jurisdiction
 from judgemetrics.db.models.resolution import EntityResolutionCandidate
+from judgemetrics.db.models.restricted import RESTRICTED_SCHEMA, PartyAttribute
 
 CANONICAL_TABLES: tuple[str, ...] = (
     "jurisdiction",
@@ -89,11 +94,16 @@ CANONICAL_TABLES: tuple[str, ...] = (
 RESTRICTED_TABLES: frozenset[str] = frozenset(
     {"person_identifier", "correction_request", "entity_resolution_candidate", "audit_log"}
 )
+# Tables of the ``restricted`` schema (revision 0008): the app role has no
+# ``USAGE`` on the schema at all, so it cannot even name them.
+RESTRICTED_SCHEMA_TABLES: frozenset[str] = frozenset({"party_attribute"})
 
 __all__ = [
     "CANONICAL_TABLES",
     "MEMBER_KINDS",
     "PG_ENUM_NAMES",
+    "RESTRICTED_SCHEMA",
+    "RESTRICTED_SCHEMA_TABLES",
     "RESTRICTED_TABLES",
     "SYNTHETIC_SOURCE_TYPE",
     "ActorType",
@@ -123,6 +133,7 @@ __all__ = [
     "MetricObservation",
     "MetricObservationMember",
     "MetricSnapshot",
+    "PartyAttribute",
     "Person",
     "PersonIdentifier",
     "PretrialRelease",

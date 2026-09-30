@@ -14,7 +14,10 @@ is the sha256 over the sorted ``<table>:<sha256>`` lines. The directory
 is created with ``mkdir(exist_ok=False)`` and never overwritten: an
 export whose hash already exists reuses the directory. No restricted
 table is read (``person_identifier``, ``audit_log``,
-``entity_resolution_candidate``, ``correction_request``), the persons
+``entity_resolution_candidate``, ``correction_request``), no table of the
+``restricted`` schema is ever exported — ``refuse_restricted`` checks every
+table the export reads by its schema, through ``RESTRICTED_SCHEMA`` from
+``judgemetrics.db.models``, so this module never names one — the persons
 file holds ids only, and every id is the canonical UUID rendered as text
 (Polars has no UUID type; the frame is generic over the id dtype).
 
@@ -56,7 +59,7 @@ import hashlib
 import json
 import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from enum import Enum
@@ -66,12 +69,13 @@ from typing import Any, Self
 
 import duckdb
 import polars as pl
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from judgemetrics import __version__
 from judgemetrics.config import Settings
-from judgemetrics.db.models import Base
+from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.frame import SCHEMAS, Frame
 from judgemetrics.metrics.windows import ANY_CASE_OUTCOMES
@@ -221,6 +225,22 @@ JUDGE = Base.metadata.tables["judge"]
 COURT = Base.metadata.tables["court"]
 SOURCE = Base.metadata.tables["source"]
 SOURCE_RECORD = Base.metadata.tables["source_record"]
+# Every table ``_export_rows`` reads: ``refuse_restricted`` checks them all.
+EXPORTED_TABLES: tuple[sa.Table, ...] = (
+    COURT_CASE,
+    JUDGE_ASSIGNMENT,
+    CHARGE,
+    DECISION,
+    PRETRIAL_RELEASE,
+    SENTENCE,
+    COURT_EVENT,
+    JUSTICE_EVENT,
+    PERSON,
+    JUDGE,
+    COURT,
+    SOURCE,
+    SOURCE_RECORD,
+)
 
 
 class SnapshotError(RuntimeError):
@@ -655,15 +675,25 @@ def snapshot_root(settings: Settings) -> Path:
     return Path(settings.snapshot_dir).resolve()
 
 
+def refuse_restricted(tables: Iterable[sa.Table]) -> None:
+    """Raise ``SnapshotError`` for any table of the ``restricted`` schema, by its schema."""
+    for table in tables:
+        if table.schema == RESTRICTED_SCHEMA:
+            msg = f"the snapshot never exports a table of the {RESTRICTED_SCHEMA} schema"
+            raise SnapshotError(msg)
+
+
 def export_snapshot(session: Session, settings: Settings, label: str | None = None) -> SnapshotRef:
     """Export the canonical tables to Parquet under the content hash; reuse an existing hash.
 
     Reads through ``session`` (inside the ingest transaction at step 13,
     so the run's own rows are included). ``label`` is recorded on the
     ``metric_snapshot`` row by the publisher, never in the manifest, so a
-    label never changes the hash.
+    label never changes the hash. Every table read is checked against the
+    ``restricted`` schema first (``refuse_restricted``).
     """
     del label  # the publisher records it on the metric_snapshot row
+    refuse_restricted(EXPORTED_TABLES)
     root = snapshot_root(settings)
     root.mkdir(parents=True, exist_ok=True)
     frames = _export_rows(session)

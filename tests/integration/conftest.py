@@ -169,13 +169,27 @@ class GoldenFixture:
     jurisdiction_id: uuid.UUID
 
 
+# The entity types of the run-level issues only a case-level source produces.
+CASE_LEVEL_ISSUE_ENTITIES = ("decision", "court_event", "charge")
+
+
 def purge_source(session: Session, name: str) -> None:
     """Delete every row derived from source ``name`` (FK order), and the source itself.
 
     Resolution bookkeeping goes first: candidates, then the merge pointers
     (a self reference with RESTRICT) before the person rows. ``audit_log``
     rows cannot be deleted (append-only trigger) and are left as history.
+    Run-level data-quality issues (``unknown_category_measured``) carry no
+    source record, so they are matched by the case-level entity types only a
+    case-level source produces; left behind, they leaked into every later
+    module's and session's issue counts.
     """
+    session.execute(
+        delete(DataQualityIssue).where(
+            DataQualityIssue.source_record_id.is_(None),
+            DataQualityIssue.entity_type.in_(CASE_LEVEL_ISSUE_ENTITIES),
+        )
+    )
     source_id = session.scalar(select(Source.id).where(Source.name == name))
     if source_id is None:
         return

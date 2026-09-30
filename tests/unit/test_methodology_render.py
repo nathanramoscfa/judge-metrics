@@ -71,7 +71,7 @@ def test_document_shape_and_width() -> None:
     ):
         assert f"\n{heading}\n" in document, heading
     registry = load_registry()
-    assert f"Registry version {registry.version}; methodology version 0.1" in document
+    assert f"Registry version {registry.version}; methodology version 0.2" in document
     metrics = _section(document, "Metrics")
     for metric in registry.metrics.values():
         assert f"\n### {metric.name}\n" in metrics, metric.slug
@@ -88,7 +88,9 @@ def test_document_shape_and_width() -> None:
         "never a zero",
     ):
         assert phrase in semantics, phrase
-    assert "- 0.1 - first registry" in _section(document, "Methodology changelog")
+    changelog = _section(document, "Methodology changelog")
+    assert "- 0.1 - first registry" in changelog
+    assert "- 0.2 - Exposure is deferred by every incarceration term" in changelog
 
 
 def test_known_limitations_are_the_briefs_warnings_verbatim() -> None:

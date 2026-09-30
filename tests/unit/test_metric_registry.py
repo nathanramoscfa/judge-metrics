@@ -127,7 +127,7 @@ def test_the_committed_registry_loads_and_carries_the_required_slugs() -> None:
         "# data/reference/metric_registry.yaml\n"
     )
     assert registry.version == 1
-    assert registry.methodology_version == "0.1"
+    assert registry.methodology_version == "0.2"
     assert REQUIRED_SLUGS <= set(registry.metrics)
     assert {metric.kind for metric in registry.metrics.values()} == set(KINDS)
     assert registry.suppression.default_threshold == 10
@@ -265,6 +265,6 @@ def test_definition_rows_carry_the_published_fields_only() -> None:
         "assignment_gate": "deciding_judge",
     }
     assert row["windows_days"] == list(WINDOWS_DAYS)
-    assert row["registry_version"] == 1 and row["methodology_version"] == "0.1"
+    assert row["registry_version"] == 1 and row["methodology_version"] == "0.2"
     assert "population" not in row and "counted" not in row and "truth_note" not in row
     assert set(row) == {"slug", "version", *registry_module.SUBSTANTIVE_COLUMNS}

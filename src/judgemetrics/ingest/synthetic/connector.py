@@ -9,7 +9,8 @@ generate`` wrote: ``manifest.json``, ``source/``, and ``truth/``, of which
 plain relative path inside that directory. ``load_context`` (the runner
 calls it with every artifact of the run before anything is parsed) checks
 each source file's sha256 against the manifest and fails the run on
-drift, then builds the cross-row lookups ``normalize`` needs and keeps
+drift, then builds the cross-row lookups ``normalize`` needs (courts,
+judges, the participants' cases, and each party's ordinal) and keeps
 the manifest's ``corpus`` dates, which ``coverage_window`` (the
 ``SupportsCoverage`` hook) reports as the source's coverage window.
 ``validate_raw`` checks the manifest's ``generator_version``, that it
@@ -60,6 +61,7 @@ from judgemetrics.ingest.synthetic.schema import (
     EXPECTED_HEADERS,
     JUDGES_FILE,
     MANIFEST_FILE,
+    PARTICIPANTS_FILE,
     RECORD_TYPE_MANIFEST,
     SOURCE_DIR,
     SOURCE_FILES,
@@ -105,7 +107,9 @@ def resolve_inside(root: Path, name: str) -> Path:
 @register
 class SyntheticConnector:
     source_id = sources.SOURCE_ID
-    parser_version = "1"
+    # "2" (Phase 4 Step 1): ordinal party keys and the restricted attributes,
+    # so artifacts recorded under "1" are parsed again.
+    parser_version = "2"
     source_info = sources.SOURCE_INFO
 
     def __init__(
@@ -187,6 +191,7 @@ class SyntheticConnector:
             _rows(by_id[artifact_id(COURTS_FILE)], COURTS_FILE),
             _rows(by_id[artifact_id(JUDGES_FILE)], JUDGES_FILE),
             _rows(by_id[artifact_id(CHARGES_FILE)], CHARGES_FILE),
+            _rows(by_id[artifact_id(PARTICIPANTS_FILE)], PARTICIPANTS_FILE),
         )
         self._context_loaded = True
         try:

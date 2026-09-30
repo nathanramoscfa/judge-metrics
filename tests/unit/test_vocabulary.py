@@ -114,6 +114,31 @@ def test_unknown_is_allowed_only_where_the_brief_allows_it() -> None:
     assert vocabulary.allows_unknown("actor_type")
     assert vocabulary.allows_unknown("judicial_discretion_classification")
     assert not vocabulary.allows_unknown("case_type")
+    # Version 2: the restricted age band names an absent age explicitly.
+    assert vocabulary.allows_unknown("age_band")
+    assert [kind for kind in vocabulary.kinds() if vocabulary.allows_unknown(kind)] == [
+        "judicial_discretion_classification",
+        "actor_type",
+        "age_band",
+    ]
+
+
+def test_the_restricted_vocabularies_name_the_restricted_attributes() -> None:
+    assert vocabulary.version() == 2
+    assert vocabulary.values("restricted_attribute") == ("age_band", "synthetic_group")
+    for kind in vocabulary.values("restricted_attribute"):
+        assert vocabulary.values(kind), kind
+    assert vocabulary.values("age_band") == ("18-24", "25-34", "35-44", "45-54", "55+", "unknown")
+    assert vocabulary.values("synthetic_group") == ("group_a", "group_b", "group_c")
+
+
+def test_the_connector_and_the_generator_band_every_age_alike() -> None:
+    from judgemetrics.normalization.age_bands import age_band
+    from judgemetrics.synthetic.vocabulary import age_band_of
+
+    for age in [None, *range(0, 131)]:
+        assert age_band(age) == age_band_of(age), age
+        assert vocabulary.is_known("age_band", age_band(age)), age
     assert vocabulary.require_or_unknown("actor_type", "") == UNKNOWN
     assert vocabulary.require_or_unknown("actor_type", "judge") == "judge"
     with pytest.raises(NormalizationError):

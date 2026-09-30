@@ -782,6 +782,77 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   items 6–7 and the Playwright suites need `dev-api` and `dev-web`
   running and report `SKIP` otherwise. GitHub's required-checks
   endpoint is `PATCH …/protection/required_status_checks`.
+- Planted effects and the restricted schema (Phase 4 Step 1,
+  docs/SYNTHETIC_DATA.md "Planted effects", docs/DATA_MODEL.md "The
+  restricted schema", docs/ARCHITECTURE.md "Restricted schema"):
+  `GENERATOR_VERSION` and `TRUTH_VERSION` are `3`. `synthetic/effects.py`
+  holds every functional form and constant (release and failure to appear
+  logistic in the banded features, the next filing's skew exponent `k =
+  max(0.25, 0.6 + 3.0·R + 2·propensity + b[band] + effect)`, the docket
+  tilts ordered inversely to the new-case effects per court) and the
+  exact window arithmetic; the `effects` and `attributes` streams are new
+  (`STREAM_NAMES`), and `build_dataset(seed, spec, streams=)` lets a test
+  re-seed one. The risk term in the exponent is a documented departure
+  from the step's literal formula: without it the raw new-case rates
+  ranked the effects as well as any adjustment could. Risk features are
+  read from rows strictly before 00:00 UTC of the filing day — the
+  instant the frame's `cases.filed_at` carries — so Step 2's history
+  features must use the same instant. Every simulated case records what
+  its draws knew (`Case.draws`: `ReleaseDraw`, `FtaDraw`, `FilingDraw`),
+  and `truth.compute_effects` turns those into `truth/effects.json`
+  (per-judge and per-court aggregates only): `p` with the judge's effect,
+  `p0` with the decision-weighted mean effect of the case's court,
+  other cases' outcomes entering as realized, so the oracle is exact for
+  the draws a judge's effect enters and unbiased in total. Calibrated on
+  the demo seed (release ρ 0.944, new case 0.846, failure to appear
+  0.933; raw new-case ρ 0.716); `DEMO` keeps its size. Changing any
+  constant changes every draw after it, so a recalibration re-runs
+  `tests/unit/test_synthetic_effects.py` and regenerates the golden
+  fixture. `edge_cases._ambiguous_pair` indexes the persons' courts in
+  one pass (identical output; the demo world builds in under a second).
+  The `tiny` seed that exercises the same-court ambiguous fallback is now
+  117. Exposure (methodology `0.2`, `metrics/exposure.py` and
+  `truth.deferred_start` independently): the disposition kind first moves
+  to its own case's term end, then every kind moves past each
+  incarceration term of the person that contains the start (the one
+  ending last), `deferral_days` totalling the terms applied; a literal
+  "contains" rule alone would have dropped the disposition kind's own
+  term, because a sentence always follows its disposition. The registry's
+  eighteen eligibility sentences that restated the old rule were
+  corrected in place without an entry or registry bump (`version` stays
+  1; `sync_definitions` updates the rows in place, as it does for the
+  `methodology_version`). Revision 0008 creates the `restricted` schema
+  (`USAGE` for the ingest and admin roles only, `PUBLIC` revoked, no app
+  grant, default privileges for the migrating role and the admin role)
+  with `restricted.party_attribute`, turns on `include_schemas` (filtered
+  to `public` and `restricted`), and rewrites `case_party.source_row_id`
+  to `<party_type>:<ordinal>` in `COLLATE "C"` order of the old key
+  (dropping and recreating the unique index around the update); a
+  downgrade keeps the ordinal keys. Creating a schema needs `CREATE` on
+  the database: `02-roles.sql` grants it to the admin role on a fresh
+  volume and the rerunning `03-test-database.sql` on an existing one (so
+  `uv run poe up` must precede `uv run poe migrate` once), and the latter
+  revokes the app role's usage of `restricted` whenever it exists. The
+  model constants are `RESTRICTED_SCHEMA` and `RESTRICTED_SCHEMA_TABLES`;
+  `Base.metadata.tables` keys the table `restricted.party_attribute`. The
+  snapshot refuses any table of that schema by its schema
+  (`refuse_restricted`), never by name, so no module under `metrics/`
+  names a restricted attribute (the unit test and `verify_phase03.py`
+  check 9 glob `metrics/**/*.py`). The connector (`parser_version` "2")
+  maps `age_at_filing` through `normalization/age_bands.py` (a bounded
+  integer 0-130, blank → `unknown`; the generator's `age_band_of` is a
+  separate copy held equal by test) and publishes one
+  `PartyAttributeDraft` per attribute, whose `repr` withholds the value;
+  the runner upserts them after the parties and rejects one whose party
+  is not in the run (`unresolved_party`). Vocabulary `version: 2` adds the
+  restricted kinds; `age_band` is the third kind that lists `unknown`.
+  The scrubber denylist gained `age_band`, `synthetic_group`, and
+  `attribute_value`. `verify_phase03.py` check 14 reads both versions from
+  the source constants (an earlier phase's check must never fail on a
+  later bump). Test infrastructure: `purge_source` also removes the
+  run-level (`source_record_id` NULL) issues of the case-level entity
+  types, which no purge reached and which leaked into later modules' and
+  sessions' issue counts.
 
 ## End-of-session report (from the brief)
 
