@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase03-roadmap.md -->
-# Phase 3 Roadmap — Metrics Engine and the Complete Local Demo (First Milestone)
+# Phase 3 Roadmap — Metrics Engine and the Complete Local Demo (First Milestone) ✅
 
-**Status:** In progress
+**Status:** Complete — 2026-09-29
 
 ## Overview
 
@@ -5203,9 +5203,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 6 — QA & Verification Script
+## Step 6 — QA & Verification Script ✅
 
-**Status:** Not started
+**Status:** Complete — PR #33 (2026-09-29)
 
 > **Goal:** Package the verification matrix into
 > `scripts/verify_phase03.py` (with `--fast`, `--py`, `--node`, `--e2e`,
@@ -6263,7 +6263,7 @@ any workflow above maps directly to the corresponding row below.
 | 3    | Provenance trace, metrics API, corrections | Claude Opus 5 | Claude Code  | Effort Max     | On       | New  | Complete — PR #20 |
 | 4    | Judge panels, compare, methodology, coverage | Claude Opus 5 | Claude Code | Effort Max     | On       | New  | Complete — PR #21 |
 | 5    | Corrections form, pages, bootstrap, walkthrough | Claude Opus 5 | Claude Code | Effort Max  | On       | New  | Complete — PR #23 |
-| 6    | QA + verify_phase03.py                    | Opus 5.5       | Claude Code  | Effort Medium  | On       | New  | Not started |
+| 6    | QA + verify_phase03.py                    | Opus 5.5       | Claude Code  | Effort Medium  | On       | New  | Complete — PR #33 |
 | V1   | Registry and frame scope                  | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
 | V2   | Engine scope                              | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
 | V3   | API scope                                 | CI: phase-verify.yml, ci.yml | -- | --          | --       | --   | -- |
