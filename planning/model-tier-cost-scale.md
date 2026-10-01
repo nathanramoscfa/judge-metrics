@@ -125,6 +125,7 @@ table and surface material cost / availability / capability constraints.
 | GPT-6 Astra        | $10.00 | –          | –          | $50.00 | Very High | Provider-direct OpenAI API per-token pricing (not via the Cursor pool) |
 | GPT-6 Luna         | $0.10 | –           | –          | $0.50  | Low       | Provider-direct OpenAI API per-token pricing (not via the Cursor pool) |
 | GPT-6 Sol          | $2.00 | –           | –          | $10.00 | Medium    | Provider-direct OpenAI API per-token pricing (not via the Cursor pool) |
+| GPT-6.1 Sol        | $2.00 | –           | –          | $10.00 | Medium    | Provider-direct OpenAI API per-token pricing (not via the Cursor pool) |
 
 
 ### API Pool — Moonshot
@@ -148,7 +149,7 @@ table and surface material cost / availability / capability constraints.
 
 ---
 
-<!-- subscription-tiers-reviewed: 2026-09-25 -->
+<!-- subscription-tiers-reviewed: 2026-09-30 -->
 
 ## Subscription Tiers and Access Methods
 
@@ -204,7 +205,8 @@ and adjust the rebuild rules in [`update/prompt.md`](../update/prompt.md).
 | ChatGPT Go             | $8      | —       | OpenAI    | chatgpt-app, codex-cli  | Budget tier with GPT-5.3 Instant unlimited and GPT-5.3 quota, more uploads and image generation than Free; ads still shown; lacks advanced reasoning models, Sora, Codex full access, Agent Mode, and Deep Research. |
 | ChatGPT Plus           | $20     | —       | OpenAI    | chatgpt-app, codex-cli  | GPT-5.6 Sol default model with full feature suite — Deep Research, Sora video, Codex, Agent Mode; GPT-5.6 Terra and GPT-5.6 Luna also available. |
 | ChatGPT Pro ($100)     | $100    | —       | OpenAI    | chatgpt-app, codex-cli  | Same model suite as Pro $200 (GPT-5.6 Sol, GPT-5.5, o1 Pro mode) at 5x Plus usage limits; Codex access included with promotional 10x multiplier through May 31, 2026. |
-| ChatGPT Pro ($200)     | $200    | —       | OpenAI    | chatgpt-app, codex-cli  | Same coverage as Pro $100 with much higher caps (20x Plus limits), 1M-token context window, unlimited Sora video, Operator agent, and priority access to top-tier models; new sign-ups paused as of 2026-09-10 (existing subscriptions unaffected). |
+| ChatGPT Pro ($200)     | $200    | —       | OpenAI    | chatgpt-app, codex-cli  | Same core Pro features as Pro $100 (Pro models, Codex, deep research, image creation, memory, file uploads) with more usage than Pro $100; new subscriptions are open again, and new subscriptions not eligible for grandfathering get a lower usage allowance than the previous Pro 200. |
+| ChatGPT Pro ($500)     | $500    | —       | OpenAI    | chatgpt-app, codex-cli  | Highest-usage ChatGPT Pro tier (more included usage than Pro $100 and Pro $200); includes Astra Ultrafast plus the core Pro features (Pro models, Codex, deep research, image creation, memory, file uploads). |
 | Google AI Plus         | $4.99   | —       | Google    | gemini-app, gemini-cli  | Entry-paid Google AI tier with 2x higher usage limits than Free in the Gemini app, access to Gemini 3.1 Pro / Nano Banana Pro / Daily Brief / Gemini Omni video generation, 200 Google Flow Credits, and 400 GB of cloud storage (price cut from $7.99 to $4.99 on 2026-06-08; storage doubled from 200 GB to 400 GB). |
 | Google AI Pro          | $19.99  | $199.99 | Google    | gemini-app, gemini-cli  | Gemini 3.1 Pro and supporting multimodal features in the Gemini app and Gemini CLI, plus Deep Research, Nano Banana Pro, Veo 3.1 access, 1,000 monthly AI credits, and 5 TB of Google One storage; includes YouTube Premium Lite; 50% off the first year for new subscribers. |
 | Google AI Ultra ($100) | $99.99  | —       | Google    | gemini-app, gemini-cli  | Developer-focused Ultra tier (May 2026): 5x Pro usage limits in Gemini app and Google Antigravity, Gemini 3.5 Flash integration, priority access to Antigravity, 20 TB cloud storage, and YouTube Premium individual plan. |
@@ -247,6 +249,7 @@ appear here.
 | gpt-5.4          | $15.00  | High         | High         | ✓      |
 | gpt-5.6-terra    | $12.00  | Medium       | Medium       | ✓      |
 | gpt-6-sol        | $10.00  | Medium       | Medium       | ✓      |
+| gpt-6.1-sol      | $10.00  | Medium       | Medium       | ✓      |
 | gpt-5.3-codex    | $14.00  | Medium       | Medium       | ✓      |
 | gpt-5.2          | $14.00  | Medium       | Medium       | ✓      |
 | gpt-5.2-codex    | $14.00  | Medium       | Medium       | ✓      |
@@ -309,6 +312,7 @@ recommendable engines.
 
 | Model id           | Output | Tier | Change                                                                                                                     |
 | ------------------ | ------ | ---- | -------------------------------------------------------------------------------------------------------------------------- |
+| GPT-6.1 Sol        | $10.00 | Medium | New 2026-10-01 via the provider-discovery lane. OpenAI's own pricing page lists gpt-6.1-sol at $2/$10, and it is not on Cursor's pricing page. Provider-direct (Federation rule: prices owned by `catalog-openai.json`). The selector pass adds it to `<model-options>` in the Medium bucket |
 | Claude Sonnet 5.5  | $10.00 | Medium | New 2026-09-29 on Cursor's pricing page — Anthropic's Sonnet 5 successor at the same $2/$10 rates (US-only endpoints 10% higher at $2.20/$11); visible by default. Selector pass adds it to `<model-options>`; Anthropic is provider-direct, so `catalog-anthropic.json` must carry it for the G4 gate |
 | Claude Sonnet 5    | $10.00 | Medium | Notes refreshed 2026-09-29 — Cursor flipped Sonnet 5 to "Hidden by default" after the Sonnet 5.5 launch (pricing unchanged) |
 | GLM 5.3            | $4.40  | Low  | New 2026-09-29 on Cursor's pricing page — z.ai's GLM 5.3 at the same $1.40/$4.40 rates as GLM 5.2 (Hidden by default) |
@@ -390,7 +394,7 @@ this table.
 | Google (Mountain View, US)    | `us`              | gemini-3.1-pro, gemini-3-pro, gemini-3.5-flash, gemini-3-flash, gemini-2.5-flash                                        |
 | xAI (Palo Alto, US)           | `us`              | grok-4.3                                                                                                                |
 | Cursor (San Francisco, US)    | `us`              | composer-2, composer-2.5 — note: base weights for these Composer models derive from Moonshot's Kimi K2 series; Cursor's operator status determines the jurisdiction code per `<jurisdiction-context>` (data flow governed by Cursor's privacy policy and US law) |
-| Meta (Menlo Park, US)         | `us`              | (Muse Spark 1.3 auto-added to `<model-options>` 2026-09-10 with placeholder B tiers pending editorial review)                                                       |
+| Meta (Menlo Park, US)         | `us`              | muse-spark-1.3                                                                                                                                                      |
 | Moonshot AI (Beijing, CN)     | `cn`              | kimi-k2.5                                                                                                               |
 | DeepSeek (Hangzhou, CN)       | `cn`              | deepseek-v4-pro, deepseek-flash                                                                                         |
 | z.ai / Zhipu AI (Beijing, CN) | `cn`              | glm-5.2, glm-4.6, glm-4.5-air                                                                                           |
@@ -429,3 +433,7 @@ model per line, in exactly this form:
 - xai/grok-4.20-0309-reasoning — dated (0309) snapshot of the Grok 4.20 generation; the catalog carries grok-4.3 / grok-4.6 / grok-4.7 as the Grok line (declined 2026-09-25)
 - xai/grok-4.20-multi-agent-0309 — dated (0309) multi-agent variant of the Grok 4.20 generation; not a fixed single-engine model the catalog tracks (declined 2026-09-25)
 - xai/grok-build-0.1 — build-agent preview removed from the catalog on 2026-07-15 when Cursor delisted it; retired (declined 2026-09-25)
+- google/Gemini 3.1 Flash-Lite — no price on the provider page; re-checked each run (declined 2026-10-01)
+- google/Gemini 3.1 Flash-Lite Image — no price on the provider page; re-checked each run (declined 2026-10-01)
+- google/Gemini 3.5 Flash-Lite — no price on the provider page; re-checked each run (declined 2026-10-01)
+- google/Gemini Robotics Er 2 — no price on the provider page; re-checked each run (declined 2026-10-01)
