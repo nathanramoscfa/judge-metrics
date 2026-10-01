@@ -3276,9 +3276,9 @@ Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 3 — Expected Counts, Ratios, Partial Pooling, and the Recovery Test
+## Step 3 — Expected Counts, Ratios, Partial Pooling, and the Recovery Test ✅
 
-**Status:** Not started
+**Status:** Complete — PR #41 (2026-09-30)
 
 > **Goal:** Turn the fitted models into published, reproducible adjusted
 > observations and prove they recover the planted answer. Registry version 2
@@ -7434,7 +7434,7 @@ workflow above maps directly to the corresponding row below.
 | ---- | ---------------------------------------------- | -------- | ----------- | -------------- | -------- | ---- | ----------- |
 | 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
-| 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #41 |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Not started |
