@@ -2129,9 +2129,9 @@ is New per phase-boundary hygiene.
 
 ---
 
-## Step 2 — Feature Specification, Leakage Review, and the Baseline Model
+## Step 2 — Feature Specification, Leakage Review, and the Baseline Model ✅
 
-**Status:** Not started
+**Status:** Complete — PR #39 (2026-09-30)
 
 > **Goal:** Land the expected-outcome model as a versioned, inspectable contract
 > and a deterministic fit. `data/reference/outcome_model.yaml` (specification
@@ -7332,7 +7332,7 @@ workflow above maps directly to the corresponding row below.
 | Step | Scope                                          | Model    | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | -------- | ----------- | -------------- | -------- | ---- | ----------- |
 | 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
-| 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
