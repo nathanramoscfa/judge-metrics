@@ -5305,9 +5305,9 @@ Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 5 — Risk-Adjusted Panels, Adjusted Compare, and the Model Card
+## Step 5 — Risk-Adjusted Panels, Adjusted Compare, and the Model Card ✅
 
-**Status:** Not started
+**Status:** Complete — PR #44 (2026-10-01)
 
 > **Goal:** Show the validated adjusted statistics the way the brief's
 > presentation rules require. The API serves the `observed_expected` kind
@@ -6599,6 +6599,42 @@ Conversation is New per phase-boundary hygiene.
     findings document, the CI matrix
     update, and the tag.
 
+    Note from Step 5 (PR #44): the
+    literal "95% bootstrap interval"
+    lives in `web/lib/metrics.ts`
+    (`INTERVAL_METHOD_LABEL`, used by
+    `formatRatioInterval`) and in
+    `adjusted-stat.tsx`'s header
+    comment, so check 41 should read
+    the label from `lib/metrics.ts`
+    and require `formatRatioInterval`
+    and `methodologyHref` in the
+    component. `KIND_TEXT` moved from
+    the methodology page to
+    `lib/metrics.ts` (a page module
+    may export only Next's route
+    conventions); check 43 reads the
+    `adjusted-statistics` section in
+    the page. `adjusted.spec.ts` has
+    six tests and needs the demo
+    seed's fitted models (locally:
+    `uv run poe dev-api` and, on
+    Windows, `pnpm dev` in `web/`,
+    because `poe dev-web` cannot
+    spawn `pnpm` there). The model
+    card is a 404 once no current
+    observation cites the model's
+    snapshot. The Compose `api`
+    service mounts `./data/snapshots`
+    read-only at
+    `/app/data/snapshots` (hygiene
+    test), so a containerized API's
+    adjusted provenance chain is
+    complete. `/metrics/compare`'s
+    `sort` is an OpenAPI `anyOf`
+    (default null, resolved per
+    kind).
+
     Reference scripts (pattern
     templates):
     - scripts/verify_phase03.py
@@ -7481,7 +7517,7 @@ workflow above maps directly to the corresponding row below.
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #41 |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #43 |
-| 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
+| 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #44 |
 | 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Not started |
 | V1   | Planted effects and restricted schema scope    | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
 | V2   | Specification and model scope                  | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
