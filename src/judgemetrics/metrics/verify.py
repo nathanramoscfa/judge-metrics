@@ -17,6 +17,19 @@ observation the store lacks for a subject it holds, and every
 unverifiable observation with its reason. ``ok`` is true only when all
 four lists are empty; the CLI exits 1 otherwise. Log lines carry the
 snapshot id and counts only.
+
+Phase 4 Step 3: a snapshot's observations are recomputed for the kinds
+they hold only (a snapshot an ingest's step 13 published from holds
+descriptive kinds alone), and an observation the store lacks is reported
+only for a subject that holds observations of the same kind there. An
+``observed_expected`` observation is recomputed from the artifact of the
+model it cites (``catalog.read_parameters``: the path rebuilt from the
+configured snapshot directory, the bytes checked against the content
+hash): a missing or altered artifact is reported by observation id with the
+column ``outcome_model`` and that observation is not recomputed; a model
+fitted under another specification version than the loaded file, or two
+models cited for one target and window of a snapshot, make the
+observation unverifiable.
 """
 
 from __future__ import annotations
@@ -24,7 +37,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,20 +48,25 @@ from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
 from judgemetrics.metrics.compute import ComputeError, ObservationDraft, compute_all
 from judgemetrics.metrics.publish import (
+    MODEL_HASH,
     VERIFIED_COLUMNS,
     StoredObservation,
     load_observations,
     member_tuples,
     stored_columns,
 )
-from judgemetrics.metrics.registry import Registry, load_registry
+from judgemetrics.metrics.registry import OBSERVED_EXPECTED, Registry, load_registry
 from judgemetrics.metrics.snapshot import SnapshotError, open_snapshot, validate_content_hash
+
+if TYPE_CHECKING:
+    from judgemetrics.metrics.adjustment.expected import ModelParameters
 
 log = get_logger(__name__)
 
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 OBSERVATION_COLUMN = "observation"
 MEMBERS_COLUMN = "members"
+MODEL_COLUMN = "outcome_model"
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +258,75 @@ def verify(
     return result
 
 
+ModelsBySource = dict[str, dict[tuple[str, int | None], "ModelParameters"]]
+
+
+def _cited_models(
+    settings: Settings,
+    content_hash: str,
+    items: Sequence[StoredObservation],
+    result: VerifyResult,
+) -> tuple[list[StoredObservation], ModelsBySource]:
+    """The adjusted observations' models read from their artifacts (module docstring).
+
+    Returns the observations that remain verifiable and the models by source
+    and ``(target, window)``; every other observation is reported here.
+    """
+    from judgemetrics.metrics.adjustment.artifacts import ArtifactError
+    from judgemetrics.metrics.adjustment.catalog import read_parameters
+    from judgemetrics.metrics.adjustment.spec import SpecError, load_spec
+
+    try:
+        spec_version: int | None = load_spec().version
+    except SpecError:
+        spec_version = None
+    loaded: dict[str, ModelParameters | str] = {}
+    cited: list[tuple[StoredObservation, ModelParameters]] = []
+    kept: list[StoredObservation] = []
+    for item in items:
+        if item.kind != OBSERVED_EXPECTED:
+            kept.append(item)
+            continue
+        model_hash = item.columns[MODEL_HASH]
+        if model_hash is None:
+            result.mismatches.append(
+                _mismatch(item, None, content_hash, MODEL_COLUMN, None, "a cited model")
+            )
+            continue
+        if model_hash not in loaded:
+            try:
+                loaded[model_hash] = read_parameters(settings, content_hash, model_hash)
+            except ArtifactError as exc:
+                loaded[model_hash] = str(exc)
+        parameters = loaded[model_hash]
+        if isinstance(parameters, str):
+            result.mismatches.append(
+                _mismatch(item, None, content_hash, MODEL_COLUMN, model_hash, parameters)
+            )
+        elif parameters.spec_version != spec_version:
+            reason = (
+                f"model {model_hash} was fitted under specification {parameters.spec_version}; "
+                f"the file is {spec_version}"
+            )
+            result.unverifiable.append(Unverifiable(item.id, content_hash, item.key[0], reason))
+        else:
+            cited.append((item, parameters))
+    hashes: dict[tuple[str, str, int | None], set[str | None]] = {}
+    for item, parameters in cited:
+        key = (str(item.key[3]), parameters.target, parameters.window_days)
+        hashes.setdefault(key, set()).add(parameters.content_hash)
+    models: ModelsBySource = {}
+    for item, parameters in cited:
+        source, target, window = str(item.key[3]), parameters.target, parameters.window_days
+        if len(hashes[(source, target, window)]) > 1:
+            reason = "the snapshot's observations cite two models for one target and window"
+            result.unverifiable.append(Unverifiable(item.id, content_hash, item.key[0], reason))
+            continue
+        models.setdefault(source, {})[(target, window)] = parameters
+        kept.append(item)
+    return kept, models
+
+
 def _verify_snapshot(
     settings: Settings,
     registry: Registry,
@@ -262,6 +349,11 @@ def _verify_snapshot(
             result.unverifiable.append(Unverifiable(item.id, content_hash, slug, reason))
         else:
             verifiable.append(item)
+    kinds = {item.kind for item in verifiable}
+    models: ModelsBySource | None = None
+    if OBSERVED_EXPECTED in kinds:
+        verifiable, models = _cited_models(settings, content_hash, verifiable, result)
+        kinds = {item.kind for item in verifiable}
     if not verifiable:
         return
     try:
@@ -276,7 +368,11 @@ def _verify_snapshot(
         subjects = sorted({(item.key[1], item.key[2]) for item in verifiable})
         try:
             computed = compute_all(
-                snapshot_view, registry, [Subject(kind, sid) for kind, sid in subjects]
+                snapshot_view,
+                registry,
+                [Subject(kind, sid) for kind, sid in subjects],
+                kinds=kinds,
+                models=models,
             )
         except ComputeError as exc:
             for item in verifiable:
@@ -298,11 +394,13 @@ def _verify_snapshot(
         result.mismatches.extend(found)
         if not found:
             result.verified += 1
-    stored_subjects = {(item.key[1], item.key[2], item.key[3]) for item in verifiable}
+    # An observation the store lacks counts only where the subject holds that kind here.
+    stored_subjects = {(item.key[1], item.key[2], item.key[3], item.kind) for item in verifiable}
     for key, draft in sorted(drafts.items(), key=lambda pair: str(pair[0])):
+        kind = registry.metrics[draft.slug].kind
         if (
             key in seen
-            or (draft.subject_type, draft.subject_id, draft.source_id) not in stored_subjects
+            or (draft.subject_type, draft.subject_id, draft.source_id, kind) not in stored_subjects
         ):
             continue
         result.mismatches.append(

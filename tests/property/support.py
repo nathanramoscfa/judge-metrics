@@ -15,12 +15,15 @@ scale, never a restricted value.
 string ids are the frame's ids and the true person ids are ``persons.id``,
 so the frame's cohorts can be compared with ``synthetic/truth.py`` on the
 same world. Step 2's ``snapshot.py`` is the database loader.
+``relabel_frame`` (Phase 4) replaces every canonical id of a frame by a hash of
+itself and reorders every table by its new ids: what an invariance test compares.
 """
 
 from __future__ import annotations
 
 import asyncio
 import csv
+import hashlib
 import json
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -44,7 +47,7 @@ from judgemetrics.ingest.base import (
     SentenceDraft,
 )
 from judgemetrics.ingest.synthetic.connector import SyntheticConnector
-from judgemetrics.metrics.frame import SCHEMAS, Frame, empty_table, resolve_dtype
+from judgemetrics.metrics.frame import ID, SCHEMAS, Frame, empty_table, resolve_dtype
 from judgemetrics.synthetic.config import ScaleSpec
 from judgemetrics.synthetic.generate import build_dataset as build_world_dataset
 from judgemetrics.synthetic.generate import generate_dataset
@@ -339,3 +342,30 @@ def frame_from_world(world: World, spec: ScaleSpec) -> Frame:
         coverage_end=spec.corpus_end,
         observable_outcomes=SYNTHETIC_OBSERVABLE,
     )
+
+
+def relabel_frame(frame: Frame) -> tuple[Frame, dict[str, str]]:
+    """Every canonical id replaced by a hash of itself; every table reordered by its new ids.
+
+    Returns the relabelled frame and the mapping from each old id to its new one.
+    """
+
+    def new(value: str) -> str:
+        return "R" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
+
+    ids: set[str] = set()
+    for name, schema in SCHEMAS.items():
+        table = frame.table(name)
+        for column, spec in schema.items():
+            if spec == ID:
+                ids.update(str(value) for value in table[column].drop_nulls().to_list())
+    mapping = {value: new(value) for value in ids}
+    tables: dict[str, pl.DataFrame] = {}
+    for name, schema in SCHEMAS.items():
+        columns = [column for column, spec in schema.items() if spec == ID]
+        relabelled = frame.table(name).with_columns(
+            pl.col(column).replace_strict(mapping, default=None, return_dtype=pl.String)
+            for column in columns
+        )
+        tables[name] = relabelled.sort(columns[0], nulls_last=True)
+    return frame.replace(**tables), mapping

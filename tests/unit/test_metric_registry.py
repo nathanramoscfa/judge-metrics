@@ -1,9 +1,13 @@
 # tests/unit/test_metric_registry.py
 """The versioned metric registry: it loads, it validates, and its text is the contract.
 
-The committed ``data/reference/metric_registry.yaml`` loads through
-``load_registry``; a tampered copy with an unlisted actor, outcome, or
-window fails with ``RegistryError`` naming the slug and the field; its
+The committed ``data/reference/metric_registry.yaml`` (version 2,
+methodology 0.3) loads through ``load_registry``; a tampered copy with an
+unlisted actor, outcome, or window — or an adjusted entry without its
+``adjustment``, over a court, or with windows over decisions — fails with
+``RegistryError`` naming the slug and the field; each observed-to-expected
+metric carries the eligibility and attribution of the descriptive metric it
+adjusts and the specification's thresholds; its
 ``known_limitations`` equal the brief's ``<important_statistical_warnings>``
 verbatim (parsed from the XML with whitespace normalized); and the
 pretrial and dismissal entries' prose equals the corresponding
@@ -24,10 +28,12 @@ import yaml
 
 from judgemetrics.config import REPO_ROOT
 from judgemetrics.metrics import registry as registry_module
+from judgemetrics.metrics.adjustment.spec import load_spec
 from judgemetrics.metrics.registry import (
     ASSIGNMENT_GATES,
     DEFAULT_PATH,
     KINDS,
+    OBSERVED_EXPECTED,
     WINDOWS_DAYS,
     Registry,
     RegistryError,
@@ -75,6 +81,13 @@ REQUIRED_SLUGS = {
     "probation_days_median",
     "incarceration_days_median_by_offense_category",
 }
+# Registry version 2: each observed-to-expected metric → the descriptive metric it adjusts.
+ADJUSTED_SLUGS_OF = {
+    "pretrial_release_observed_expected": "pretrial_release_share",
+    "new_case_observed_expected": "new_case_rate",
+    "failure_to_appear_observed_expected": "failure_to_appear_rate",
+}
+ADJUSTED_SLUGS = set(ADJUSTED_SLUGS_OF)
 # Registry slug → the `definitions` key of truth/metrics.json whose text it must carry.
 TRUTH_DEFINITIONS = {
     "eligible_cases": "eligible_cases",
@@ -126,9 +139,9 @@ def test_the_committed_registry_loads_and_carries_the_required_slugs() -> None:
     assert DEFAULT_PATH.read_text(encoding="utf-8").startswith(
         "# data/reference/metric_registry.yaml\n"
     )
-    assert registry.version == 1
-    assert registry.methodology_version == "0.2"
-    assert REQUIRED_SLUGS <= set(registry.metrics)
+    assert registry.version == 2
+    assert registry.methodology_version == "0.3"
+    assert REQUIRED_SLUGS | ADJUSTED_SLUGS <= set(registry.metrics)
     assert {metric.kind for metric in registry.metrics.values()} == set(KINDS)
     assert registry.suppression.default_threshold == 10
     assert load_registry() is registry  # cached per path
@@ -141,6 +154,9 @@ def test_thresholds_units_and_windows_follow_the_registry_rules() -> None:
         if metric.kind in {"count", "distribution"}:
             assert metric.suppression_threshold == 0, metric.slug
             assert metric.unit == "count", metric.slug
+        elif metric.kind == OBSERVED_EXPECTED:
+            assert metric.suppression_threshold == 30, metric.slug
+            assert metric.unit == "ratio", metric.slug
         else:
             assert metric.suppression_threshold == 10, metric.slug
         if metric.kind in {"share", "windowed_rate", "survival"}:
@@ -265,6 +281,74 @@ def test_definition_rows_carry_the_published_fields_only() -> None:
         "assignment_gate": "deciding_judge",
     }
     assert row["windows_days"] == list(WINDOWS_DAYS)
-    assert row["registry_version"] == 1 and row["methodology_version"] == "0.2"
+    assert row["registry_version"] == 2 and row["methodology_version"] == "0.3"
     assert "population" not in row and "counted" not in row and "truth_note" not in row
     assert set(row) == {"slug", "version", *registry_module.SUBSTANTIVE_COLUMNS}
+    adjusted = registry["new_case_observed_expected"].as_row(
+        registry.version, registry.methodology_version
+    )
+    assert "adjustment" not in adjusted and adjusted["unit"] == "ratio"
+
+
+# --- registry version 2: the observed_expected kind (Phase 4 Step 3) ------------------------
+
+
+def test_the_adjusted_metrics_mirror_the_descriptive_metrics_they_adjust() -> None:
+    registry = load_registry()
+    spec = load_spec()
+    assert {metric.slug for metric in registry.of_kind(OBSERVED_EXPECTED)} == ADJUSTED_SLUGS
+    for slug, descriptive in ADJUSTED_SLUGS_OF.items():
+        metric = registry[slug]
+        assert metric.subject_types == ("judge",) and metric.version == "1"
+        assert metric.adjustment is not None and metric.adjustment.minimum_expected == 5
+        target = spec.target(metric.adjustment.target)
+        population = registry[target.population]
+        # Eligibility and attribution exactly as the descriptive metric adjusted.
+        assert metric.attribution == registry[descriptive].attribution == population.attribution
+        assert metric.eligibility == registry[descriptive].eligibility
+        assert metric.windows_days == registry[descriptive].windows_days
+        assert metric.outcome == registry[descriptive].outcome
+        assert metric.is_windowed == (metric.windows_days is not None)
+    # The registry's suppression agrees with the specification's thresholds.
+    for metric in registry.of_kind(OBSERVED_EXPECTED):
+        assert metric.suppression_threshold == spec.thresholds.minimum_cohort
+        assert metric.adjustment is not None
+        assert metric.adjustment.minimum_expected == spec.thresholds.minimum_expected
+    for metric in registry.metrics.values():
+        assert (metric.adjustment is not None) == (metric.kind == OBSERVED_EXPECTED)
+
+
+def test_a_tampered_adjusted_entry_fails_naming_the_slug_and_field(tmp_path: Path) -> None:
+    def no_adjustment(payload: dict[str, Any]) -> None:
+        del _entry(payload, "new_case_observed_expected")["adjustment"]
+
+    def adjustment_on_a_share(payload: dict[str, Any]) -> None:
+        _entry(payload, "pretrial_release_share")["adjustment"] = {
+            "target": "pretrial_release",
+            "minimum_expected": 5,
+        }
+
+    def court_subject(payload: dict[str, Any]) -> None:
+        _entry(payload, "pretrial_release_observed_expected")["subject_types"] = ["judge", "court"]
+
+    def ratio_unit_on_a_share(payload: dict[str, Any]) -> None:
+        _entry(payload, "pretrial_release_share")["unit"] = "ratio"
+
+    def windows_over_decisions(payload: dict[str, Any]) -> None:
+        _entry(payload, "pretrial_release_observed_expected")["windows_days"] = list(WINDOWS_DAYS)
+
+    def negative_minimum(payload: dict[str, Any]) -> None:
+        _entry(payload, "failure_to_appear_observed_expected")["adjustment"][
+            "minimum_expected"
+        ] = -1
+
+    for mutate, pattern in (
+        (no_adjustment, r"'new_case_observed_expected': field 'adjustment' is required"),
+        (adjustment_on_a_share, r"'pretrial_release_share': field 'adjustment' is only allowed"),
+        (court_subject, r"'pretrial_release_observed_expected': field 'subject_types'"),
+        (ratio_unit_on_a_share, r"'pretrial_release_share': field 'unit'"),
+        (windows_over_decisions, r"'pretrial_release_observed_expected': field 'windows_days'"),
+        (negative_minimum, r"field 'adjustment.minimum_expected'"),
+    ):
+        with pytest.raises(RegistryError, match=pattern):
+            _load_tampered(tmp_path, mutate)

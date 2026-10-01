@@ -57,11 +57,12 @@ pytestmark = [pytest.mark.golden, pytest.mark.integration]
 TRUTH: dict[str, Any] = json.loads((GOLDEN / "truth" / "metrics.json").read_text(encoding="utf-8"))
 REGISTRY = load_registry()
 SUBJECTS: list[tuple[str, str]] = [(kind, code) for kind, code, _ in subject_blocks(TRUTH)]
+# The observed-to-expected metrics answer to truth/effects.json (test_golden_adjusted.py).
 CASES: list[tuple[str, str, str]] = [
     (kind, code, definition.slug)
     for kind, code in SUBJECTS
     for definition in REGISTRY.for_subject(kind)
-    if definition.slug not in NOT_OBSERVABLE_SLUGS
+    if definition.slug not in NOT_OBSERVABLE_SLUGS and not definition.is_adjusted
 ]
 COLUMNS: dict[str, str] = {
     "observed_count": "observed_count",

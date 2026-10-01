@@ -10,6 +10,13 @@ outcome it cannot document are never wanted — fits only those
 (``ON CONFLICT DO NOTHING``), so a second run fits nothing. The caller owns
 the transaction (the CLI commits).
 
+``snapshot_parameters`` (Phase 4 Step 3) reads the models of a snapshot's
+current specification version and seed back from their artifacts
+(``read_parameters``: the path rebuilt from the configured snapshot
+directory and the two validated hashes, the bytes checked against the
+content hash, parsed as JSON only) for ``metrics compute``; ``metrics
+verify`` reads the models its observations cite the same way.
+
 ``list_models`` and ``model_card`` read the rows (the model card never
 carries ``storage_uri``). ``verify_models`` checks that every artifact
 exists at the path rebuilt from the configured snapshot directory and the
@@ -45,6 +52,7 @@ from judgemetrics.metrics.adjustment.artifacts import (
     first_difference,
     read_artifact,
 )
+from judgemetrics.metrics.adjustment.expected import ExpectationError, ModelParameters
 from judgemetrics.metrics.adjustment.features import instant
 from judgemetrics.metrics.adjustment.fit import FittedModel, ModelKey, fit_models
 from judgemetrics.metrics.adjustment.spec import DECISION, OutcomeModelSpec, load_spec
@@ -285,6 +293,67 @@ def fit_snapshot(
     return FitSummary(
         snapshot=snapshot_row.content_hash, fitted=tuple(models), existing=len(existing)
     )
+
+
+# --- model parameters for the adjusted figures ------------------------------------------------
+
+
+def read_parameters(settings: Settings, snapshot_hash: str, model_hash: str) -> ModelParameters:
+    """A model's parameters from its artifact; ``ArtifactError`` when it is missing or altered.
+
+    The path is rebuilt from the configured snapshot directory and the two
+    validated hashes (never from ``storage_uri``); the bytes must hash to
+    ``model_hash`` before they are parsed, as JSON only.
+    """
+    path = artifact_path(snapshot_root(settings), snapshot_hash, model_hash)
+    if not path.is_file():
+        msg = f"the artifact of model {model_hash} is missing"
+        raise ArtifactError(msg)
+    data = path.read_bytes()
+    if content_hash(data) != model_hash:
+        msg = f"the artifact of model {model_hash} does not hash to its content hash"
+        raise ArtifactError(msg)
+    try:
+        payload = _parsed(data)
+    except ValueError as exc:
+        msg = f"the artifact of model {model_hash} is not JSON"
+        raise ArtifactError(msg) from exc
+    if not isinstance(payload, dict) or payload.get("snapshot") != snapshot_hash:
+        msg = f"the artifact of model {model_hash} names another snapshot"
+        raise ArtifactError(msg)
+    try:
+        return ModelParameters.from_artifact(payload, model_hash)
+    except ExpectationError as exc:
+        raise ArtifactError(str(exc)) from exc
+
+
+SourceParameters = dict[str, dict[tuple[str, int | None], ModelParameters]]
+
+
+def snapshot_parameters(
+    session: Session,
+    settings: Settings,
+    *,
+    snapshot_id: uuid.UUID,
+    snapshot_hash: str,
+    spec: OutcomeModelSpec | None = None,
+) -> SourceParameters:
+    """Per source id, the snapshot's models of the current spec version and seed, by target."""
+    spec = spec or load_spec()
+    rows = session.execute(
+        select(OutcomeModel.source_id, OutcomeModel.content_hash)
+        .where(
+            OutcomeModel.snapshot_id == snapshot_id,
+            OutcomeModel.spec_version == spec.version,
+            OutcomeModel.seed == spec.seed,
+        )
+        .order_by(OutcomeModel.source_id, OutcomeModel.target, OutcomeModel.window_days)
+    ).all()
+    parameters: SourceParameters = {}
+    for source_id, model_hash in rows:
+        model = read_parameters(settings, snapshot_hash, str(model_hash))
+        parameters.setdefault(str(source_id), {})[(model.target, model.window_days)] = model
+    return parameters
 
 
 # --- reading ------------------------------------------------------------------------------

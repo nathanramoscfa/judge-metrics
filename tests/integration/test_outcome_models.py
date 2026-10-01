@@ -2,12 +2,13 @@
 """``judgemetrics models fit|list|show|verify`` over the golden snapshot.
 
 The module's golden ingest and ``metrics compute`` (``golden_metrics``)
-give a committed snapshot; ``models fit`` (the CLI, as the ingest role,
-the snapshot directory the fixture wrote) records one ``outcome_model`` row
-per source, target, and window — thirteen for the synthetic source — with
-the status the golden cohorts allow (each recomputed here from the
-snapshot's own design and the events-per-column gate), and a second run
-fits nothing. ``models verify --refit`` reproduces every artifact byte for
+give a committed snapshot, and since Phase 4 Step 3 that compute fits the
+snapshot's models itself: one ``outcome_model`` row per source, target, and
+window — thirteen for the synthetic source — with the status the golden
+cohorts allow (each recomputed here from the snapshot's own design and the
+events-per-column gate), so ``models fit`` (the CLI, as the ingest role, the
+snapshot directory the fixture wrote) then fits and writes nothing.
+``models verify --refit`` reproduces every artifact byte for
 byte and exits 1 once an artifact byte is changed; every artifact passes
 the inspection test; ``models list`` and ``models show`` read the catalogue
 as the app role, which can select ``outcome_model`` and cannot write it.
@@ -28,8 +29,10 @@ from typer.testing import CliRunner
 
 from judgemetrics.cli import app as cli
 from judgemetrics.config import get_settings
-from judgemetrics.db.models import OutcomeModel, Source
+from judgemetrics.db.models import MetricSnapshot, OutcomeModel, Source
+from judgemetrics.db.session import make_engine
 from judgemetrics.metrics.adjustment.artifacts import artifact_path
+from judgemetrics.metrics.adjustment.catalog import snapshot_parameters
 from judgemetrics.metrics.adjustment.features import DesignFrame, design_rows
 from judgemetrics.metrics.adjustment.fit import INSUFFICIENT_EVENTS
 from judgemetrics.metrics.adjustment.spec import load_spec
@@ -80,7 +83,7 @@ def _rows(engine: Engine) -> list[tuple[OutcomeModel, str]]:
 
 @pytest.fixture(scope="module")
 def fitted(golden_metrics: GoldenMetrics) -> Iterator[dict[str, Any]]:
-    """``models fit`` over the module's golden snapshot, once."""
+    """``models fit`` over the module's golden snapshot, once, after the fitting compute."""
     result = _invoke(golden_metrics, "fit", "--snapshot", _snapshot(golden_metrics), "--json")
     assert result.exit_code == 0, result.output
     yield json.loads(result.stdout)
@@ -100,11 +103,13 @@ def _designs(golden_metrics: GoldenMetrics) -> dict[tuple[str, int | None], Desi
     return designs
 
 
-def test_models_fit_records_one_row_per_target_and_window_and_is_idempotent(
+def test_the_compute_records_one_model_per_target_and_window_and_models_fit_adds_none(
     fitted: dict[str, Any], golden_metrics: GoldenMetrics, migrated_database: Engine
 ) -> None:
+    # The fitting compute recorded every model; `models fit` found nothing to do.
+    assert golden_metrics.result.models_fitted == golden_metrics.result.models_read == 13
     assert fitted["snapshot"] == _snapshot(golden_metrics)
-    assert fitted["fitted"] == EXPECTED_MODELS == 13
+    assert fitted["fitted"] == 0 and fitted["existing"] == EXPECTED_MODELS == 13
     rows = [(model, name) for model, name in _rows(migrated_database) if name == SYNTHETIC_SOURCE]
     assert len(rows) == EXPECTED_MODELS
     keys = {(model.target, model.window_days) for model, _ in rows}
@@ -127,14 +132,31 @@ def test_models_fit_records_one_row_per_target_and_window_and_is_idempotent(
         assert model.diagnostics is not None and "status" in model.diagnostics
     # The golden cohorts are too small for any model to clear the events-per-column gate.
     assert {model.status for model, _ in rows} == {INSUFFICIENT_EVENTS}
-    again = _invoke(golden_metrics, "fit", "--snapshot", _snapshot(golden_metrics), "--json")
-    assert again.exit_code == 0, again.output
-    second = json.loads(again.stdout)
-    assert second["fitted"] == 0 and second["existing"] == EXPECTED_MODELS
-    after = [row for row in _rows(migrated_database) if row[1] == SYNTHETIC_SOURCE]
-    assert sorted(model.content_hash for model, _ in after) == sorted(
-        model.content_hash for model, _ in rows
+    assert sorted(model.content_hash for model, _ in rows) == sorted(
+        model.content_hash for model in golden_metrics_models(golden_metrics)
     )
+
+
+def golden_metrics_models(golden_metrics: GoldenMetrics) -> list[Any]:
+    """The models the module's compute read back, one per target and window."""
+    engine = make_engine(golden_metrics.settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            snapshot_id = session.scalar(
+                select(MetricSnapshot.id).where(
+                    MetricSnapshot.content_hash == _snapshot(golden_metrics)
+                )
+            )
+            assert snapshot_id is not None
+            parameters = snapshot_parameters(
+                session,
+                golden_metrics.settings,
+                snapshot_id=snapshot_id,
+                snapshot_hash=_snapshot(golden_metrics),
+            )
+    finally:
+        engine.dispose()
+    return [model for by_target in parameters.values() for model in by_target.values()]
 
 
 def test_every_artifact_passes_the_inspection(

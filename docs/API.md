@@ -29,7 +29,7 @@ served live at `/api/v1/openapi.json`, with Swagger UI at `/api/v1/docs`.
 | Method | Path                                   | Returns                                  |
 |--------|----------------------------------------|------------------------------------------|
 | GET    | `/health`                              | Liveness: version, git SHA, Alembic head |
-| GET    | `/ready`                               | Readiness: database reachable and at head |
+| GET    | `/ready`                               | Readiness: database reachable and at head; the latest snapshot and its outcome models (counts and versions) |
 | GET    | `/judges`                              | `Page[JudgeSummary]`                     |
 | GET    | `/judges/{judge_id}`                   | `JudgeDetail` (service records, provenance) |
 | GET    | `/judges/{judge_id}/service`           | `list[ServiceRecord]`, oldest first      |
@@ -270,6 +270,17 @@ registry file. `synthetic_present` is true when any synthetic source has
 at least one row in those tables — a source registered by a refused run
 raises no banner. `generated_at` is the server time of the response.
 
+`GET /ready` (readiness) answers 200 when the database answers and its
+migration is the head (`alembic_current`, the four-digit revision id),
+with `metrics`: the newest exported snapshot (`snapshot_hash`,
+`exported_at`, `methodology_version`; null before the first compute) and,
+since Phase 4 Step 3, that snapshot's expected-outcome `models` —
+`fitted` (models with coefficients), `unavailable` (too few events, or a
+fit that did not converge), `spec_version`, and `model_version`; null
+before the first fitting compute. It carries counts and versions only,
+never a model hash or an artifact path. A database that is unreachable or
+behind the head is a 503 with a short reason.
+
 ## Metrics
 
 Every published number leaves the API through one shape, `Observation`,
@@ -350,6 +361,22 @@ comparison is the current definition version of the metric; a judge's
 observation under an older, not yet recomputed version is not compared.
 One page is one statement (`count(*) OVER ()`); an empty page costs one
 more that also settles whether the cohort exists.
+
+**The hold-out (Phase 4 Step 3).** Registry version 2 defines a seventh
+kind, `observed_expected` — three judge-level observed-to-expected ratios
+with partial pooling and bootstrap intervals (`docs/METHODOLOGY.md`
+"Observed-to-expected ratios") — which `metrics compute` computes and
+stores but no public response serves until Phase 4 Step 5, after
+methodology 1.0 publishes the estimator's validation (Phase 4 Step 4): an
+adjusted ratio must not reach a reader before the evidence that it
+recovers what it claims to, and the response schemas (`MetricKind`,
+`unit`) and the web's renderer do not know the kind yet. The served kinds
+are `services.metrics.SERVED_KINDS`: `GET /metrics` lists only their
+definitions; the subject routes filter by kind inside their one statement;
+`/metrics/compare` answers an adjusted slug with the same 422 as an unknown
+metric; and the provenance route answers an adjusted observation's id with
+404. `tests/integration/test_api_adjusted.py` asserts each. Step 5 adds the
+kind to the set with its schema.
 
 `GET /metrics/{observation_id}/provenance` is the chain
 (`docs/PROVENANCE.md`): the observation (the public shape above plus

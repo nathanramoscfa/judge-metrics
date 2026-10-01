@@ -394,7 +394,10 @@ one beneath it:
   window, and the declared coverage window, plus one `DISTINCT ON` for
   the latest completed run per source and one for the latest snapshot
   behind each source's current observations (`latest_snapshot`, the
-  newest of all, is what `/ready` reports). `repositories.metrics`:
+  newest of all, is what `/ready` reports, with `snapshot_models` — Phase 4
+  Step 3, one more statement — counting that snapshot's outcome models by
+  status for its newest specification version: counts and versions, never
+  a model hash or an artifact path). `repositories.metrics`:
   `subject_observations` is one statement joining the current
   observations to their definition, source, and snapshot;
   `compare_page` is one page statement — the judges with a service
@@ -1089,7 +1092,8 @@ defendants with similar observable case characteristics (the brief's
 `src/judgemetrics/metrics/adjustment/` reads the specification, builds the
 design from the analytic frame, fits it, and records every fitted model as a
 canonical artifact and a catalogue row. Step 3 turns its predictions into
-expected counts, ratios, pooled estimates, and intervals.
+expected counts, ratios, pooled estimates, and intervals (below,
+"Observed-to-expected ratios").
 
 ```
    data/reference/outcome_model.yaml  (version 1, expected-logit-v1)
@@ -1245,6 +1249,121 @@ expected counts, ratios, pooled estimates, and intervals.
   row's columns agree with the artifact, and with `--refit` refits every
   model from its snapshot and seed under the code version the row records
   and compares the bytes, naming the model and the first differing field;
-  it exits 1 on any problem. `metrics compute` does not fit in this step:
-  the operator (and the CI `e2e` job) runs `models fit` and `models verify`
-  after it.
+  it exits 1 on any problem. Since Step 3 `metrics compute` fits the
+  snapshot's missing models first (below), so `models fit` after it finds
+  nothing to do; the CI `e2e` job still runs it and `models verify`.
+
+### Observed-to-expected ratios (Phase 4 Step 3)
+
+Registry version 2 (methodology `0.3`) adds the kind `observed_expected`
+and three judge metrics over the targets of the specification:
+`pretrial_release_observed_expected` (the attributed pretrial decisions,
+outcome released), `new_case_observed_expected` and
+`failure_to_appear_observed_expected` (the pretrial-release cohort followed
+for each of the six windows). Each entry's `adjustment` names its target and
+the minimum expected count.
+
+```
+   metrics compute (engine.compute_and_publish, kinds = every kind)
+          │ export_snapshot → upsert metric_snapshot
+          ├─ catalog.fit_snapshot ─▶ the snapshot's missing models (artifacts + rows)
+          ├─ catalog.snapshot_parameters ─▶ every model read back from its artifact
+          ▼                                 (ModelParameters: columns, coefficients, replicates)
+   compute_all ─▶ descriptive kinds per subject (Phase 3)
+               └▶ ratios.adjusted_observations per adjusted metric, per source:
+                     features.design_rows (every eligible event of the source, once)
+                       → expected.expectations   per judge: n, O, E = Σ p_i
+                       → pooling.fit_shape       α over every judge with E > 0
+                       → pooled (α + O) / (α + E), weight E / (E + α)
+                       → bootstrap.interval      replicate r: weights r, coefficients r,
+                                                 weighted O and E, refitted α, pooled ratio
+                       → drafts for the requested judges (suppression.apply)
+          ▼
+   publish (kinds) ─▶ metric_observation (+ outcome_model_id, pooling_weight,
+                      suppression_reason; migration 0010) and its decision members
+```
+
+- **Expected counts** (`adjustment/expected.py`). One design per target and
+  window over every eligible index event of the source, so every judge is
+  scored by the same model; the judge is never one of its inputs. Per judge
+  (the judge the published gate attributed the row to): n, O, and E = the
+  sum of the predicted probabilities from the published coefficients
+  (`np.bincount` over the rows in design order, so no sum depends on a
+  canonical id). The model is read through `ModelParameters`: from a stored
+  artifact (`from_artifact`; `metrics compute` and `metrics verify` both read
+  the very bytes the catalogue records) or from an in-memory fit
+  (`from_fitted`, which applies the artifact's twelve-significant-digit
+  rounding so the two give identical floats). A design whose columns differ
+  from the model's (another specification) is refused.
+- **Pooling** (`adjustment/pooling.py`). The gamma–Poisson model O | θ ~
+  Poisson(θE), θ ~ Gamma(α, α): `fit_shape` maximizes the negative-binomial
+  marginal log-likelihood over the judges with E > 0, suppressed or not,
+  evaluating log Γ(α + O) − log Γ(α) as Σ_{k<O} log(α + k) (exact for
+  integer counts, no scipy) on the specification's 200-point log-spaced grid
+  over [0.5, 1000], refined by golden-section search in log α between the
+  best point's neighbours; a maximum at the upper bound is `pooled_fully`
+  (no between-judge variation detectable). The judges enter every sum in one
+  canonical order, sorted by (E, O), so the shape is a function of the
+  counts alone. The published ratio is the posterior mean (α + O) / (α + E)
+  and the pooling weight E / (E + α).
+- **The bootstrap interval** (`adjustment/bootstrap.py`). For replicate r the
+  person-cluster weights come from `resample.replicates` with the model's
+  seed and stream — the same draws the fit refitted replicate r on — and the
+  replicate's coefficients from the artifact; per judge the weighted O and E
+  (whole numbers for O), the refitted shape, and the pooled ratio. A
+  replicate whose refit did not converge is skipped (its weights are still
+  drawn, so the streams stay aligned). The interval is the 2.5% and 97.5%
+  quantiles by linear interpolation. The model is never refitted here, so a
+  recompute from the artifact reproduces the interval exactly; on the demo
+  world the three recovery models' 500 replicates take about two seconds.
+  The interval describes the pooled estimate, which is shrunk toward 1: on
+  the demo world it covers the planted true ratio for 60–68% of the judges,
+  not 95% (docs/SYNTHETIC_DATA.md "Recovery"; Step 4 reports it).
+- **Suppression.** An adjusted row is suppressed below a cohort of 30
+  (`below_threshold`), below an expected count of 5
+  (`expected_below_minimum`), or without a fitted model
+  (`model_unavailable`), in that order; the stored row keeps its figures and
+  the reason. Every suppressed row of every kind now carries its reason
+  (`below_threshold` for the descriptive kinds), and only a suppressed row
+  does (migration `0010`'s check constraints).
+- **Publish, verify, provenance.** `ObservationDraft` carries E, E / n, the
+  pooled ratio, the weight, the reason, and the cited model's content hash;
+  `publish` resolves the hash to `outcome_model_id` (refusing one the
+  catalogue lacks) and its verified columns include all six, quantized to
+  the column scales. `metrics verify` recomputes an adjusted observation from
+  its snapshot and the artifact of the model it cites (the path rebuilt from
+  the snapshot directory and the two hashes, the bytes checked against the
+  hash) and reports a missing or altered artifact by observation id with the
+  column `outcome_model`; it recomputes a snapshot's observations for the
+  kinds the snapshot holds only. The provenance trace names the model
+  (content hash, specification and model versions, target, window, seed,
+  status) from its first statement and `check_chain` requires the artifact to
+  exist and hash to its content hash (`provenance trace` passes the settings
+  that locate it; the trace stays three statements).
+- **The step-13 exception** (an exception to ROADMAP.md §5 "Performance
+  rules", which has a recompute touch only the impacted subjects). An
+  adjusted figure depends on a model and a shape fitted over every judge of
+  the source, so it cannot be recomputed for the impacted subjects alone:
+  pipeline step 13 computes and publishes the descriptive kinds only
+  (`kinds=DESCRIPTIVE_KINDS`), `publish` loads, compares, and supersedes only
+  the kinds a run computed, and a judge an ingest touches keeps the adjusted
+  observations of the last full `metrics compute`, still citing that
+  compute's snapshot and model, until the next full compute. That is the one
+  place a subject's current rows cite two snapshots.
+- **Fitting inside the compute.** `metrics compute` (every kind) records the
+  snapshot row, fits the snapshot's missing models of the current
+  specification version and seed, and reads them all back before computing,
+  so it stays one command; a second run on the same snapshot fits nothing
+  and publishes nothing. On the demo seed the first fitting compute takes
+  about 35 seconds more than the descriptive compute (thirteen fits with 500
+  replicate refits each) plus about 15 seconds for the adjusted figures.
+- **The public hold-out.** `services.metrics.SERVED_KINDS` (the six Phase 3
+  kinds) is every kind a public metrics response carries until Phase 4
+  Step 5 publishes the validation: `GET /api/v1/metrics` lists only their
+  definitions, the subject routes filter by kind in their one SQL statement
+  (bound parameters), `/metrics/compare` answers an adjusted slug with the
+  unknown-metric 422, and the provenance route traces only an observation of
+  a served kind (an adjusted id is a 404). `/api/v1/ready` reports the latest
+  snapshot's models as counts and versions only. The web places every
+  definition it is served, so the hold-out is also what keeps an adjusted
+  ratio off the judge page until Step 5 gives it a schema and a renderer.

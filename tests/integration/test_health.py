@@ -54,7 +54,7 @@ def test_health_reports_version_sha_and_head(unreachable_client: TestClient) -> 
     assert body["status"] == "ok"
     assert body["version"] == __version__
     assert body["git_sha"] == "unknown" or SHA.match(body["git_sha"])
-    assert body["alembic_head"] == head_revision() == "0009"
+    assert body["alembic_head"] == head_revision() == "0010"
     assert set(body) == {"status", "version", "git_sha", "alembic_head"}
 
 
@@ -120,9 +120,17 @@ def test_ready_returns_200_at_head_with_the_latest_snapshot(live_client: TestCli
     # Null before the first compute; the latest snapshot's hash, time, and version after.
     metrics = body["metrics"]
     if metrics is not None:
-        assert set(metrics) == {"snapshot_hash", "exported_at", "methodology_version"}
+        assert set(metrics) == {"snapshot_hash", "exported_at", "methodology_version", "models"}
         assert re.fullmatch(r"[0-9a-f]{64}", metrics["snapshot_hash"])
         assert metrics["methodology_version"]
+        # Phase 4 Step 3: the snapshot's models as counts and versions (null before a fit).
+        if metrics["models"] is not None:
+            assert set(metrics["models"]) == {
+                "fitted",
+                "unavailable",
+                "spec_version",
+                "model_version",
+            }
 
 
 def test_openapi_is_served_under_the_versioned_prefix(unreachable_client: TestClient) -> None:

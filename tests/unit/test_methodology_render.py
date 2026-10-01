@@ -71,7 +71,19 @@ def test_document_shape_and_width() -> None:
     ):
         assert f"\n{heading}\n" in document, heading
     registry = load_registry()
-    assert f"Registry version {registry.version}; methodology version 0.2" in document
+    assert f"Registry version {registry.version}; methodology version 0.3" in document
+    adjusted = _normalize(_section(document, "Observed-to-expected ratios"))
+    for phrase in (
+        "(alpha + O) / (alpha + E)",
+        "E / (E + alpha)",
+        "maximum marginal (negative-binomial) likelihood",
+        "2.5th and 97.5th percentiles",
+        "not served by the API until methodology 1.0",
+        "never a causal effect",
+        "expected_below_minimum",
+        "model_unavailable",
+    ):
+        assert phrase in adjusted, phrase
     metrics = _section(document, "Metrics")
     for metric in registry.metrics.values():
         assert f"\n### {metric.name}\n" in metrics, metric.slug
@@ -91,6 +103,11 @@ def test_document_shape_and_width() -> None:
     changelog = _section(document, "Methodology changelog")
     assert "- 0.1 - first registry" in changelog
     assert "- 0.2 - Exposure is deferred by every incarceration term" in changelog
+    assert "- 0.3 - Observed-to-expected ratios with partial pooling and bootstrap" in changelog
+    for metric in registry.of_kind("observed_expected"):
+        section = _normalize(metrics[metrics.index(f"### {metric.name}") :].split("\n### ")[0])
+        assert "Suppression threshold: 30 (suppressed below this cohort)" in section
+        assert "below an expected count of 5 or without a fitted model" in section
 
 
 def test_known_limitations_are_the_briefs_warnings_verbatim() -> None:

@@ -32,12 +32,23 @@ identifier, and never the lake's storage key (``raw_object_path`` is not
 selected). ``render`` prints the chain top-down in the brief's order for
 ``judgemetrics provenance trace``; ``as_dict`` is its ``--json`` form and
 what the API's ``ObservationProvenance`` is built from.
+
+Phase 4 Step 3: an ``observed_expected`` observation's chain also names the
+outcome model it was computed with — content hash, specification and model
+versions, target, window, seed, status — read through ``outcome_model_id``
+in the first statement (an outer join, so the count stays three), and
+``check_chain`` then also requires the model's artifact to exist under the
+configured snapshot directory (the path rebuilt from the two validated
+hashes, never from ``storage_uri``) and to hash to the content hash. A trace
+without ``settings`` cannot look, and an adjusted chain is then reported
+incomplete. ``kinds`` limits the observations a trace may start from (the
+API passes the kinds it serves, so an adjusted id is unknown to it).
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -46,8 +57,9 @@ from typing import Any
 from sqlalchemy import Select, and_, case, select
 from sqlalchemy.orm import Session
 
+from judgemetrics.config import Settings
 from judgemetrics.db.models import SYNTHETIC_SOURCE_TYPE, Base
-from judgemetrics.metrics.snapshot import HEX64
+from judgemetrics.metrics.snapshot import HEX64, snapshot_root
 
 DEFINITION = Base.metadata.tables["metric_definition"]
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
@@ -61,6 +73,7 @@ COURT_CASE = Base.metadata.tables["court_case"]
 SENTENCE = Base.metadata.tables["sentence"]
 COURT_EVENT = Base.metadata.tables["court_event"]
 JUSTICE_EVENT = Base.metadata.tables["justice_event"]
+OUTCOME_MODEL = Base.metadata.tables["outcome_model"]
 
 # member_kind → (the canonical table, its case column). The order is the
 # brief's chain order for the rendered output.
@@ -112,6 +125,30 @@ class TracedObservation:
     code_version: str
     computed_at: datetime
     superseded_at: datetime | None
+    suppression_reason: str | None = None
+    expected_count: Decimal | None = None
+    expected_rate: Decimal | None = None
+    standardized_ratio: Decimal | None = None
+    pooling_weight: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TracedModel:
+    """The outcome model an adjusted observation was computed with, and its artifact check."""
+
+    content_hash: str
+    spec_version: int
+    model_version: str
+    target: str
+    window_days: int | None
+    seed: int
+    status: str
+    # None: not checked (no settings); otherwise why the artifact fails, or "" when it holds.
+    artifact_problem: str | None
+
+    @property
+    def artifact_ok(self) -> bool:
+        return self.artifact_problem == ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +235,7 @@ class ObservationTrace:
     unresolved_records: int = 0
     statements: int = STATEMENTS
     groups: tuple[MemberGroup, ...] = field(default_factory=tuple)
+    model: TracedModel | None = None
 
     @property
     def complete(self) -> bool:
@@ -205,6 +243,7 @@ class ObservationTrace:
             self.unresolved_members == 0
             and self.unresolved_records == 0
             and all(record.has_artifact for record in self.source_records)
+            and (self.model is None or self.model.artifact_ok)
         )
 
     @property
@@ -240,6 +279,11 @@ class ObservationTrace:
                 "upper": _number(observation.upper),
                 "suppressed": observation.suppressed,
                 "suppression_threshold": observation.suppression_threshold,
+                "suppression_reason": observation.suppression_reason,
+                "expected_count": _number(observation.expected_count),
+                "expected_rate": _number(observation.expected_rate),
+                "standardized_ratio": _number(observation.standardized_ratio),
+                "pooling_weight": _number(observation.pooling_weight),
                 "methodology_version": observation.methodology_version,
                 "registry_version": observation.registry_version,
                 "code_version": observation.code_version,
@@ -260,6 +304,21 @@ class ObservationTrace:
                 "storage_uri": self.snapshot.storage_uri,
                 "row_counts": dict(self.snapshot.row_counts),
             },
+            "model": (
+                None
+                if self.model is None
+                else {
+                    "content_hash": self.model.content_hash,
+                    "spec_version": self.model.spec_version,
+                    "model_version": self.model.model_version,
+                    "target": self.model.target,
+                    "window_days": self.model.window_days,
+                    "seed": self.model.seed,
+                    "status": self.model.status,
+                    "artifact_ok": self.model.artifact_ok,
+                    "artifact_problem": self.model.artifact_problem or None,
+                }
+            ),
             "members": [
                 {
                     "member_kind": group.kind,
@@ -335,9 +394,14 @@ def parse_observation_id(text: str) -> uuid.UUID:
 # --- statements --------------------------------------------------------------------------
 
 
-def observation_statement(observation_id: uuid.UUID) -> Select[Any]:
-    """The observation with its definition, snapshot, and source: one statement."""
-    return (
+def observation_statement(
+    observation_id: uuid.UUID, kinds: Collection[str] | None = None
+) -> Select[Any]:
+    """The observation with its definition, snapshot, source, and model: one statement.
+
+    ``kinds`` (bound parameters) keeps an observation of those registry kinds only.
+    """
+    stmt = (
         select(
             OBSERVATION,
             DEFINITION.c.slug.label("slug"),
@@ -361,12 +425,23 @@ def observation_statement(observation_id: uuid.UUID) -> Select[Any]:
             SOURCE.c.coverage_start.label("source_coverage_start"),
             SOURCE.c.coverage_end.label("source_coverage_end"),
             SOURCE.c.observable_outcomes.label("source_observable_outcomes"),
+            OUTCOME_MODEL.c.content_hash.label("model_hash"),
+            OUTCOME_MODEL.c.spec_version.label("model_spec_version"),
+            OUTCOME_MODEL.c.model_version.label("model_version"),
+            OUTCOME_MODEL.c.target.label("model_target"),
+            OUTCOME_MODEL.c.window_days.label("model_window_days"),
+            OUTCOME_MODEL.c.seed.label("model_seed"),
+            OUTCOME_MODEL.c.status.label("model_status"),
         )
         .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
         .join(SNAPSHOT, SNAPSHOT.c.id == OBSERVATION.c.snapshot_id)
         .join(SOURCE, SOURCE.c.id == OBSERVATION.c.source_id)
+        .outerjoin(OUTCOME_MODEL, OUTCOME_MODEL.c.id == OBSERVATION.c.outcome_model_id)
         .where(OBSERVATION.c.id == observation_id)
     )
+    if kinds is not None:
+        stmt = stmt.where(DEFINITION.c.kind.in_(sorted(kinds)))
+    return stmt
 
 
 def resolved_members_statement(observation_id: uuid.UUID) -> Select[Any]:
@@ -467,14 +542,61 @@ def _group(members: Sequence[TracedMember]) -> tuple[MemberGroup, ...]:
     return tuple(groups)
 
 
-def trace(session: Session, observation_id: uuid.UUID | str) -> ObservationTrace:
-    """The chain behind ``observation_id`` (superseded observations trace too); ``TraceError`` if none."""
+def _artifact_problem(settings: Settings | None, snapshot_hash: str, model_hash: str) -> str | None:
+    """Why the model's artifact fails the chain ("" when it holds; None when not checked)."""
+    if settings is None:
+        return None
+    from judgemetrics.metrics.adjustment.artifacts import (
+        ArtifactError,
+        artifact_path,
+        content_hash,
+    )
+
+    try:
+        path = artifact_path(snapshot_root(settings), snapshot_hash, model_hash)
+    except ArtifactError as exc:
+        return str(exc)
+    if not path.is_file():
+        return "the model's artifact is missing"
+    if content_hash(path.read_bytes()) != model_hash:
+        return "the model's artifact does not hash to its content hash"
+    return ""
+
+
+def _traced_model(row: Any, settings: Settings | None) -> TracedModel | None:
+    if row["model_hash"] is None:
+        return None
+    model_hash = str(row["model_hash"])
+    return TracedModel(
+        content_hash=model_hash,
+        spec_version=int(row["model_spec_version"]),
+        model_version=str(row["model_version"]),
+        target=str(row["model_target"]),
+        window_days=row["model_window_days"],
+        seed=int(row["model_seed"]),
+        status=str(row["model_status"]),
+        artifact_problem=_artifact_problem(settings, str(row["snapshot_hash"]), model_hash),
+    )
+
+
+def trace(
+    session: Session,
+    observation_id: uuid.UUID | str,
+    *,
+    settings: Settings | None = None,
+    kinds: Collection[str] | None = None,
+) -> ObservationTrace:
+    """The chain behind ``observation_id`` (superseded observations trace too); ``TraceError`` if none.
+
+    ``settings`` locates an adjusted observation's model artifact (the
+    configured snapshot directory); ``kinds`` limits the observations traced.
+    """
     oid = (
         observation_id
         if isinstance(observation_id, uuid.UUID)
         else parse_observation_id(observation_id)
     )
-    row = session.execute(observation_statement(oid)).mappings().first()
+    row = session.execute(observation_statement(oid, kinds)).mappings().first()
     if row is None:
         msg = f"no metric observation has id {oid}"
         raise TraceError(msg)
@@ -514,6 +636,11 @@ def trace(session: Session, observation_id: uuid.UUID | str) -> ObservationTrace
         code_version=str(row["code_version"]),
         computed_at=row["computed_at"],
         superseded_at=row["superseded_at"],
+        suppression_reason=row["suppression_reason"],
+        expected_count=_decimal(row["expected_count"]),
+        expected_rate=_decimal(row["expected_rate"]),
+        standardized_ratio=_decimal(row["standardized_ratio"]),
+        pooling_weight=_decimal(row["pooling_weight"]),
     )
     snapshot = TracedSnapshot(
         id=_uuid(row["snapshot_id"]),
@@ -592,6 +719,7 @@ def trace(session: Session, observation_id: uuid.UUID | str) -> ObservationTrace
         unresolved_members=sum(1 for m in members if not m.resolved),
         unresolved_records=len(referenced - found_records),
         groups=_group(members),
+        model=_traced_model(row, settings),
     )
 
 
@@ -619,7 +747,8 @@ def render(traced: ObservationTrace) -> list[str]:
         f"  numerator / denominator: {o.observed_count} / {o.cohort_size}; "
         f"eligible: {o.eligible_count}; rate: {_fmt(o.observed_rate)}; interval: {interval}; "
         f"value: {_fmt(o.value)}",
-        f"  suppressed: {'yes' if o.suppressed else 'no'} (threshold {o.suppression_threshold})",
+        f"  suppressed: {'yes' if o.suppressed else 'no'} (threshold {o.suppression_threshold}"
+        + (f"; reason {o.suppression_reason})" if o.suppression_reason else ")"),
         f"  versions: methodology {o.methodology_version}; registry {o.registry_version}; "
         f"code {o.code_version}",
         f"  computed: {o.computed_at.isoformat()}; superseded: "
@@ -630,6 +759,12 @@ def render(traced: ObservationTrace) -> list[str]:
             "  distribution: "
             + ", ".join(f"{key}={value}" for key, value in sorted(o.distribution.items()))
         )
+    if traced.model is not None:
+        lines.append(
+            f"  expected: {_fmt(o.expected_count)}; expected rate: {_fmt(o.expected_rate)}; "
+            f"pooled ratio: {_fmt(o.standardized_ratio)}; pooling weight: "
+            f"{_fmt(o.pooling_weight)}"
+        )
     s = traced.snapshot
     rows = ", ".join(f"{name}={count}" for name, count in sorted(s.row_counts.items()))
     lines += [
@@ -638,8 +773,25 @@ def render(traced: ObservationTrace) -> list[str]:
         f"registry {s.registry_version}; methodology {s.methodology_version}",
         f"  storage: {s.storage_uri}",
         f"  rows: {rows}",
-        f"eligible canonical events: {len(traced.members)} member(s)",
     ]
+    model = traced.model
+    artifact = ""
+    if model is not None:
+        window = "—" if model.window_days is None else f"{model.window_days} days"
+        artifact = (
+            "not checked"
+            if model.artifact_problem is None
+            else "ok"
+            if model.artifact_ok
+            else model.artifact_problem
+        )
+        lines += [
+            f"outcome model {model.content_hash}",
+            f"  target: {model.target}; window: {window}; status: {model.status}; seed "
+            f"{model.seed}; specification {model.spec_version}; model {model.model_version}",
+            f"  artifact: {artifact}",
+        ]
+    lines.append(f"eligible canonical events: {len(traced.members)} member(s)")
     for group in traced.groups:
         lines.append(
             f"  {group.kind}: {group.members} (counted {group.counted}, followed "
@@ -668,9 +820,12 @@ def render(traced: ObservationTrace) -> list[str]:
             f"{', '.join(source.observable_outcomes) or '—'}"
         )
     if not traced.complete:
+        problem = ""
+        if model is not None and not model.artifact_ok:
+            problem = f", the model artifact {artifact}"
         lines.append(
             f"INCOMPLETE: {traced.unresolved_members} member(s) without a canonical row, "
-            f"{traced.unresolved_records} row(s) without a source record"
+            f"{traced.unresolved_records} row(s) without a source record{problem}"
         )
     lines.append(f"complete: {'yes' if traced.complete else 'no'}")
     return lines

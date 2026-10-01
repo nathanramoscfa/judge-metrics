@@ -42,16 +42,27 @@ canonical rows behind the number: the population rows of a count, share,
 distribution, or median (``followed`` and ``counted`` mark the
 denominator and numerator), the index events of a windowed metric.
 Suppression (``suppression.apply``) is applied to every draft before it
-is returned.
+is returned, and a suppressed draft carries its ``suppression_reason``.
+
+``observed_expected`` (Phase 4 Step 3) is not a per-subject computation:
+its expected counts come from one model fitted over every eligible event of
+the source and its pooling shape from every judge, so ``compute_frame``
+hands each such definition to ``adjustment.ratios.adjusted_observations``
+once per source, with the source's fitted models (``models``, read from
+their artifacts by the caller), and keeps the drafts of the requested
+judges. The kinds a call computes are explicit: ``kinds`` defaults to the
+descriptive kinds (what pipeline step 13 recomputes), and asking for
+``observed_expected`` without the models is an error. A court subject has
+no adjusted observation.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from statistics import median
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -84,10 +95,21 @@ from judgemetrics.metrics.index_events import (
     index_events,
 )
 from judgemetrics.metrics.intervals import round6, wilson
-from judgemetrics.metrics.registry import MetricDefinitionSpec, Registry
+from judgemetrics.metrics.registry import (
+    DESCRIPTIVE_KINDS,
+    OBSERVED_EXPECTED,
+    MetricDefinitionSpec,
+    Registry,
+)
 from judgemetrics.metrics.snapshot import Snapshot, SnapshotError, SourceRow
 from judgemetrics.metrics.windows import FIRST_OUTCOME_AT, first_outcomes, not_observable
 from judgemetrics.normalization import vocabulary
+
+if TYPE_CHECKING:
+    from judgemetrics.metrics.adjustment.expected import ModelParameters
+
+    # A source's fitted models by (target, window), and every source's by source id.
+    SourceModels = Mapping[tuple[str, int | None], ModelParameters]
 
 log = get_logger(__name__)
 
@@ -156,6 +178,15 @@ class ObservationDraft:
     upper: float | None
     members: tuple[Member, ...]
     suppressed_flag: bool = False
+    # Why a suppressed draft is withheld (suppression.apply sets it with the flag).
+    suppression_reason: str | None = None
+    # observed_expected only (docs/DATA_MODEL.md "metric_observation by kind"): E, E / n,
+    # the pooled ratio, E / (E + alpha), and the content hash of the model they came from.
+    expected_count: float | None = None
+    expected_rate: float | None = None
+    standardized_ratio: float | None = None
+    pooling_weight: float | None = None
+    model_hash: str | None = None
 
     @property
     def key(self) -> ObservationKey:
@@ -601,6 +632,12 @@ def compute_metric(
     if subject.subject_type not in definition.subject_types:
         msg = f"{definition.slug} is not defined for a {subject.subject_type}"
         raise ComputeError(msg)
+    if definition.kind == OBSERVED_EXPECTED:
+        msg = (
+            f"{definition.slug} is an {OBSERVED_EXPECTED}: it is computed for every judge of a "
+            "source at once (compute_frame with its models), never for one subject"
+        )
+        raise ComputeError(msg)
     context = _Context(
         frame=frame,
         definition=definition,
@@ -635,8 +672,16 @@ def compute_frame(
     registry: Registry,
     source_id: str,
     subjects: Sequence[Subject] | None = None,
+    *,
+    kinds: Collection[str] = DESCRIPTIVE_KINDS,
+    models: SourceModels | None = None,
 ) -> ComputeResult:
-    """Every registry metric for the frame's subjects (or the given ones present in it)."""
+    """Every registry metric of ``kinds`` for the frame's subjects (or the given ones in it).
+
+    ``observed_expected`` needs ``models`` — the source's fitted models by
+    ``(target, window)`` — and is computed over every judge of the frame,
+    keeping the requested judges' drafts (see the module docstring).
+    """
     result = ComputeResult()
     present = subjects_of(frame)
     if subjects is not None:
@@ -645,11 +690,30 @@ def compute_frame(
     result.subjects = present
     for subject in present:
         for definition in registry.for_subject(subject.subject_type):
+            if definition.kind not in kinds or definition.kind == OBSERVED_EXPECTED:
+                continue
             computed = compute_metric(frame, definition, subject, source_id)
             if isinstance(computed, NotObservableRecord):
                 result.not_observable.append(computed)
             else:
                 result.drafts.extend(computed)
+    adjusted = registry.of_kind(OBSERVED_EXPECTED) if OBSERVED_EXPECTED in kinds else ()
+    judges = [subject for subject in present if subject.subject_type == JUDGE]
+    if adjusted and judges:
+        if models is None:
+            msg = f"computing {OBSERVED_EXPECTED} needs the source's fitted models"
+            raise ComputeError(msg)
+        from judgemetrics.metrics.adjustment.ratios import RatioError, adjusted_observations
+
+        for definition in adjusted:
+            try:
+                drafts, records = adjusted_observations(
+                    frame, definition, source_id=source_id, models=models, judges=judges
+                )
+            except RatioError as exc:
+                raise ComputeError(str(exc)) from exc
+            result.drafts.extend(drafts)
+            result.not_observable.extend(records)
     return result
 
 
@@ -657,8 +721,14 @@ def compute_all(
     snapshot: Snapshot,
     registry: Registry,
     subjects: Sequence[Subject] | None = None,
+    *,
+    kinds: Collection[str] = DESCRIPTIVE_KINDS,
+    models: Mapping[str, SourceModels] | None = None,
 ) -> ComputeResult:
-    """``compute_frame`` over every source of the snapshot with case data and a coverage window."""
+    """``compute_frame`` over every source of the snapshot with case data and a coverage window.
+
+    ``models`` maps a source id to its fitted models (``observed_expected`` only).
+    """
     result = ComputeResult()
     for source in snapshot.sources_with_cases():
         if not source.has_coverage:
@@ -671,7 +741,14 @@ def compute_all(
             )
             continue
         frame = _frame_of(snapshot, source)
-        partial = compute_frame(frame, registry, source.id, subjects)
+        partial = compute_frame(
+            frame,
+            registry,
+            source.id,
+            subjects,
+            kinds=kinds,
+            models=None if models is None else models.get(source.id, {}),
+        )
         result.drafts.extend(partial.drafts)
         result.not_observable.extend(partial.not_observable)
         result.subjects.extend(partial.subjects)

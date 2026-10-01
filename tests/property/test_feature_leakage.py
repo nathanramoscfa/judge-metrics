@@ -16,7 +16,6 @@ the bootstrap replicate draws byte-identical.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
 from typing import Any
 
@@ -34,9 +33,9 @@ from judgemetrics.metrics.adjustment.features import (
 from judgemetrics.metrics.adjustment.logistic import fit_logistic
 from judgemetrics.metrics.adjustment.resample import replicate_stream, replicates
 from judgemetrics.metrics.adjustment.spec import load_spec
-from judgemetrics.metrics.frame import ID, SCHEMAS, Frame
+from judgemetrics.metrics.frame import Frame
 from judgemetrics.synthetic.config import TINY
-from tests.property.support import build_world, frame_from_world, seeds
+from tests.property.support import build_world, frame_from_world, relabel_frame, seeds
 
 pytestmark = pytest.mark.property
 
@@ -110,27 +109,7 @@ def test_no_feature_reads_a_row_at_or_after_its_known_at_instant(seed: int) -> N
 
 
 def _relabel(frame: Frame) -> Frame:
-    """Every canonical id replaced by a hash of itself; every table reordered by its new ids."""
-
-    def new(value: str) -> str:
-        return "R" + hashlib.sha256(value.encode("utf-8")).hexdigest()[:20]
-
-    ids: set[str] = set()
-    for name, schema in SCHEMAS.items():
-        table = frame.table(name)
-        for column, spec in schema.items():
-            if spec == ID:
-                ids.update(str(value) for value in table[column].drop_nulls().to_list())
-    mapping = {value: new(value) for value in ids}
-    tables: dict[str, pl.DataFrame] = {}
-    for name, schema in SCHEMAS.items():
-        columns = [column for column, spec in schema.items() if spec == ID]
-        relabelled = frame.table(name).with_columns(
-            pl.col(column).replace_strict(mapping, default=None, return_dtype=pl.String)
-            for column in columns
-        )
-        tables[name] = relabelled.sort(columns[0], nulls_last=True)
-    return frame.replace(**tables)
+    return relabel_frame(frame)[0]
 
 
 def _design(frame: Frame, target: str, window: int | None) -> DesignFrame:

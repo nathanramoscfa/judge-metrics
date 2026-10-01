@@ -29,15 +29,29 @@ Nothing is ever deleted: supersession keeps the history of every number
 a subject has carried. ``stored_columns`` and ``row_columns`` are the two
 halves of the comparison every equality in this package and in
 ``verify`` uses — both normalize to the database's own precision
-(``Numeric(9, 6)`` rates and bounds, ``Numeric(14, 4)`` values).
-Observation and member rows carry entity ids only, never a person id;
-log lines carry the snapshot id, counts, and slugs only.
+(``Numeric(9, 6)`` rates, bounds, ratios, and weights, ``Numeric(14, 4)``
+values and expected counts). Observation and member rows carry entity ids
+only, never a person id; log lines carry the snapshot id, counts, and slugs
+only.
+
+Phase 4 Step 3: the verified columns include the ``observed_expected``
+figures (``expected_count``, ``expected_rate``, ``standardized_ratio``,
+``pooling_weight``), every row's ``suppression_reason``, and the content
+hash of the model an adjusted observation cites (``outcome_model_hash``,
+read through ``outcome_model_id``); a draft names its model by that hash
+and ``publish`` resolves the id, refusing a hash the catalogue does not
+hold. ``publish(..., kinds=)`` loads, compares, and supersedes only the
+current observations of the kinds the run computed (every kind by default):
+pipeline step 13 passes the descriptive kinds, so a judge it touches keeps
+the adjusted observations the last full ``metrics compute`` published — the
+one place a recompute leaves a subject's rows of two snapshots side by side
+(docs/ARCHITECTURE.md "Risk adjustment").
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -52,7 +66,7 @@ from judgemetrics.db.models import Base
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.compute import Member, NotObservableRecord, ObservationDraft
-from judgemetrics.metrics.registry import Registry, sync_definitions
+from judgemetrics.metrics.registry import KINDS, OBSERVED_EXPECTED, Registry, sync_definitions
 from judgemetrics.metrics.snapshot import Snapshot, code_version
 
 log = get_logger(__name__)
@@ -60,6 +74,11 @@ log = get_logger(__name__)
 BATCH_SIZE = 500
 RATE_PLACES = Decimal("0.000001")
 VALUE_PLACES = Decimal("0.0001")
+# A Numeric(9, 6) column holds values below 1000 in magnitude.
+SIX_PLACE_LIMIT = Decimal(1000)
+# The pseudo-column naming the cited model by its content hash (read through
+# outcome_model_id; never a column of metric_observation itself).
+MODEL_HASH = "outcome_model_hash"
 # The stored columns a recompute must reproduce (and that decide "unchanged").
 VERIFIED_COLUMNS: tuple[str, ...] = (
     "period_start",
@@ -77,6 +96,12 @@ VERIFIED_COLUMNS: tuple[str, ...] = (
     "suppressed_flag",
     "registry_version",
     "methodology_version",
+    "expected_count",
+    "expected_rate",
+    "standardized_ratio",
+    "pooling_weight",
+    "suppression_reason",
+    MODEL_HASH,
 )
 MemberTuple = tuple[str, str, bool, bool]
 GroupKey = tuple[str, str, str]
@@ -85,6 +110,7 @@ DEFINITION = Base.metadata.tables["metric_definition"]
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 OBSERVATION = Base.metadata.tables["metric_observation"]
 MEMBER = Base.metadata.tables["metric_observation_member"]
+OUTCOME_MODEL = Base.metadata.tables["outcome_model"]
 
 
 class PublishError(RuntimeError):
@@ -126,7 +152,11 @@ class PublishResult:
 def _rate(value: float | Decimal | None) -> Decimal | None:
     if value is None:
         return None
-    return Decimal(str(value)).quantize(RATE_PLACES, rounding=ROUND_HALF_EVEN)
+    quantized = Decimal(str(value)).quantize(RATE_PLACES, rounding=ROUND_HALF_EVEN)
+    if abs(quantized) >= SIX_PLACE_LIMIT:
+        msg = f"{value} does not fit a Numeric(9, 6) column"
+        raise PublishError(msg)
+    return quantized
 
 
 def _value(value: float | Decimal | None) -> Decimal | None:
@@ -155,6 +185,12 @@ def stored_columns(draft: ObservationDraft, registry: Registry) -> dict[str, Any
         "suppressed_flag": bool(draft.suppressed_flag),
         "registry_version": int(registry.version),
         "methodology_version": str(registry.methodology_version),
+        "expected_count": _value(draft.expected_count),
+        "expected_rate": _rate(draft.expected_rate),
+        "standardized_ratio": _rate(draft.standardized_ratio),
+        "pooling_weight": _rate(draft.pooling_weight),
+        "suppression_reason": draft.suppression_reason,
+        MODEL_HASH: draft.model_hash,
     }
 
 
@@ -178,7 +214,18 @@ def row_columns(row: Mapping[str, Any]) -> dict[str, Any]:
         "suppressed_flag": bool(row["suppressed_flag"]),
         "registry_version": int(row["registry_version"]),
         "methodology_version": str(row["methodology_version"]),
+        "expected_count": _value(row["expected_count"]),
+        "expected_rate": _rate(row["expected_rate"]),
+        "standardized_ratio": _rate(row["standardized_ratio"]),
+        "pooling_weight": _rate(row["pooling_weight"]),
+        "suppression_reason": row["suppression_reason"],
+        MODEL_HASH: None if row[MODEL_HASH] is None else str(row[MODEL_HASH]),
     }
+
+
+def _insert_columns(columns: Mapping[str, Any]) -> dict[str, Any]:
+    """The stored columns of ``metric_observation`` itself (the model hash is not one)."""
+    return {name: value for name, value in columns.items() if name != MODEL_HASH}
 
 
 def member_tuples(members: Iterable[Member]) -> tuple[MemberTuple, ...]:
@@ -268,6 +315,7 @@ class StoredObservation:
     snapshot_id: uuid.UUID
     columns: dict[str, Any]
     members: tuple[MemberTuple, ...]
+    kind: str = ""
 
 
 def load_members(
@@ -300,17 +348,28 @@ def load_observations(
     subject: tuple[str, str] | None = None,
     source_id: uuid.UUID | None = None,
     with_members: bool = True,
+    kinds: Collection[str] | None = None,
 ) -> list[StoredObservation]:
-    """Stored observations with their definition, normalized columns, and members."""
+    """Stored observations with their definition, normalized columns, and members.
+
+    ``kinds`` keeps the observations of those registry kinds only (every kind
+    when ``None``); the cited model's content hash is read through an outer
+    join (``outcome_model_hash``, null for every kind but ``observed_expected``).
+    """
     stmt = (
         select(
             OBSERVATION,
             DEFINITION.c.slug.label("slug"),
             DEFINITION.c.version.label("definition_version"),
+            DEFINITION.c.kind.label("kind"),
+            OUTCOME_MODEL.c.content_hash.label(MODEL_HASH),
         )
         .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
+        .outerjoin(OUTCOME_MODEL, OUTCOME_MODEL.c.id == OBSERVATION.c.outcome_model_id)
         .order_by(OBSERVATION.c.id)
     )
+    if kinds is not None:
+        stmt = stmt.where(DEFINITION.c.kind.in_(sorted(kinds)))
     if current_only:
         stmt = stmt.where(OBSERVATION.c.superseded_at.is_(None))
     if snapshot_id is not None:
@@ -347,6 +406,7 @@ def load_observations(
                 snapshot_id=uuid.UUID(str(row["snapshot_id"])),
                 columns=row_columns(row),
                 members=tuple(members.get(oid, [])),
+                kind=str(row["kind"]),
             )
         )
     return stored
@@ -387,11 +447,11 @@ def _observation_row(
     observation_id: uuid.UUID,
     definition_id: uuid.UUID,
     snapshot_id: uuid.UUID,
+    model_id: uuid.UUID | None,
     registry: Registry,
     version: str,
     computed_at: datetime,
 ) -> dict[str, Any]:
-    columns = stored_columns(draft, registry)
     return {
         "id": observation_id,
         "metric_definition_id": definition_id,
@@ -401,12 +461,44 @@ def _observation_row(
         "snapshot_id": snapshot_id,
         "computed_at": computed_at,
         "code_version": version,
-        "expected_count": None,
-        "expected_rate": None,
-        "standardized_ratio": None,
+        "outcome_model_id": model_id,
         "superseded_at": None,
-        **columns,
+        **_insert_columns(stored_columns(draft, registry)),
     }
+
+
+def model_ids(
+    session: Session, drafts: Sequence[ObservationDraft], registry: Registry
+) -> dict[str, uuid.UUID]:
+    """``outcome_model.id`` by content hash for every model a draft cites.
+
+    An ``observed_expected`` draft must cite a recorded model and no other
+    kind may cite one; ``PublishError`` otherwise, before anything is written.
+    """
+    hashes: set[str] = set()
+    for draft in drafts:
+        adjusted = registry.metrics[draft.slug].kind == OBSERVED_EXPECTED
+        if adjusted and draft.model_hash is None:
+            msg = f"{draft.slug} {draft.subject_type}:{draft.subject_id} cites no outcome model"
+            raise PublishError(msg)
+        if not adjusted and draft.model_hash is not None:
+            msg = f"{draft.slug} is not an {OBSERVED_EXPECTED} and cannot cite a model"
+            raise PublishError(msg)
+        if draft.model_hash is not None:
+            hashes.add(draft.model_hash)
+    if not hashes:
+        return {}
+    rows = session.execute(
+        select(OUTCOME_MODEL.c.content_hash, OUTCOME_MODEL.c.id).where(
+            OUTCOME_MODEL.c.content_hash.in_(sorted(hashes))
+        )
+    ).all()
+    found = {str(row.content_hash): uuid.UUID(str(row.id)) for row in rows}
+    missing = sorted(hashes - set(found))
+    if missing:
+        msg = f"{len(missing)} cited outcome model(s) are not recorded: {', '.join(missing[:3])}"
+        raise PublishError(msg)
+    return found
 
 
 def _member_rows(observation_id: uuid.UUID, members: Iterable[Member]) -> list[dict[str, Any]]:
@@ -436,9 +528,22 @@ def publish(
     *,
     not_observable: Sequence[NotObservableRecord] = (),
     label: str | None = None,
+    kinds: Collection[str] | None = None,
 ) -> PublishResult:
-    """Store the drafts (see the module docstring); the caller commits."""
+    """Store the drafts (see the module docstring); the caller commits.
+
+    ``kinds`` are the registry kinds the drafts were computed for (every kind
+    by default): only current observations of those kinds are compared and
+    superseded, and a draft of another kind is refused.
+    """
+    scope = frozenset(KINDS) if kinds is None else frozenset(kinds)
+    for draft in drafts:
+        definition = registry.metrics.get(draft.slug)
+        if definition is None or definition.kind not in scope:
+            msg = f"{draft.slug} is not a registry metric of the kinds {sorted(scope)}"
+            raise PublishError(msg)
     check_chain(snapshot, drafts)
+    models = model_ids(session, drafts, registry)
     snapshot_id = upsert_snapshot(session, snapshot, registry, settings, label)
     ids = definition_ids(session, registry)
     for draft in drafts:
@@ -455,7 +560,10 @@ def publish(
     subjects_unchanged = 0
     for (subject_type, subject_id, source_id), group in sorted(_group(drafts).items()):
         current = load_observations(
-            session, subject=(subject_type, subject_id), source_id=uuid.UUID(source_id)
+            session,
+            subject=(subject_type, subject_id),
+            source_id=uuid.UUID(source_id),
+            kinds=scope,
         )
         if _unchanged(group, current, registry):
             subjects_unchanged += 1
@@ -480,14 +588,16 @@ def publish(
                 subject=(subject_type, subject_id),
                 source_id=uuid.UUID(source_id),
                 with_members=False,
+                kinds=scope,
             )
         }
         observation_rows: list[dict[str, Any]] = []
         member_rows: list[dict[str, Any]] = []
         for draft in group:
+            model_id = None if draft.model_hash is None else models[draft.model_hash]
             previous = revivable.get(draft.key)
             if previous is not None and previous.definition == (draft.slug, draft.version):
-                _revive(session, previous.id, draft, registry, version, computed_at)
+                _revive(session, previous.id, draft, registry, version, computed_at, model_id)
                 member_rows.extend(_member_rows(previous.id, draft.members))
             else:
                 observation_id = uuid.uuid4()
@@ -497,6 +607,7 @@ def publish(
                         observation_id=observation_id,
                         definition_id=ids[(draft.slug, draft.version)],
                         snapshot_id=snapshot_id,
+                        model_id=model_id,
                         registry=registry,
                         version=version,
                         computed_at=computed_at,
@@ -533,6 +644,7 @@ def _revive(
     registry: Registry,
     version: str,
     computed_at: datetime,
+    model_id: uuid.UUID | None,
 ) -> None:
     """Bring a superseded row of the same snapshot and definition back as current."""
     session.execute(sa.delete(MEMBER).where(MEMBER.c.observation_id == observation_id))
@@ -543,7 +655,8 @@ def _revive(
             superseded_at=None,
             computed_at=computed_at,
             code_version=version,
+            outcome_model_id=model_id,
             updated_at=sa.func.now(),
-            **stored_columns(draft, registry),
+            **_insert_columns(stored_columns(draft, registry)),
         )
     )

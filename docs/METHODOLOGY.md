@@ -4,7 +4,7 @@
      registry and re-render. -->
 # Methodology
 
-Registry version 1; methodology version 0.2; 33 metrics.
+Registry version 2; methodology version 0.3; 36 metrics.
 
 This document is rendered from the versioned metric registry
 (`data/reference/metric_registry.yaml`), the contract every published number is
@@ -32,8 +32,9 @@ composite, ideological, partisan, or best-or-worst judge score.
   withheld with the number.
 - **Interval**: a 95% Wilson score interval for every share and fixed-window
   rate, a Greenwood interval for every Kaplan-Meier estimate. Adjusted
-  statistics (Phase 4) carry their own intervals and methodology version; none
-  is published under this version.
+  statistics (observed-to-expected ratios) carry a 95% percentile interval from
+  a person-cluster bootstrap and their methodology version; none is served
+  before methodology 1.0.
 - **Suppression**: a number whose denominator is below the metric's suppression
   threshold is withheld and marked suppressed — the numerator, denominator,
   value, distribution, and interval leave the API as null and the threshold is
@@ -117,6 +118,49 @@ judge, whatever a rule admits; the court-level counts statutory_release_count
 and unknown_actor_pretrial_count report them. A prosecutor's dismissal is not a
 judicial dismissal: the judicial dismissal rate counts only charges dismissed
 with the judge as the disposing actor.
+
+## Observed-to-expected ratios
+
+The adjusted metrics compare what a judge's cohort shows with what a versioned
+model expects for defendants with similar observable case characteristics under
+the source's average practice. They are defined and computed here but not served
+by the API until methodology 1.0 publishes their validation. A ratio above 1
+means more outcomes than expected, below 1 fewer: an association with the
+judge's decisions, never a causal effect.
+
+**Expected counts.** The outcome model (data/reference/outcome_model.yaml) is
+fitted once per source, target, and window over every eligible index event of
+the source, so every judge is scored by the same model; the judge is never one
+of its inputs. A judge's expected count E is the sum, over the judge's members
+in the ratio, of the predicted probability of the outcome from the published
+coefficients; the observed count O is the number of those members with the
+outcome; n is their number. O / n is the observed rate and E / n the expected
+rate.
+
+**Partial pooling.** A judge's ratio O / E is noisy when E is small, so it is
+shrunk toward 1 by an empirical-Bayes gamma-Poisson model: O | theta ~
+Poisson(theta E), theta ~ Gamma(alpha, alpha). The shape alpha is fitted by
+maximum marginal (negative-binomial) likelihood over every judge with E > 0,
+suppressed or not, on a log-spaced grid refined by golden-section search within
+the specification's bounds; a maximum at the upper bound means no between-judge
+variation is detectable and every ratio is pulled almost all the way to 1. The
+published ratio is the posterior mean (alpha + O) / (alpha + E), and the pooling
+weight E / (E + alpha) is the share of it that is the judge's own O / E.
+
+**Bootstrap interval.** The interval is the 2.5th and 97.5th percentiles (linear
+interpolation) of the pooled ratio over the person-cluster bootstrap replicates
+the model was refitted on: each replicate redraws persons with replacement from
+the model's seeded stream, re-predicts every member from that replicate's
+coefficients, recomputes each judge's weighted O and E, refits alpha, and
+recomputes the pooled ratio. A replicate whose refit did not converge is
+skipped. The replicate coefficients are stored in the model's artifact, so a
+recompute reproduces the interval exactly.
+
+**Suppression.** An adjusted ratio is withheld below a cohort of 30
+(below_threshold), below an expected count of 5 (expected_below_minimum), and
+when the model is not fitted (model_unavailable: too few events per design
+column, or a fit that did not converge). The stored row keeps every figure it
+has so a recompute can reproduce it.
 
 ## Metrics
 
@@ -762,21 +806,113 @@ rule states how a row is tied to the subject.
 - Measure: incarceration_days.
 - Suppression threshold: 10 (suppressed below this denominator).
 
+### Pretrial releases, observed to expected
+
+- Slug: `pretrial_release_observed_expected` (version 1).
+- Kind: observed-to-expected ratio, partially pooled (gamma-Poisson), with a
+  person-cluster bootstrap percentile interval; unit: ratio; subjects: judge.
+- What it says: The judge's pretrial releases over the number the outcome model
+  expects for the same decisions under the source's average practice, partially
+  pooled toward 1 (an association with the judge's decisions, not a causal
+  effect).
+- Numerator: Observed releases: the attributed pretrial decisions with detained
+  = false (pretrial_released).
+- Denominator: Expected releases: the sum over the same decisions of the outcome
+  model's predicted probability of release (target pretrial_release), from the
+  published coefficients; a decision whose model features are missing under an
+  exclude rule is outside the ratio and counted in the eligible count.
+- Eligibility: The attributed pretrial decisions of pretrial_decisions; every
+  decision carries a detained flag, so the denominator is the whole set.
+- Attribution: decision type pretrial_release; actor judge; discretion
+  discretionary; gate: the deciding judge (the decision's judge is the subject).
+- Adjustment: outcome model target `pretrial_release`
+  (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
+  its bootstrap interval are defined under Observed-to-expected ratios.
+- Suppression threshold: 30 (suppressed below this cohort), and suppressed below
+  an expected count of 5 or without a fitted model.
+
+### New cases after pretrial release, observed to expected
+
+- Slug: `new_case_observed_expected` (version 1).
+- Kind: observed-to-expected ratio, partially pooled (gamma-Poisson), with a
+  person-cluster bootstrap percentile interval; unit: ratio; subjects: judge.
+- What it says: The judge's followed pretrial-release cohort members with a new
+  case filed within the window over the number the outcome model expects for the
+  same members, partially pooled toward 1 (an association, not a causal effect).
+- Numerator: Followed cohort members with at least one new_case event in
+  (exposure start, exposure start + w days] in another case of the person
+  (new_case_rate's numerator).
+- Denominator: Expected new cases: the sum over the same followed members of the
+  outcome model's predicted probability of a new case within the window (target
+  new_case, window w), from the published coefficients; a member whose model
+  features are missing under an exclude rule is outside the ratio.
+- Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
+  gate of pretrial_decisions) with detained = false and a release time; the
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
+- Attribution: decision type pretrial_release; actor judge; discretion
+  discretionary; gate: the deciding judge (the decision's judge is the subject).
+- Index event: pretrial_release; outcome: new_case; windows: 30, 90, 180, 365,
+  730, 1095 days.
+- Adjustment: outcome model target `new_case`
+  (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
+  its bootstrap interval are defined under Observed-to-expected ratios.
+- Suppression threshold: 30 (suppressed below this cohort), and suppressed below
+  an expected count of 5 or without a fitted model.
+
+### Failures to appear after pretrial release, observed to expected
+
+- Slug: `failure_to_appear_observed_expected` (version 1).
+- Kind: observed-to-expected ratio, partially pooled (gamma-Poisson), with a
+  person-cluster bootstrap percentile interval; unit: ratio; subjects: judge.
+- What it says: The judge's followed pretrial-release cohort members with a
+  documented failure to appear within the window over the number the outcome
+  model expects for the same members, partially pooled toward 1 (an association,
+  not a causal effect).
+- Numerator: Followed cohort members with at least one failure_to_appear event
+  in (exposure start, exposure start + w days], in any case of the person
+  (failure_to_appear_rate's numerator).
+- Denominator: Expected failures to appear: the sum over the same followed
+  members of the outcome model's predicted probability of a failure to appear
+  within the window (target failure_to_appear, window w), from the published
+  coefficients; a member whose model features are missing under an exclude rule
+  is outside the ratio.
+- Eligibility: The pretrial-release cohort: attributed pretrial decisions (the
+  gate of pretrial_decisions) with detained = false and a release time; the
+  index time is the release time, and exposure starts there unless an
+  incarceration term of the person contains it (Exposure).
+- Attribution: decision type pretrial_release; actor judge; discretion
+  discretionary; gate: the deciding judge (the decision's judge is the subject).
+- Index event: pretrial_release; outcome: failure_to_appear; windows: 30, 90,
+  180, 365, 730, 1095 days.
+- Adjustment: outcome model target `failure_to_appear`
+  (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
+  its bootstrap interval are defined under Observed-to-expected ratios.
+- Suppression threshold: 30 (suppressed below this cohort), and suppressed below
+  an expected count of 5 or without a fitted model.
+
 ## Suppression
 
 Default threshold: 10.
 
 An observation whose denominator is below the metric's suppression_threshold is
-stored with suppressed_flag = true; every public surface then shows that the
-cohort was too small and withholds the numerator, denominator, value, and
-interval. The stored row keeps its numbers so `metrics verify` can reproduce it.
+stored with suppressed_flag = true and the reason below_threshold; every public
+surface then shows that the cohort was too small and withholds the numerator,
+denominator, value, and interval. An observed-to-expected ratio is also
+suppressed when its model-expected count is below the metric's minimum
+(expected_below_minimum) or its outcome model is not fitted (model_unavailable).
+The stored row keeps its numbers so `metrics verify` can reproduce it.
 
 Shares, windowed rates, survival estimates, and medians are suppressed below a
 denominator of 10: with fewer than ten followed members a single event moves a
 rate by ten percentage points or more, and a median of fewer than ten values
 describes one or two cases. Counts and distributions carry a threshold of 0
 because they are the sample sizes the presentation rules require beside every
-rate, and a count is not an unstable estimate.
+rate, and a count is not an unstable estimate. Observed-to-expected ratios are
+suppressed below a cohort of 30 and below an expected count of 5: a ratio of two
+small counts is unstable well above the ten members a share needs, because both
+its numerator and its denominator move by chance, and an expected count below
+five makes the ratio a function of a handful of predicted events.
 
 ## Known limitations
 
@@ -809,3 +945,6 @@ presentation:
   denominator of 10.
 - 0.2 - Exposure is deferred by every incarceration term of the person, not the
   index case's alone (Phase 3 finding 1.4).
+- 0.3 - Observed-to-expected ratios with partial pooling and bootstrap intervals
+  are defined and computed for three judge metrics; they are not served until
+  the validation that methodology 1.0 publishes.

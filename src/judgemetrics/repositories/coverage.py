@@ -11,7 +11,11 @@ recent completed run of each source; and one ``DISTINCT ON`` over the
 current observations for the most recently exported snapshot each
 source's numbers come from (Phase 3 Step 3: coverage v1).
 ``latest_snapshot`` is the one-statement form ``/api/v1/ready`` uses:
-the newest snapshot of all.
+the newest snapshot of all; ``snapshot_models`` is its second statement
+(Phase 4 Step 3): the counts of that snapshot's expected-outcome models
+with status ``fitted`` and with any other status, for the newest
+specification version recorded, and the model version — never a hash or a
+path.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from judgemetrics.db.models import (
     Jurisdiction,
     MetricObservation,
     MetricSnapshot,
+    OutcomeModel,
     Person,
     Source,
     SourceRecord,
@@ -68,6 +73,19 @@ class LatestSnapshot(NamedTuple):
     content_hash: str
     exported_at: datetime
     methodology_version: str
+
+
+# The ``outcome_model.status`` of a model with published coefficients (revision 0009).
+FITTED_STATUS = "fitted"
+
+
+class SnapshotModels(NamedTuple):
+    """A snapshot's expected-outcome models of one specification version (counts only)."""
+
+    fitted: int
+    unavailable: int
+    spec_version: int
+    model_version: str
 
 
 def _count(source_record_id: Mapped[Any], *extra: ColumnElement[bool]) -> ColumnElement[int]:
@@ -194,3 +212,27 @@ def latest_snapshot(session: Session) -> LatestSnapshot | None:
     )
     row = session.execute(stmt).first()
     return None if row is None else LatestSnapshot(str(row[0]), row[1], str(row[2]))
+
+
+def snapshot_models(session: Session, content_hash: str) -> SnapshotModels | None:
+    """The snapshot's models of its newest specification version: one statement, counts only.
+
+    ``None`` when the snapshot has no model (before the first fitting compute).
+    """
+    stmt = (
+        select(
+            func.count().filter(OutcomeModel.status == FITTED_STATUS),
+            func.count().filter(OutcomeModel.status != FITTED_STATUS),
+            OutcomeModel.spec_version,
+            func.max(OutcomeModel.model_version),
+        )
+        .join(MetricSnapshot, MetricSnapshot.id == OutcomeModel.snapshot_id)
+        .where(MetricSnapshot.content_hash == content_hash)
+        .group_by(OutcomeModel.spec_version)
+        .order_by(OutcomeModel.spec_version.desc())
+        .limit(1)
+    )
+    row = session.execute(stmt).first()
+    if row is None:
+        return None
+    return SnapshotModels(int(row[0]), int(row[1]), int(row[2]), str(row[3]))

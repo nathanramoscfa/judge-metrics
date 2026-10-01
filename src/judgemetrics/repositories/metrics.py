@@ -8,6 +8,10 @@ source (key, type, coverage window, observable outcomes — the synthetic
 flag is ``source.source_type = 'synthetic'``, the same rule as
 ``repositories.provenance.synthetic_flag``), and their snapshot's hash;
 ``get_subject`` is the one-statement lookup that settles a 404 first.
+Both statements take the registry kinds the API serves (``kinds``) and
+filter by ``metric_definition.kind`` in SQL with bound parameters, so an
+observation of a held-out kind never leaves the database and the statement
+count does not change.
 
 ``compare_page`` is the one page statement of ``GET /metrics/compare``:
 the judges with a service record at the court (or at a court of the
@@ -30,6 +34,7 @@ separate lookup.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, NamedTuple
@@ -107,14 +112,15 @@ def _observation_columns() -> Select[Any]:
 
 
 def subject_observations(
-    session: Session, subject_type: str, subject_id: uuid.UUID
+    session: Session, subject_type: str, subject_id: uuid.UUID, *, kinds: Collection[str]
 ) -> list[Row[Any]]:
-    """Every current observation of the subject with its definition, source, and snapshot hash."""
+    """The subject's current observations of ``kinds`` with definition, source, snapshot hash."""
     stmt = (
         _observation_columns()
         .where(
             MetricObservation.subject_type == SubjectType(subject_type),
             MetricObservation.subject_id == subject_id,
+            MetricDefinition.kind.in_(sorted(kinds)),
         )
         .order_by(
             MetricDefinition.slug,
@@ -156,6 +162,7 @@ def compare_page(
     *,
     slug: str,
     version: str,
+    kinds: Collection[str],
     window_days: int | None,
     court_id: uuid.UUID | None,
     jurisdiction_id: uuid.UUID | None,
@@ -257,6 +264,7 @@ def compare_page(
             MetricObservation.subject_type == SubjectType.JUDGE,
             MetricDefinition.slug == slug,
             MetricDefinition.version == version,
+            MetricDefinition.kind.in_(sorted(kinds)),
         )
     )
     inner = (

@@ -1302,8 +1302,36 @@ export interface components {
             exported_at: string;
             /** Methodology Version */
             methodology_version: string;
+            /** @description The snapshot's expected-outcome models; null before any is fitted. */
+            models: components["schemas"]["ModelsReadiness"] | null;
             /** Snapshot Hash */
             snapshot_hash: string;
+        };
+        /**
+         * ModelsReadiness
+         * @description The latest snapshot's expected-outcome models: counts and versions, never a hash.
+         */
+        ModelsReadiness: {
+            /**
+             * Fitted
+             * @description Models with status fitted.
+             */
+            fitted: number;
+            /**
+             * Model Version
+             * @description The model family and feature set.
+             */
+            model_version: string;
+            /**
+             * Spec Version
+             * @description The outcome model specification version.
+             */
+            spec_version: number;
+            /**
+             * Unavailable
+             * @description Models without coefficients (too few events, or not converged).
+             */
+            unavailable: number;
         };
         /** NotReadyResponse */
         NotReadyResponse: {
