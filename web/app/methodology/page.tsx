@@ -4,15 +4,23 @@
 // to read a number, the index-event and censoring semantics, attribution,
 // one anchored section per metric definition (name, version, subjects,
 // formula, eligibility, attribution rule, windows, threshold, unit),
-// suppression, the eight known limitations verbatim, and the changelog —
-// all as React text nodes, never HTML. The definitions are the same
-// registry `docs/METHODOLOGY.md` is rendered from, not a second copy.
+// suppression, the adjusted statistics (methodology 1.0: the model, its
+// features, the pooling, the interval, the thresholds, the controls, and the
+// limitations of adjustment, anchored at `#adjusted-statistics`), the eight
+// known limitations verbatim, and the changelog — all as React text nodes,
+// never HTML. The definitions and the adjustment prose are the same registry
+// and specification `docs/METHODOLOGY.md` is rendered from, not a second copy.
 import type { Metadata } from "next";
 
 import { ErrorState } from "@/components/states";
-import { getRegistry, type MetricDefinition, type Registry } from "@/lib/api/client";
-import { DATA_SOURCES_URL, METHODOLOGY_DOC_URL, ROADMAP_URL } from "@/lib/links";
-import { ASSOCIATION_STATEMENT } from "@/lib/metrics";
+import {
+  getRegistry,
+  type AdjustmentProse,
+  type MetricDefinition,
+  type Registry,
+} from "@/lib/api/client";
+import { DATA_SOURCES_URL, METHODOLOGY_DOC_URL, ROADMAP_URL, VALIDATION_DOC_URL } from "@/lib/links";
+import { ASSOCIATION_STATEMENT, KIND_TEXT, isAdjusted } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -31,15 +39,6 @@ const PRINCIPLES = [
   "Treat data lineage as a first-class feature.",
 ] as const;
 
-const KIND_TEXT: Record<MetricDefinition["kind"], string> = {
-  count: "count",
-  share: "share (numerator over denominator, Wilson interval)",
-  windowed_rate: "fixed-window rate per observation window (Wilson interval)",
-  survival: "Kaplan–Meier cumulative incidence per observation window",
-  distribution: "distribution of counts by dimension value",
-  median: "median",
-};
-
 function attributionText(definition: MetricDefinition, gates: Record<string, string>): string {
   const rule = definition.attribution;
   const parts: string[] = [];
@@ -54,7 +53,9 @@ function Definition({ definition, gates }: { definition: MetricDefinition; gates
   const threshold =
     definition.suppression_threshold === 0
       ? "0 (never suppressed: a count)"
-      : `${definition.suppression_threshold} (suppressed below this denominator)`;
+      : isAdjusted(definition)
+        ? `${definition.suppression_threshold} (suppressed below this many members in the ratio, below ${definition.adjustment?.minimum_expected ?? "the minimum"} expected events, or without a fitted model)`
+        : `${definition.suppression_threshold} (suppressed below this denominator)`;
   return (
     <section
       id={definition.slug}
@@ -101,9 +102,116 @@ function Definition({ definition, gates }: { definition: MetricDefinition; gates
             <dd>one observation per {definition.dimension} value</dd>
           </>
         ) : null}
+        {definition.adjustment ? (
+          <>
+            <dt className="text-muted-foreground">Adjustment</dt>
+            <dd data-testid="definition-adjustment">
+              model target {definition.adjustment.target}; withheld below{" "}
+              {definition.adjustment.minimum_expected} expected events;{" "}
+              <a href="#adjusted-statistics" className="text-primary hover:underline">
+                adjusted statistics
+              </a>
+            </dd>
+          </>
+        ) : null}
         <dt className="text-muted-foreground">Suppression threshold</dt>
         <dd>{threshold}</dd>
       </dl>
+    </section>
+  );
+}
+
+function Terms({ items, testId }: { items: { term: string; text: string }[]; testId: string }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm" data-testid={testId}>
+      {items.map((item) => (
+        <div key={item.term} className="contents">
+          <dt className="font-medium">{item.term}</dt>
+          <dd>{item.text}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** The adjusted statistics' methodology (`Registry.adjustment`), anchored at `#adjusted-statistics`. */
+function Adjustment({ adjustment }: { adjustment: AdjustmentProse }) {
+  return (
+    <section
+      id="adjusted-statistics"
+      aria-labelledby="adjusted-statistics-heading"
+      className="scroll-mt-20 flex flex-col gap-3"
+      data-testid="adjusted-statistics"
+    >
+      <h2 id="adjusted-statistics-heading" className="text-lg font-semibold">
+        Adjusted statistics
+      </h2>
+      <p className="text-sm text-muted-foreground">
+        Outcome model specification {adjustment.specification_version}; model {adjustment.model_version}.
+      </p>
+      <p className="text-sm">{adjustment.intro}</p>
+      <p className="rounded-md border bg-muted/40 p-3 text-sm" data-testid="adjustment-interpretation">
+        {adjustment.interpretation}
+      </p>
+      <h3 className="text-base font-semibold">The model</h3>
+      <p className="text-sm">{adjustment.model}</p>
+      <Terms items={adjustment.targets} testId="adjustment-targets" />
+      <h3 className="text-base font-semibold">Features</h3>
+      <div className="overflow-x-auto rounded-xl border">
+        <table className="w-full text-left text-sm" data-testid="adjustment-features">
+          <caption className="sr-only">The features of the model, in specification order.</caption>
+          <thead>
+            <tr className="border-b">
+              <th scope="col" className="p-2 font-medium">Feature</th>
+              <th scope="col" className="p-2 font-medium">Levels</th>
+              <th scope="col" className="p-2 font-medium">Known at</th>
+              <th scope="col" className="p-2 font-medium">Missing</th>
+              <th scope="col" className="p-2 font-medium">Why it cannot carry the outcome</th>
+            </tr>
+          </thead>
+          <tbody>
+            {adjustment.features.map((feature) => (
+              <tr key={feature.name} className="border-b align-top last:border-0">
+                <th scope="row" className="p-2 font-medium">
+                  <code className="font-mono">{feature.name}</code>
+                  <span className="block font-normal text-muted-foreground">{feature.description}</span>
+                </th>
+                <td className="p-2">{feature.levels}</td>
+                <td className="p-2">{feature.known_at}</td>
+                <td className="p-2">{feature.missing}</td>
+                <td className="p-2">{feature.leakage}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h3 className="text-base font-semibold">What the model never reads</h3>
+      <Terms items={adjustment.exclusions} testId="adjustment-exclusions" />
+      <h3 className="text-base font-semibold">Expected count, pooling, and interval</h3>
+      <p className="text-sm">{adjustment.expected_count}</p>
+      <p className="text-sm" data-testid="adjustment-pooling">
+        {adjustment.pooling}
+      </p>
+      <p className="text-sm" data-testid="adjustment-interval">
+        {adjustment.interval}
+      </p>
+      <h3 className="text-base font-semibold">Thresholds</h3>
+      <Terms items={adjustment.thresholds} testId="adjustment-thresholds" />
+      <h3 className="text-base font-semibold">Controls</h3>
+      <Terms items={adjustment.controls} testId="adjustment-controls" />
+      <h3 className="text-base font-semibold">Limitations of adjustment</h3>
+      <ul className="list-disc space-y-1 pl-6 text-sm" data-testid="adjustment-limitations">
+        {adjustment.limitations.map((limitation) => (
+          <li key={limitation}>{limitation}</li>
+        ))}
+      </ul>
+      <p className="text-sm">
+        {adjustment.validation}{" "}
+        <a href={VALIDATION_DOC_URL} className="text-primary hover:underline" data-testid="validation-link">
+          Read the validation report
+        </a>
+        .
+      </p>
     </section>
   );
 }
@@ -173,6 +281,8 @@ function Rendered({ registry }: { registry: Registry }) {
           <Definition key={definition.slug} definition={definition} gates={registry.gate_descriptions} />
         ))}
       </section>
+
+      <Adjustment adjustment={registry.adjustment} />
 
       <section aria-labelledby="suppression-heading" className="flex flex-col gap-3" id="suppression">
         <h2 id="suppression-heading" className="text-lg font-semibold">

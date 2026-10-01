@@ -34,15 +34,17 @@ selected). ``render`` prints the chain top-down in the brief's order for
 what the API's ``ObservationProvenance`` is built from.
 
 Phase 4 Step 3: an ``observed_expected`` observation's chain also names the
-outcome model it was computed with — content hash, specification and model
-versions, target, window, seed, status — read through ``outcome_model_id``
+outcome model it was computed with — id, content hash, specification and
+model versions, target, window, seed, status, and (Phase 4 Step 5, for the
+API's provenance body) the training counts and time range — read through
+``outcome_model_id``
 in the first statement (an outer join, so the count stays three), and
 ``check_chain`` then also requires the model's artifact to exist under the
 configured snapshot directory (the path rebuilt from the two validated
 hashes, never from ``storage_uri``) and to hash to the content hash. A trace
 without ``settings`` cannot look, and an adjusted chain is then reported
 incomplete. ``kinds`` limits the observations a trace may start from (the
-API passes the kinds it serves, so an adjusted id is unknown to it).
+API passed the kinds it served while the adjusted kind was held out).
 """
 
 from __future__ import annotations
@@ -136,6 +138,7 @@ class TracedObservation:
 class TracedModel:
     """The outcome model an adjusted observation was computed with, and its artifact check."""
 
+    id: uuid.UUID
     content_hash: str
     spec_version: int
     model_version: str
@@ -145,6 +148,11 @@ class TracedModel:
     status: str
     # None: not checked (no settings); otherwise why the artifact fails, or "" when it holds.
     artifact_problem: str | None
+    # The published fit's index events and target events (both sides of the split) and range.
+    index_events: int = 0
+    events: int = 0
+    train_start: datetime | None = None
+    train_end: datetime | None = None
 
     @property
     def artifact_ok(self) -> bool:
@@ -308,6 +316,7 @@ class ObservationTrace:
                 None
                 if self.model is None
                 else {
+                    "id": str(self.model.id),
                     "content_hash": self.model.content_hash,
                     "spec_version": self.model.spec_version,
                     "model_version": self.model.model_version,
@@ -315,6 +324,10 @@ class ObservationTrace:
                     "window_days": self.model.window_days,
                     "seed": self.model.seed,
                     "status": self.model.status,
+                    "index_events": self.model.index_events,
+                    "events": self.model.events,
+                    "train_start": _stamp(self.model.train_start),
+                    "train_end": _stamp(self.model.train_end),
                     "artifact_ok": self.model.artifact_ok,
                     "artifact_problem": self.model.artifact_problem or None,
                 }
@@ -367,6 +380,10 @@ def _number(value: Decimal | None) -> float | None:
 
 
 def _day(value: date | None) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _stamp(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
@@ -425,6 +442,7 @@ def observation_statement(
             SOURCE.c.coverage_start.label("source_coverage_start"),
             SOURCE.c.coverage_end.label("source_coverage_end"),
             SOURCE.c.observable_outcomes.label("source_observable_outcomes"),
+            OUTCOME_MODEL.c.id.label("model_id"),
             OUTCOME_MODEL.c.content_hash.label("model_hash"),
             OUTCOME_MODEL.c.spec_version.label("model_spec_version"),
             OUTCOME_MODEL.c.model_version.label("model_version"),
@@ -432,6 +450,12 @@ def observation_statement(
             OUTCOME_MODEL.c.window_days.label("model_window_days"),
             OUTCOME_MODEL.c.seed.label("model_seed"),
             OUTCOME_MODEL.c.status.label("model_status"),
+            OUTCOME_MODEL.c.n_train.label("model_n_train"),
+            OUTCOME_MODEL.c.n_test.label("model_n_test"),
+            OUTCOME_MODEL.c.events_train.label("model_events_train"),
+            OUTCOME_MODEL.c.events_test.label("model_events_test"),
+            OUTCOME_MODEL.c.train_start.label("model_train_start"),
+            OUTCOME_MODEL.c.train_end.label("model_train_end"),
         )
         .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
         .join(SNAPSHOT, SNAPSHOT.c.id == OBSERVATION.c.snapshot_id)
@@ -568,6 +592,7 @@ def _traced_model(row: Any, settings: Settings | None) -> TracedModel | None:
         return None
     model_hash = str(row["model_hash"])
     return TracedModel(
+        id=_uuid(row["model_id"]),
         content_hash=model_hash,
         spec_version=int(row["model_spec_version"]),
         model_version=str(row["model_version"]),
@@ -576,6 +601,10 @@ def _traced_model(row: Any, settings: Settings | None) -> TracedModel | None:
         seed=int(row["model_seed"]),
         status=str(row["model_status"]),
         artifact_problem=_artifact_problem(settings, str(row["snapshot_hash"]), model_hash),
+        index_events=int(row["model_n_train"]) + int(row["model_n_test"]),
+        events=int(row["model_events_train"]) + int(row["model_events_test"]),
+        train_start=row["model_train_start"],
+        train_end=row["model_train_end"],
     )
 
 

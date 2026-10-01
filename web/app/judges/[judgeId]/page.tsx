@@ -1,8 +1,11 @@
 // web/app/judges/[judgeId]/page.tsx
 // A judge: identity and status; the association statement; the metric
-// panels (Cases, Pretrial, Outcomes after qualifying release, Disposition,
-// Sentencing) rendered through MetricStat from /judges/{id}/metrics with the
-// court's pooled value from /courts/{id}/metrics and the judge's position in
+// panels (Cases, Pretrial, Outcomes after qualifying release, Risk-adjusted
+// comparison, Disposition, Sentencing) rendered through MetricStat — the
+// risk-adjusted ratios through AdjustedStat, each beside the raw rate it
+// adjusts, its cohort position, and its cohort definition (the model cards
+// of the shown ratios are read from /models/{id}) — from /judges/{id}/metrics
+// with the court's pooled value from /courts/{id}/metrics and the judge's position in
 // the comparison cohort from /metrics/compare (one call per compared metric,
 // batched); then the service table, the cases panel, and the source
 // coverage panel. The cohort (`?cohort=court|jurisdiction`) and the
@@ -14,11 +17,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { AdjustedStat } from "@/components/adjusted-stat";
 import { StatusBadge, SyntheticBadge } from "@/components/badges";
 import { CasesPanel } from "@/components/cases-panel";
 import { CohortSelector, WindowSelector } from "@/components/cohort-selector";
 import { CohortPositionLine, MetricPanel, MetricRow } from "@/components/metric-panel";
-import { MetricNotObservable } from "@/components/metric-stat";
+import { MetricNotObservable, MetricStat } from "@/components/metric-stat";
 import { ProvenancePanel } from "@/components/provenance-panel";
 import { ReportErrorLink } from "@/components/report-error-link";
 import { ServiceTable } from "@/components/service-table";
@@ -29,16 +33,20 @@ import {
   getCourtMetrics,
   getJudge,
   getJudgeMetrics,
+  getModel,
   getRegistry,
+  type AdjustmentProse,
   type ApiError,
   type ApiResult,
   type ComparePage,
   type JudgeDetail,
   type MetricDefinition,
+  type ModelCard,
 } from "@/lib/api/client";
 import { isUuid } from "@/lib/format";
 import { sourceLinks } from "@/lib/links";
 import {
+  ADJUSTS,
   ASSOCIATION_STATEMENT,
   COMPARED_KINDS,
   COHORTS,
@@ -46,6 +54,8 @@ import {
   type CohortKind,
   type GroupedObservations,
   type JudgePanelSpec,
+  adjustedCohortDefinition,
+  cohortLabel,
   cohortPosition,
   compareHref,
   defaultSort,
@@ -54,11 +64,13 @@ import {
   eligibleCasesHref,
   firstObservationId,
   groupObservations,
+  isAdjusted,
   isWindowed,
   panelDefinitions,
   parseCohort,
   pickObservation,
   resolveWindow,
+  uncoveredDefinitions,
   windowsFromRegistry,
 } from "@/lib/metrics";
 
@@ -122,6 +134,23 @@ async function fetchComparisons(
   return Object.fromEntries(compared.map((definition, index) => [definition.slug, results[index]]));
 }
 
+/** The model cards of the adjusted observations shown at the window, keyed by model id. */
+async function fetchModels(
+  judge: GroupedObservations,
+  definitions: MetricDefinition[],
+  window: number | null,
+): Promise<Record<string, ModelCard>> {
+  const ids = new Set<string>();
+  for (const definition of definitions.filter(isAdjusted)) {
+    const shown = pickObservation(judge, definition.slug, { window: isWindowed(definition) ? window : null });
+    if (shown?.model) ids.add(shown.model.id);
+  }
+  const cards = await Promise.all([...ids].map((id) => getModel(id)));
+  return Object.fromEntries(
+    cards.flatMap((card) => (card.ok ? [[card.data.id, card.data] as const] : [])),
+  );
+}
+
 interface PanelData {
   judgeId: string;
   judge: GroupedObservations;
@@ -131,6 +160,8 @@ interface PanelData {
   target: CohortTarget | null;
   window: number | null;
   source: string;
+  /** The model cards of the shown adjusted observations (a failed read is simply absent). */
+  models: Record<string, ModelCard>;
 }
 
 function outcomeLabel(definition: MetricDefinition, window: number | null): string {
@@ -207,6 +238,125 @@ function comparisonErrors(slugs: string[], data: PanelData): ApiError | null {
     if (result && !result.ok) return result.error;
   }
   return null;
+}
+
+/**
+ * "Risk-adjusted comparison": per adjusted metric at the selected window, the
+ * AdjustedStat with its cohort definition and cohort position, beside the
+ * raw descriptive rate it adjusts (compact MetricStat).
+ */
+function AdjustedPanel({
+  spec,
+  definitions,
+  data,
+  adjustment,
+  controls,
+}: {
+  spec: JudgePanelSpec;
+  definitions: MetricDefinition[];
+  data: PanelData;
+  adjustment: AdjustmentProse;
+  controls?: ReactNode;
+}) {
+  const { named: adjusted } = panelDefinitions(spec, definitions);
+  const bySlug = new Map(definitions.map((d) => [d.slug, d]));
+  const error = comparisonErrors(adjusted.map((d) => d.slug), data);
+  const features = adjustment.features.map((feature) => feature.name);
+  return (
+    <MetricPanel
+      id={spec.id}
+      title={spec.title}
+      reportObservationId={firstObservationId(data.judge, adjusted.map((d) => d.slug))}
+      description={`Observed events over the number a versioned model (${adjustment.model_version}) expects for the same cases under the source's average practice, partially pooled toward 1, with a 95% bootstrap interval; beside each ratio, the raw rate it adjusts. ${COHORTS[data.cohort]}: where the judge's ratio falls among the cohort's published ratios.`}
+      controls={controls}
+    >
+      {error ? <ErrorState what="the cohort comparison" error={error} /> : null}
+      {adjusted.length === 0 ? (
+        <EmptyState title="No adjusted metric is defined in the registry." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          {adjusted.map((definition) => {
+            const window = isWindowed(definition) ? data.window : null;
+            const label = outcomeLabel(definition, window);
+            const observation = pickObservation(data.judge, definition.slug, { window });
+            if (!observation) {
+              return (
+                <p
+                  key={definition.slug}
+                  className="text-xs text-muted-foreground"
+                  data-testid="metric-absent"
+                  data-slug={definition.slug}
+                >
+                  {label}: no observation is published for this judge at this window.
+                </p>
+              );
+            }
+            const rawSlug = ADJUSTS[definition.slug];
+            const rawDefinition = rawSlug ? bySlug.get(rawSlug) : undefined;
+            const raw = rawDefinition
+              ? pickObservation(data.judge, rawDefinition.slug, {
+                  window: isWindowed(rawDefinition) ? data.window : null,
+                })
+              : undefined;
+            const card = observation.model ? data.models[observation.model.id] : undefined;
+            const cohortDefinition = adjustedCohortDefinition({
+              modelVersion: observation.model?.model_version ?? adjustment.model_version,
+              specVersion: observation.model?.spec_version ?? adjustment.specification_version,
+              indexEvents: card ? card.training.index_events : null,
+              source: observation.source,
+              coverage: observation.coverage,
+              features,
+              cohort: cohortLabel(observation, data.cohort),
+            });
+            const comparison = data.comparisons[definition.slug];
+            const compareLink = data.target
+              ? compareHref({ metric: definition.slug, window, ...data.target, sort: defaultSort(definition) })
+              : null;
+            return (
+              <div
+                key={definition.slug}
+                className="grid gap-2 md:grid-cols-[3fr_2fr]"
+                data-testid="adjusted-row"
+                data-slug={definition.slug}
+              >
+                <AdjustedStat
+                  observation={observation}
+                  label={label}
+                  interpretation={adjustment.interpretation}
+                  minimumExpected={definition.adjustment?.minimum_expected}
+                  cohortDefinition={cohortDefinition}
+                  comparison={
+                    comparison?.ok && compareLink ? (
+                      <CohortPositionLine
+                        position={cohortPosition(comparison.data.items, data.judgeId, comparison.data.total)}
+                        cohort={data.cohort}
+                        kind={definition.kind}
+                        compareHref={compareLink}
+                      />
+                    ) : null
+                  }
+                />
+                {raw && rawDefinition ? (
+                  <MetricStat
+                    observation={raw}
+                    label={`${outcomeLabel(rawDefinition, isWindowed(rawDefinition) ? data.window : null)} — the raw rate it adjusts`}
+                    variant="compact"
+                  />
+                ) : (
+                  <div
+                    className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground"
+                    data-testid="raw-missing"
+                  >
+                    No raw rate is published for this judge at this window.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </MetricPanel>
+  );
 }
 
 function Panel({
@@ -315,9 +465,11 @@ export default async function JudgePage({
     }
   }
   const definitions = registry.ok ? definitionsFor(registry.data, "judge") : [];
-  const [comparisons, pooled] = await Promise.all([
+  const grouped = metrics.ok ? groupObservations(metrics.data.observations) : null;
+  const [comparisons, pooled, models] = await Promise.all([
     target && registry.ok ? fetchComparisons(definitions, window, target) : Promise.resolve({}),
     courtId ? getCourtMetrics(courtId) : Promise.resolve(null),
+    grouped ? fetchModels(grouped, definitions, window) : Promise.resolve({}),
   ]);
   courtMetrics = pooled;
 
@@ -325,29 +477,28 @@ export default async function JudgePage({
     ? (Object.values(metrics.data.observations)[0]?.[0]?.source ?? "the ingested")
     : "the ingested";
   const data: PanelData | null =
-    registry.ok && metrics.ok
+    registry.ok && grouped
       ? {
           judgeId,
-          judge: groupObservations(metrics.data.observations),
+          judge: grouped,
           court: courtMetrics?.ok ? groupObservations(courtMetrics.data.observations) : null,
           comparisons,
           cohort,
           target,
           window,
           source,
+          models,
         }
       : null;
-  const covered = new Set<string>(JUDGE_PANELS.flatMap((spec) => [...spec.slugs]));
-  const uncovered = definitions.filter(
-    (d) => !covered.has(d.slug) && !isWindowed(d),
-  );
+  const uncovered = uncoveredDefinitions(definitions);
 
-  const selectors = (
+  // The outcomes and the adjusted panels share the window and cohort query parameters.
+  const selectors = (section: string) => (
     <>
       {window !== null ? (
-        <WindowSelector value={window} windows={windows} action={`${pagePath}#outcomes`} keep={keep} />
+        <WindowSelector value={window} windows={windows} action={`${pagePath}#${section}`} keep={keep} />
       ) : null}
-      <CohortSelector value={cohort} action={`${pagePath}#outcomes`} keep={keep} />
+      <CohortSelector value={cohort} action={`${pagePath}#${section}`} keep={keep} />
     </>
   );
 
@@ -412,7 +563,7 @@ export default async function JudgePage({
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           Every number below shows its numerator, denominator, date range, coverage, sample size,
-          and — for rates — a 95% interval, and links to the{" "}
+          and — for rates and risk-adjusted ratios — a 95% interval, and links to the{" "}
           <Link href="/methodology" className="text-primary hover:underline">
             methodology
           </Link>
@@ -437,15 +588,26 @@ export default async function JudgePage({
             {courtMetrics && !courtMetrics.ok ? (
               <ErrorState what="the court's pooled metrics" error={courtMetrics.error} />
             ) : null}
-            {JUDGE_PANELS.map((spec) => (
-              <Panel
-                key={spec.id}
-                spec={spec}
-                definitions={definitions}
-                data={data}
-                controls={spec.id === "outcomes" ? selectors : undefined}
-              />
-            ))}
+            {JUDGE_PANELS.map((spec) =>
+              spec.kind ? (
+                <AdjustedPanel
+                  key={spec.id}
+                  spec={spec}
+                  definitions={definitions}
+                  data={data}
+                  adjustment={registry.data.adjustment}
+                  controls={selectors(spec.id)}
+                />
+              ) : (
+                <Panel
+                  key={spec.id}
+                  spec={spec}
+                  definitions={definitions}
+                  data={data}
+                  controls={spec.id === "outcomes" ? selectors(spec.id) : undefined}
+                />
+              ),
+            )}
             {uncovered.length > 0 ? (
               <MetricPanel
                 id="other"

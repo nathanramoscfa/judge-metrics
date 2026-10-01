@@ -298,7 +298,7 @@ jobs:
 
       # Phase 4 Step 3: the compute fits the snapshot's expected-outcome models
       # first (thirteen on the demo seed) and publishes the adjusted observations
-      # the API holds out until Step 5.
+      # the API serves since Step 5 (the adjusted.spec.ts suite needs them).
       - name: Compute metrics (ingest role)
         run: uv run judgemetrics metrics compute
 

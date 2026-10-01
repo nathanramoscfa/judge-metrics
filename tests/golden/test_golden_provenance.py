@@ -56,16 +56,19 @@ def ingest_session(golden_metrics: GoldenMetrics) -> Iterator[Session]:
         engine.dispose()
 
 
-def _current_ids(session: Session, *, served_only: bool = False) -> list[uuid.UUID]:
-    """Current observation ids; ``served_only`` keeps the kinds the API serves."""
+def _current_ids(session: Session, *, kind: str | None = None) -> list[uuid.UUID]:
+    """Current observation ids (every kind is served since Phase 4 Step 5), or one kind's."""
     stmt = (
         select(MetricObservation.id)
         .join(MetricDefinition, MetricDefinition.id == MetricObservation.metric_definition_id)
-        .where(MetricObservation.superseded_at.is_(None))
+        .where(
+            MetricObservation.superseded_at.is_(None),
+            MetricDefinition.kind.in_(sorted(SERVED_KINDS)),
+        )
         .order_by(MetricObservation.id)
     )
-    if served_only:
-        stmt = stmt.where(MetricDefinition.kind.in_(sorted(SERVED_KINDS)))
+    if kind is not None:
+        stmt = stmt.where(MetricDefinition.kind == kind)
     return list(session.scalars(stmt))
 
 
@@ -150,13 +153,15 @@ def test_every_current_observation_traces_completely(
     assert adjusted > 0, "the golden compute published adjusted observations"
 
 
+@pytest.mark.parametrize("kind", ["share", "observed_expected"])
 def test_the_cli_prints_the_chain_and_matches_the_endpoint(
-    session: Session, golden_metrics: GoldenMetrics, golden_api: TestClient
+    session: Session, golden_metrics: GoldenMetrics, golden_api: TestClient, kind: str
 ) -> None:
-    observation_id = _current_ids(session, served_only=True)[0]
+    observation_id = _current_ids(session, kind=kind)[0]
     env = {
         "JUDGEMETRICS_ENV": "test",
         "JUDGEMETRICS_DATABASE_URL": golden_metrics.settings.database_url,
+        "JUDGEMETRICS_SNAPSHOT_DIR": str(golden_metrics.snapshot_dir),
         "JUDGEMETRICS_LOG_FORMAT": "json",
     }
     text = CliRunner().invoke(cli, ["provenance", "trace", str(observation_id)], env=env)
@@ -203,6 +208,17 @@ def test_the_cli_prints_the_chain_and_matches_the_endpoint(
     else:
         assert observation["numerator"] == printed["observation"]["observed_count"]
         assert observation["denominator"] == printed["observation"]["cohort_size"]
+    assert observation["suppression_reason"] == printed["observation"]["suppression_reason"]
+    # The endpoint names the same model as the CLI (an adjusted observation only).
+    if printed["model"] is None:
+        assert served["model"] is None and observation["model"] is None
+    else:
+        for key in ("id", "content_hash", "spec_version", "model_version", "target", "window_days"):
+            assert served["model"][key] == printed["model"][key], key
+        assert served["model"]["artifact_ok"] is printed["model"]["artifact_ok"] is True
+        assert served["model"]["training"]["index_events"] == printed["model"]["index_events"]
+        assert served["model"]["training"]["events"] == printed["model"]["events"]
+        assert observation["model"]["content_hash"] == printed["model"]["content_hash"]
 
     unknown = CliRunner().invoke(cli, ["provenance", "trace", str(uuid.uuid4())], env=env)
     assert unknown.exit_code == 2, unknown.output

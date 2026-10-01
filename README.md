@@ -81,7 +81,13 @@ artifacts operated by `uv run judgemetrics models fit|list|show|verify`
 the observed-to-expected ratios with partial pooling and bootstrap
 intervals; Step 4 their validation,
 [`docs/VALIDATION.md`](docs/VALIDATION.md) (`uv run judgemetrics
-validation report`), and methodology `1.0`. See:
+validation report`), and methodology `1.0`; Step 5 publishes them: the
+judge page's "Risk-adjusted comparison" panel (each ratio with its
+observed and expected events, 95% bootstrap interval, pooling weight,
+cohort definition, model link, and the raw rate it adjusts), adjusted
+measures on `/compare` sorted by the pooled ratio, and the model card
+(`/models/<id>`, `GET /api/v1/models/{id}`). The seventeen
+first-milestone items are unchanged. See:
 
 - [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed

@@ -343,11 +343,16 @@ def golden_metrics(
 
 
 def make_app(settings: Settings, **overrides: Any) -> FastAPI:
-    """A fresh app for the read-only role under the test environment."""
+    """A fresh app for the read-only role under the test environment.
+
+    The snapshot directory comes along, so the provenance route finds the
+    model artifacts of the settings' compute (``golden_metrics``).
+    """
     values: dict[str, Any] = {
         "env": "test",
         "database_url": settings.database_url,
         "log_format": "json",
+        "snapshot_dir": settings.snapshot_dir,
         **overrides,
     }
     return create_app(Settings(**values))

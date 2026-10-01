@@ -23,6 +23,7 @@ import {
   type CohortPosition,
   formatDays,
   formatRate,
+  formatRatio,
 } from "@/lib/metrics";
 
 export function MetricPanel({
@@ -93,7 +94,8 @@ export function CohortPositionLine({
   kind: Observation["kind"];
   compareHref: string;
 }) {
-  const figure = (value: number | null) => (kind === "median" ? formatDays(value) : formatRate(value));
+  const figure = (value: number | null) =>
+    kind === "median" ? formatDays(value) : kind === "observed_expected" ? formatRatio(value) : formatRate(value);
   return (
     <dl
       className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded-md bg-muted/40 px-2 py-1.5 text-xs"

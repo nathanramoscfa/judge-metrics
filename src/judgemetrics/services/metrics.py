@@ -3,9 +3,13 @@
 the provenance chain of one observation.
 
 Every ``Observation`` is built by ``observation_from_row`` from one joined
-row (the observation, its definition, its source, its snapshot hash):
-``numerator`` is ``observed_count``, ``denominator`` is ``cohort_size``,
-``rate`` is ``observed_rate``, the interval method follows the kind, the
+row (the observation, its definition, its source, its snapshot hash, and
+the outcome model it cites): ``numerator`` is ``observed_count``,
+``denominator`` is ``cohort_size``, ``rate`` is ``observed_rate``, the
+figures of an ``observed_expected`` row are mapped by ``figures`` (``expected``
+from ``expected_count``, ``ratio`` from ``standardized_ratio``, its bootstrap
+interval from the two bounds into ``ratio_lower``/``ratio_upper`` while
+``lower``/``upper`` stay null), the interval method follows the kind, the
 coverage block comes from the source, and the methodology link is
 ``Settings.methodology_url_for(slug)``. Suppression is applied by the
 schema itself (``schemas.metrics.SuppressibleFigures``), so this module
@@ -24,15 +28,17 @@ runs ``metrics.provenance.trace`` and maps the chain onto
 superseded observation and withholding the snapshot's storage URI and any
 non-public artifact URI the way ``raw_object_path`` is never returned.
 
-The hold-out (Phase 4 Step 3): ``SERVED_KINDS`` — the six Phase 3 kinds —
-is every kind a public metrics response carries. The registry response
-lists only their definitions; the subject routes' statement filters by
-kind in SQL (bound parameters, so the statement count is unchanged); the
-compare route answers an ``observed_expected`` slug with the unknown-metric
-422; and the provenance trace starts only from an observation of a served
-kind, so an adjusted observation id is a 404. ``observed_expected`` joins
-the set in Phase 4 Step 5, with its schema, once methodology 1.0 publishes
-the validation (docs/API.md "Metrics").
+``SERVED_KINDS`` is every kind a public metrics response carries. Phase 4
+Step 3 held ``observed_expected`` out of it (the registry response, the
+subject statements, compare, and the provenance route all filter by it in
+SQL with bound parameters) until methodology 1.0 published the estimator's
+validation; Phase 4 Step 5 serves it with its schema, so the set is every
+registry kind and the filters stay as the place a future kind is held out.
+The compare route sorts an adjusted metric by its pooled ratio unless asked
+otherwise (``default_sort``), and the provenance trace of an adjusted
+observation checks its model's artifact under the configured snapshot
+directory (``settings``), naming the model in the body. ``model_card`` is the
+model card of ``GET /models/{id}`` (docs/API.md "Models").
 """
 
 from __future__ import annotations
@@ -44,6 +50,7 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.orm import Session
 
+from judgemetrics.api import API_PREFIX
 from judgemetrics.api.errors import ApiError
 from judgemetrics.config import Settings
 from judgemetrics.metrics.methodology import (
@@ -54,8 +61,9 @@ from judgemetrics.metrics.methodology import (
     SEMANTICS,
     adjustment_prose,
 )
-from judgemetrics.metrics.provenance import TraceError, trace
+from judgemetrics.metrics.provenance import TracedModel, TraceError, trace
 from judgemetrics.metrics.registry import (
+    OBSERVED_EXPECTED,
     WINDOWS_DAYS,
     MetricDefinitionSpec,
     Registry,
@@ -67,21 +75,29 @@ from judgemetrics.repositories.metrics import (
     get_subject,
     subject_observations,
 )
+from judgemetrics.repositories.models import model_card_row
 from judgemetrics.schemas.judges import CourtRef
 from judgemetrics.schemas.metrics import (
     AdjustmentFeatureOut,
     AdjustmentOut,
     AttributionOut,
+    CalibrationBinOut,
+    CoefficientOut,
     CompareCohort,
     ComparePage,
     CompareRow,
+    DefinitionAdjustmentOut,
     MemberGroup,
     MethodologyChange,
     MethodologyTerm,
     MetricDefinitionOut,
+    ModelCard,
+    ModelRef,
+    ModelValidationOut,
     Observation,
     ObservationCoverage,
     ObservationProvenance,
+    ProvenanceModel,
     SnapshotOut,
     SourceOut,
     SourceRecordOut,
@@ -89,14 +105,17 @@ from judgemetrics.schemas.metrics import (
     SubjectSummary,
     SuppressionOut,
     TracedObservation,
+    TrainingOut,
     interval_method_for,
 )
 from judgemetrics.schemas.metrics import Registry as RegistryOut
 
-# The registry kinds a public metrics response serves (the hold-out: see the module docstring).
+# The registry kinds a public metrics response serves (see the module docstring).
 SERVED_KINDS: frozenset[str] = frozenset(
-    {"count", "share", "windowed_rate", "survival", "distribution", "median"}
+    {"count", "share", "windowed_rate", "survival", "distribution", "median", OBSERVED_EXPECTED}
 )
+# The methodology section the model card links to.
+ADJUSTED_ANCHOR = "adjusted-statistics"
 
 
 def _float(value: Any) -> float | None:
@@ -107,6 +126,68 @@ def _observable(outcome: str | None, observable_outcomes: Any) -> bool:
     if outcome is None:
         return True
     return outcome in {str(item) for item in (observable_outcomes or [])}
+
+
+def model_url(model_id: uuid.UUID) -> str:
+    """The model card's API path."""
+    return f"{API_PREFIX}/models/{model_id}"
+
+
+def figures(
+    kind: str,
+    *,
+    observed_count: Any,
+    cohort_size: Any,
+    observed_rate: Any,
+    value: Any,
+    distribution: Any,
+    lower: Any,
+    upper: Any,
+    expected_count: Any = None,
+    expected_rate: Any = None,
+    standardized_ratio: Any = None,
+    pooling_weight: Any = None,
+) -> dict[str, Any]:
+    """The stored columns → the suppressible figures of the response, by kind.
+
+    An adjusted ratio's two stored bounds are the pooled ratio's bootstrap
+    interval (``ratio_lower``/``ratio_upper``, unbounded above), never the
+    ``lower``/``upper`` of a share; every adjusted field is null for a
+    descriptive kind. Suppression is the schema's business.
+    """
+    adjusted = kind == OBSERVED_EXPECTED
+    return {
+        "numerator": int(observed_count),
+        "denominator": int(cohort_size),
+        "rate": _float(observed_rate),
+        "value": _float(value),
+        "distribution": (
+            None
+            if distribution is None
+            else {str(k): int(v) for k, v in dict(distribution).items()}
+        ),
+        "lower": None if adjusted else _float(lower),
+        "upper": None if adjusted else _float(upper),
+        "expected": _float(expected_count) if adjusted else None,
+        "expected_rate": _float(expected_rate) if adjusted else None,
+        "ratio": _float(standardized_ratio) if adjusted else None,
+        "ratio_lower": _float(lower) if adjusted else None,
+        "ratio_upper": _float(upper) if adjusted else None,
+        "pooling_weight": _float(pooling_weight) if adjusted else None,
+    }
+
+
+def model_ref(row: Row[Any]) -> ModelRef | None:
+    """The cited model of a joined row (``repositories.metrics``), or ``None``."""
+    if row.model_id is None:
+        return None
+    return ModelRef(
+        id=row.model_id,
+        content_hash=str(row.model_hash),
+        model_version=str(row.model_version),
+        spec_version=int(row.model_spec_version),
+        url=model_url(row.model_id),
+    )
 
 
 # --- the registry ---------------------------------------------------------------------------
@@ -131,6 +212,14 @@ def definition_out(definition: MetricDefinitionSpec, settings: Settings) -> Metr
         unit=definition.unit,
         version=definition.version,
         methodology_url=settings.methodology_url_for(definition.slug),
+        adjustment=(
+            None
+            if definition.adjustment is None
+            else DefinitionAdjustmentOut(
+                target=definition.adjustment.target,
+                minimum_expected=definition.adjustment.minimum_expected,
+            )
+        ),
     )
 
 
@@ -204,11 +293,12 @@ def registry_response(settings: Settings, registry: Registry | None = None) -> R
 def observation_from_row(row: Row[Any], settings: Settings) -> Observation:
     """One joined repository row → the presentation shape (suppression applied by the schema)."""
     observation = row[0]
+    kind = str(row.kind)
     return Observation(
         id=observation.id,
         slug=str(row.slug),
         name=str(row.name),
-        kind=str(row.kind),
+        kind=kind,
         unit=str(row.unit),
         version=str(row.definition_version),
         subject_type=observation.subject_type.value,
@@ -220,20 +310,25 @@ def observation_from_row(row: Row[Any], settings: Settings) -> Observation:
         window_days=observation.window_days,
         dimension_value=observation.dimension_value,
         eligible_count=int(observation.eligible_count),
-        numerator=int(observation.observed_count),
-        denominator=int(observation.cohort_size),
-        rate=_float(observation.observed_rate),
-        value=_float(observation.value),
-        distribution=(
-            None
-            if observation.distribution is None
-            else {str(k): int(v) for k, v in dict(observation.distribution).items()}
+        **figures(
+            kind,
+            observed_count=observation.observed_count,
+            cohort_size=observation.cohort_size,
+            observed_rate=observation.observed_rate,
+            value=observation.value,
+            distribution=observation.distribution,
+            lower=observation.lower_confidence_bound,
+            upper=observation.upper_confidence_bound,
+            expected_count=observation.expected_count,
+            expected_rate=observation.expected_rate,
+            standardized_ratio=observation.standardized_ratio,
+            pooling_weight=observation.pooling_weight,
         ),
-        lower=_float(observation.lower_confidence_bound),
-        upper=_float(observation.upper_confidence_bound),
-        interval_method=interval_method_for(str(row.kind)),
+        model=model_ref(row),
+        interval_method=interval_method_for(kind),
         suppressed=bool(observation.suppressed_flag),
         suppression_threshold=int(row.suppression_threshold),
+        suppression_reason=observation.suppression_reason,
         coverage=ObservationCoverage(
             coverage_start=row.coverage_start,
             coverage_end=row.coverage_end,
@@ -290,7 +385,7 @@ def validate_compare_metric(
 ) -> MetricDefinitionSpec:
     """The registry entry for ``slug`` once ``window_days`` fits its kind, else a 422.
 
-    A metric of a kind the API does not serve yet is answered as unknown.
+    A metric of a kind the API does not serve is answered as unknown.
     """
     definition = registry.metrics.get(slug)
     if definition is None or definition.kind not in SERVED_KINDS:
@@ -309,6 +404,11 @@ def validate_compare_metric(
             f"window: {window_days} is not one of {list(definition.windows_days)} for {slug!r}"
         )
     return definition
+
+
+def default_sort(definition: MetricDefinitionSpec) -> CompareSortKey:
+    """The figure a metric's compare table is ordered by when no sort is asked for."""
+    return "ratio" if definition.kind == OBSERVED_EXPECTED else "rate"
 
 
 def _coverage_warning(
@@ -337,14 +437,18 @@ def compare(
     jurisdiction_id: uuid.UUID | None,
     period_start: date | None,
     period_end: date | None,
-    sort: CompareSortKey,
+    sort: CompareSortKey | None,
     order: str,
     limit: int,
     offset: int,
 ) -> ComparePage | None:
-    """One metric, one window, one cohort: sorted, paginated; ``None`` when the cohort is unknown."""
+    """One metric, one window, one cohort: sorted, paginated; ``None`` when the cohort is unknown.
+
+    ``sort=None`` is the metric's ``default_sort`` (the pooled ratio for an adjusted metric).
+    """
     registry = load_registry()
     definition = validate_compare_metric(registry, slug, window_days)
+    sort = sort or default_sort(definition)
     page = compare_page(
         session,
         slug=definition.slug,
@@ -382,20 +486,25 @@ def compare(
             window_days=row.window_days,
             dimension_value=row.dimension_value,
             eligible_count=int(row.eligible_count),
-            numerator=int(row.observed_count),
-            denominator=int(row.cohort_size),
-            rate=_float(row.observed_rate),
-            value=_float(row.value),
-            distribution=(
-                None
-                if row.distribution is None
-                else {str(k): int(v) for k, v in dict(row.distribution).items()}
+            **figures(
+                definition.kind,
+                observed_count=row.observed_count,
+                cohort_size=row.cohort_size,
+                observed_rate=row.observed_rate,
+                value=row.value,
+                distribution=row.distribution,
+                lower=row.lower_confidence_bound,
+                upper=row.upper_confidence_bound,
+                expected_count=row.expected_count,
+                expected_rate=row.expected_rate,
+                standardized_ratio=row.standardized_ratio,
+                pooling_weight=row.pooling_weight,
             ),
-            lower=_float(row.lower_confidence_bound),
-            upper=_float(row.upper_confidence_bound),
+            model=model_ref(row),
             interval_method=interval_method_for(definition.kind),
             suppressed=bool(row.suppressed_flag),
             suppression_threshold=int(row.suppression_threshold),
+            suppression_reason=row.suppression_reason,
             coverage_warning=_coverage_warning(row, definition, reference),
         )
         for row in page.rows
@@ -428,12 +537,42 @@ def compare(
 # --- provenance ---------------------------------------------------------------------------
 
 
+def _model_ref(model: TracedModel) -> ModelRef:
+    return ModelRef(
+        id=model.id,
+        content_hash=model.content_hash,
+        model_version=model.model_version,
+        spec_version=model.spec_version,
+        url=model_url(model.id),
+    )
+
+
+def _provenance_model(model: TracedModel) -> ProvenanceModel:
+    return ProvenanceModel(
+        **_model_ref(model).model_dump(),
+        target=model.target,
+        window_days=model.window_days,
+        status=model.status,
+        training=TrainingOut(
+            index_events=model.index_events,
+            events=model.events,
+            start=model.train_start,
+            end=model.train_end,
+        ),
+        artifact_ok=model.artifact_ok,
+    )
+
+
 def observation_provenance(
     session: Session, settings: Settings, observation_id: uuid.UUID
 ) -> ObservationProvenance | None:
-    """The chain behind a current observation of a served kind, else ``None`` (a 404)."""
+    """The chain behind a current observation of a served kind, else ``None`` (a 404).
+
+    ``settings`` locate an adjusted observation's model artifact, which the
+    chain's ``complete`` requires.
+    """
     try:
-        traced = trace(session, observation_id, kinds=SERVED_KINDS)
+        traced = trace(session, observation_id, settings=settings, kinds=SERVED_KINDS)
     except TraceError:
         return None
     if traced.observation.superseded_at is not None:
@@ -457,16 +596,25 @@ def observation_provenance(
         window_days=o.window_days,
         dimension_value=o.dimension_value,
         eligible_count=o.eligible_count,
-        numerator=o.observed_count,
-        denominator=o.cohort_size,
-        rate=_float(o.observed_rate),
-        value=_float(o.value),
-        distribution=o.distribution,
-        lower=_float(o.lower),
-        upper=_float(o.upper),
+        **figures(
+            o.kind,
+            observed_count=o.observed_count,
+            cohort_size=o.cohort_size,
+            observed_rate=o.observed_rate,
+            value=o.value,
+            distribution=o.distribution,
+            lower=o.lower,
+            upper=o.upper,
+            expected_count=o.expected_count,
+            expected_rate=o.expected_rate,
+            standardized_ratio=o.standardized_ratio,
+            pooling_weight=o.pooling_weight,
+        ),
+        model=None if traced.model is None else _model_ref(traced.model),
         interval_method=interval_method_for(o.kind),
         suppressed=o.suppressed,
         suppression_threshold=o.suppression_threshold,
+        suppression_reason=o.suppression_reason,
         coverage=ObservationCoverage(
             coverage_start=own_source.coverage_start,
             coverage_end=own_source.coverage_end,
@@ -491,6 +639,7 @@ def observation_provenance(
             methodology_version=traced.snapshot.methodology_version,
             row_counts=dict(traced.snapshot.row_counts),
         ),
+        model=None if traced.model is None else _provenance_model(traced.model),
         members=[
             MemberGroup(
                 member_kind=group.kind,
@@ -528,4 +677,71 @@ def observation_provenance(
             for source in traced.sources
         ],
         complete=traced.complete,
+    )
+
+
+# --- the model card -----------------------------------------------------------------------
+
+
+def model_card(session: Session, settings: Settings, model_id: uuid.UUID) -> ModelCard | None:
+    """The model card from the catalogue row, or ``None`` (a 404): one statement, no artifact."""
+    row = model_card_row(session, model_id)
+    if row is None:
+        return None
+    diagnostics: dict[str, Any] = dict(row.diagnostics or {})
+    return ModelCard(
+        id=row.id,
+        content_hash=str(row.content_hash),
+        snapshot_hash=str(row.snapshot_hash),
+        source=str(row.source_name),
+        synthetic=bool(row.synthetic),
+        target=str(row.target),
+        window_days=row.window_days,
+        spec_version=int(row.spec_version),
+        model_version=str(row.model_version),
+        seed=int(row.seed),
+        status=str(row.status),
+        fitted_at=row.fitted_at,
+        code_version=str(row.code_version),
+        training=TrainingOut(
+            index_events=int(row.n_train) + int(row.n_test),
+            events=int(row.events_train) + int(row.events_test),
+            start=row.train_start,
+            end=row.train_end,
+        ),
+        validation=ModelValidationOut(
+            split_cutoff=row.split_cutoff,
+            train_index_events=int(row.n_train),
+            train_events=int(row.events_train),
+            test_index_events=int(row.n_test),
+            test_events=int(row.events_test),
+            base_rate_train=_float(diagnostics.get("base_rate_train")),
+            brier=_float(diagnostics.get("brier")),
+            brier_skill=_float(diagnostics.get("brier_skill")),
+            auc=_float(diagnostics.get("auc")),
+            calibration_in_the_large=_float(diagnostics.get("calibration_in_the_large")),
+            calibration_slope=_float(diagnostics.get("calibration_slope")),
+            bins=[
+                CalibrationBinOut(
+                    bin=int(item["bin"]),
+                    count=int(item["count"]),
+                    mean_predicted=_float(item.get("mean_predicted")),
+                    observed_rate=_float(item.get("observed_rate")),
+                )
+                for item in diagnostics.get("bins") or []
+            ],
+        ),
+        coefficients=[
+            CoefficientOut(
+                column=str(item["column"]),
+                feature=None if item.get("feature") is None else str(item["feature"]),
+                level=None if item.get("level") is None else str(item["level"]),
+                reference=None if item.get("reference") is None else str(item["reference"]),
+                estimate=_float(item.get("estimate")),
+                sd=_float(item.get("sd")),
+                sign_agreement=_float(item.get("sign_agreement")),
+            )
+            for item in row.coefficients or []
+        ],
+        methodology_url=f"{settings.methodology_url.rstrip('#')}#{ADJUSTED_ANCHOR}",
     )

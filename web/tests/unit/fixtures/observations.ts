@@ -2,12 +2,36 @@
 // Observation and registry fixtures shaped like the API's responses
 // (docs/API.md "Metrics"): one observation per kind, a suppressed row, a
 // compare page, and a registry with the prose sections the methodology
-// page renders. Values are the demo seed's shapes, not real records.
-import type { CompareRow, MetricDefinition, Observation, Registry } from "@/lib/api/client";
+// page renders. Phase 4 Step 5 adds the adjusted kind: a published
+// observed-to-expected ratio, one suppressed ratio per suppression reason,
+// the adjusted definitions, and a model card. Values are the demo seed's
+// shapes, not real records.
+import type {
+  CompareRow,
+  MetricDefinition,
+  ModelCard,
+  ModelRef,
+  Observation,
+  Registry,
+} from "@/lib/api/client";
 
 export const JUDGE_ID = "6395ea5c-a9c0-41ee-b36f-1e492520e36f";
 export const COURT_ID = "7b6215b8-b463-4d1b-9e05-51efeaef182f";
 export const SNAPSHOT = "52aec63b53dfd26e600fe0c308b2d744af1282296bdccd695a4b0b91aad54c2e"; // pragma: allowlist secret
+export const MODEL_HASH = "0f6a3c1e9b7d24a58c3e1f0b2d4a6c8e9f1b3d5a7c9e0f2a4b6c8d0e2f4a6b8c"; // pragma: allowlist secret
+export const MODEL_ID = "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f";
+
+/** The adjusted fields every observation and compare row carries: null for a descriptive kind. */
+const NOT_ADJUSTED = {
+  expected: null,
+  expected_rate: null,
+  ratio: null,
+  ratio_lower: null,
+  ratio_upper: null,
+  pooling_weight: null,
+  model: null,
+  suppression_reason: null,
+};
 
 const BASE = {
   subject_type: "judge" as const,
@@ -28,6 +52,7 @@ const BASE = {
   lower: null,
   upper: null,
   interval_method: null,
+  ...NOT_ADJUSTED,
 };
 
 export const RATE: Observation = {
@@ -148,7 +173,82 @@ export const SUPPRESSED: Observation = {
   lower: null,
   upper: null,
   suppressed: true,
+  suppression_reason: "below_threshold",
   eligible_count: 7,
+};
+
+export const MODEL: ModelRef = {
+  id: MODEL_ID,
+  content_hash: MODEL_HASH,
+  model_version: "expected-logit-v1",
+  spec_version: 1,
+  url: `/api/v1/models/${MODEL_ID}`,
+};
+
+/** A published observed-to-expected ratio: the brief's example (304 observed, 276 expected). */
+export const ADJUSTED: Observation = {
+  ...BASE,
+  id: "7d3b3b4b-1b1e-4d7b-9b9c-6a1c0c2f1a17",
+  slug: "new_case_observed_expected",
+  name: "New cases after pretrial release, observed to expected",
+  kind: "observed_expected",
+  unit: "ratio",
+  methodology_version: "1.0",
+  window_days: 365,
+  numerator: 304,
+  denominator: 2140,
+  eligible_count: 2391,
+  rate: 0.142056,
+  expected: 276.4182,
+  expected_rate: 0.129168,
+  ratio: 1.0974,
+  ratio_lower: 0.9912,
+  ratio_upper: 1.2087,
+  pooling_weight: 0.6213,
+  model: MODEL,
+  interval_method: "bootstrap",
+  suppression_threshold: 30,
+  methodology_url: "/methodology#new_case_observed_expected",
+};
+
+/** A suppressed adjusted ratio exactly as the API sends it: every figure null, the reason and the model kept. */
+export function suppressedAdjusted(reason: NonNullable<Observation["suppression_reason"]>): Observation {
+  return {
+    ...ADJUSTED,
+    id: `8d3b3b4b-1b1e-4d7b-9b9c-${reason === "below_threshold" ? "0" : reason === "expected_below_minimum" ? "1" : "2"}a1c0c2f1a18`,
+    numerator: null,
+    denominator: null,
+    rate: null,
+    expected: null,
+    expected_rate: null,
+    ratio: null,
+    ratio_lower: null,
+    ratio_upper: null,
+    pooling_weight: null,
+    suppressed: true,
+    suppression_reason: reason,
+    eligible_count: 24,
+  };
+}
+
+/** The release ratio (unwindowed), published. */
+export const RELEASE_ADJUSTED: Observation = {
+  ...ADJUSTED,
+  id: "9d3b3b4b-1b1e-4d7b-9b9c-6a1c0c2f1a19",
+  slug: "pretrial_release_observed_expected",
+  name: "Pretrial releases, observed to expected",
+  window_days: null,
+  numerator: 353,
+  denominator: 521,
+  eligible_count: 521,
+  rate: 0.677543,
+  expected: 341.2,
+  expected_rate: 0.654894,
+  ratio: 1.0321,
+  ratio_lower: 0.9603,
+  ratio_upper: 1.1088,
+  pooling_weight: 0.8412,
+  methodology_url: "/methodology#pretrial_release_observed_expected",
 };
 
 export function compareRow(overrides: Partial<CompareRow> = {}): CompareRow {
@@ -175,8 +275,32 @@ export function compareRow(overrides: Partial<CompareRow> = {}): CompareRow {
     eligible_count: 353,
     interval_method: "wilson",
     coverage_warning: null,
+    ...NOT_ADJUSTED,
     ...overrides,
   };
+}
+
+/** An adjusted compare row (published unless overridden). */
+export function adjustedRow(overrides: Partial<CompareRow> = {}): CompareRow {
+  return compareRow({
+    observation_id: ADJUSTED.id,
+    numerator: 304,
+    denominator: 2140,
+    eligible_count: 2391,
+    rate: 0.142056,
+    lower: null,
+    upper: null,
+    expected: 276.4182,
+    expected_rate: 0.129168,
+    ratio: 1.0974,
+    ratio_lower: 0.9912,
+    ratio_upper: 1.2087,
+    pooling_weight: 0.6213,
+    model: MODEL,
+    interval_method: "bootstrap",
+    suppression_threshold: 30,
+    ...overrides,
+  });
 }
 
 const ATTRIBUTION = {
@@ -205,6 +329,7 @@ export const DEFINITIONS: MetricDefinition[] = [
     unit: "count",
     version: "1",
     methodology_url: "/methodology#eligible_cases",
+    adjustment: null,
   },
   {
     slug: "pretrial_release_share",
@@ -224,6 +349,7 @@ export const DEFINITIONS: MetricDefinition[] = [
     unit: "share",
     version: "1",
     methodology_url: "/methodology#pretrial_release_share",
+    adjustment: null,
   },
   {
     slug: "new_case_rate",
@@ -243,6 +369,7 @@ export const DEFINITIONS: MetricDefinition[] = [
     unit: "share",
     version: "1",
     methodology_url: "/methodology#new_case_rate",
+    adjustment: null,
   },
   {
     slug: "rearrest_rate",
@@ -262,6 +389,7 @@ export const DEFINITIONS: MetricDefinition[] = [
     unit: "share",
     version: "1",
     methodology_url: "/methodology#rearrest_rate",
+    adjustment: null,
   },
   {
     slug: "statutory_release_count",
@@ -281,8 +409,51 @@ export const DEFINITIONS: MetricDefinition[] = [
     unit: "count",
     version: "1",
     methodology_url: "/methodology#statutory_release_count",
+    adjustment: null,
+  },
+  {
+    slug: "pretrial_release_observed_expected",
+    name: "Pretrial releases, observed to expected",
+    kind: "observed_expected",
+    subject_types: ["judge"],
+    description: "The judge's pretrial releases over the number the outcome model expects, partially pooled toward 1.",
+    numerator: "Observed releases.",
+    denominator: "Expected releases: the sum of the model's predicted probabilities of release.",
+    eligibility: "The attributed pretrial decisions of pretrial_decisions.",
+    attribution: ATTRIBUTION,
+    index_event: null,
+    outcome: null,
+    windows_days: null,
+    dimension: null,
+    suppression_threshold: 30,
+    unit: "ratio",
+    version: "1",
+    methodology_url: "/methodology#pretrial_release_observed_expected",
+    adjustment: { target: "pretrial_release", minimum_expected: 5 },
+  },
+  {
+    slug: "new_case_observed_expected",
+    name: "New cases after pretrial release, observed to expected",
+    kind: "observed_expected",
+    subject_types: ["judge"],
+    description: "The judge's followed cohort members with a new case over the number the model expects.",
+    numerator: "Followed cohort members with at least one new_case event in the window.",
+    denominator: "Expected new cases: the sum of the model's predicted probabilities.",
+    eligibility: "The pretrial-release cohort.",
+    attribution: ATTRIBUTION,
+    index_event: "pretrial_release",
+    outcome: "new_case",
+    windows_days: [30, 90, 180, 365, 730, 1095],
+    dimension: null,
+    suppression_threshold: 30,
+    unit: "ratio",
+    version: "1",
+    methodology_url: "/methodology#new_case_observed_expected",
+    adjustment: { target: "new_case", minimum_expected: 5 },
   },
 ];
+
+export const ADJUSTED_DEFINITION = DEFINITIONS.find((d) => d.slug === "new_case_observed_expected")!;
 
 export const KNOWN_LIMITATIONS = [
   "A judge who handles a disproportionately high-risk docket may exhibit higher raw subsequent-event rates even if decision-making has no causal effect. Raw rates must therefore be accompanied by case-mix context.",
@@ -349,4 +520,68 @@ export const REGISTRY: Registry = {
     validation: "docs/VALIDATION.md reports the model's validation.",
   },
   definitions: DEFINITIONS,
+};
+
+/** A fitted model's card, shaped like GET /api/v1/models/{id}. */
+export const MODEL_CARD: ModelCard = {
+  id: MODEL_ID,
+  content_hash: MODEL_HASH,
+  snapshot_hash: SNAPSHOT,
+  source: "synthetic",
+  synthetic: true,
+  target: "new_case",
+  window_days: 365,
+  spec_version: 1,
+  model_version: "expected-logit-v1",
+  seed: 20260930,
+  status: "fitted",
+  fitted_at: "2026-10-01T09:12:44Z",
+  code_version: "0.4.0+383400a",
+  training: {
+    index_events: 4534,
+    events: 702,
+    start: "2016-01-04T15:00:00Z",
+    end: "2022-12-29T16:30:00Z",
+  },
+  validation: {
+    split_cutoff: "2021-06-01T00:00:00Z",
+    train_index_events: 3401,
+    train_events: 541,
+    test_index_events: 1133,
+    test_events: 161,
+    base_rate_train: 0.159071,
+    brier: 0.11873,
+    brier_skill: 0.0412,
+    auc: 0.6604,
+    calibration_in_the_large: -0.0213,
+    calibration_slope: 0.9481,
+    bins: Array.from({ length: 10 }, (_, index) => ({
+      bin: index + 1,
+      count: 113,
+      mean_predicted: 0.05 + index * 0.025,
+      observed_rate: 0.048 + index * 0.026,
+    })),
+  },
+  coefficients: [
+    { column: "intercept", feature: null, level: null, reference: null, estimate: -1.912, sd: 0.081, sign_agreement: 1 },
+    {
+      column: "lead_severity:felony_1",
+      feature: "lead_severity",
+      level: "felony_1",
+      reference: "misdemeanor_b",
+      estimate: 0.412,
+      sd: 0.093,
+      sign_agreement: 0.998,
+    },
+    {
+      column: "court:court_2",
+      feature: "court",
+      level: COURT_ID,
+      reference: "7b6215b8-0000-4d1b-9e05-51efeaef182f",
+      estimate: -0.051,
+      sd: 0.071,
+      sign_agreement: 0.762,
+    },
+  ],
+  methodology_url: "/methodology#adjusted-statistics",
 };

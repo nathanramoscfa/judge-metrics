@@ -21,6 +21,20 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   another component. The one derived figure on a page is the cohort
   position line (`CohortPositionLine`: judges, median, rank), and it
   names the compare rows it was derived from.
+- An adjusted statistic (`kind: observed_expected`) is rendered through
+  `components/adjusted-stat.tsx` (`AdjustedStat`) — observed and expected
+  events, the pooled ratio with its 95% bootstrap interval, the pooling
+  weight, the sample size, the period, the coverage, the cohort
+  definition, the model link, the methodology version as visible text, and
+  the brief's interpretation from `Registry.adjustment`; a suppressed one
+  shows its reason in words and no figure — or, in a compare table, through
+  `CompareTable`'s adjusted columns. Never `MetricStat` for a ratio, and no
+  causal wording anywhere near one. The adjusted panel collects its
+  definitions by kind (`JUDGE_PANELS`' `kind`); no other panel and no
+  "Other metrics" list may show one.
+- Never export anything but the route conventions (`default`, `metadata`,
+  `generateMetadata`, `dynamic`, …) from an `app/**/page.tsx`: shared
+  constants such as `KIND_TEXT` live in `lib/`.
 - Windows come from the registry response (`windows_days`), the default
   is `DEFAULT_WINDOW_DAYS` in `lib/metrics.ts`; no page hard-codes a
   window list.

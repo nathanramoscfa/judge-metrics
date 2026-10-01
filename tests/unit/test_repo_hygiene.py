@@ -391,6 +391,9 @@ def test_compose_defines_postgres_and_minio() -> None:
     assert api["build"]["dockerfile"] == "infra/docker/api.Dockerfile"
     assert api["env_file"] == ".env"
     assert api["depends_on"]["postgres"]["condition"] == "service_healthy"
+    # Phase 4 Step 5: the snapshot directory, read-only, for the model artifact check.
+    assert "./data/snapshots:/app/data/snapshots:ro" in api["volumes"]
+    assert api["environment"]["JUDGEMETRICS_SNAPSHOT_DIR"] == "/app/data/snapshots"
     assert any(str(port).endswith(":8000") for port in api["ports"])
     postgres = services["postgres"]
     assert postgres["image"] == "postgres:17"

@@ -15,8 +15,10 @@ Step 3) a subject's metrics at most two (the subject, the observations),
 compare at most two (the page; the fallback that settles the cohort's
 existence on an empty page), an observation's provenance at most six
 (three today: the observation, the resolved members, the source
-records), and a correction at most two (the target lookup, the insert —
-with no `RETURNING`).
+records — an adjusted observation's model rides the first), a correction at
+most two (the target lookup, the insert — with no `RETURNING`), and (Phase 4
+Step 5) a model card exactly one (the model with its snapshot and source),
+an adjusted compare page one statement like any other.
 """
 
 from __future__ import annotations
@@ -185,6 +187,7 @@ SUBJECT_METRICS_BUDGET = 2
 COMPARE_BUDGET = 2
 PROVENANCE_BUDGET = 6
 CORRECTIONS_BUDGET = 2
+MODEL_CARD_BUDGET = 1
 
 
 @pytest.fixture(scope="module")
@@ -256,6 +259,19 @@ def test_compare_needs_at_most_two_statements(
         )
         <= COMPARE_BUDGET
     )
+    # An adjusted metric sorted by its pooled ratio (the default) is one statement too.
+    assert (
+        _count(
+            counted_metrics,
+            "/api/v1/metrics/compare",
+            metric="new_case_observed_expected",
+            window="365",
+            jurisdiction_id=jurisdiction_id,
+            limit="100",
+        )
+        == 1
+    )
+    assert all("storage_uri" not in statement for statement in counter.statements)
 
 
 def test_provenance_needs_at_most_six_statements(
@@ -273,6 +289,25 @@ def test_provenance_needs_at_most_six_statements(
         assert len(counter.statements) == 3
         assert all("raw_object_path" not in statement for statement in counter.statements)
         assert all("person_identifier" not in statement for statement in counter.statements)
+
+
+def test_the_model_card_is_one_statement_and_never_selects_the_storage_uri(
+    counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
+) -> None:
+    client, counter = counted_metrics
+    judge_id = golden_fixture.judge_ids["J-0003"]
+    body = client.get(f"/api/v1/judges/{judge_id}/metrics").json()
+    models = {
+        item["model"]["id"]
+        for group in body["observations"].values()
+        for item in group
+        if item["model"] is not None
+    }
+    assert models
+    for model_id in sorted(models):
+        assert _count(counted_metrics, f"/api/v1/models/{model_id}") == MODEL_CARD_BUDGET
+        assert all("storage_uri" not in statement for statement in counter.statements)
+        assert all("person" not in statement for statement in counter.statements)
 
 
 def test_corrections_need_at_most_two_statements_and_no_returning(

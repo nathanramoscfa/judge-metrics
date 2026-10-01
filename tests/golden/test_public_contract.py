@@ -14,8 +14,11 @@ Step 3) is the metrics surface: no response of ``/metrics``,
 or ``/metrics/{id}/provenance`` over the golden observations carries a
 ``public_person_key``, a ``person_id``, or a 64-character hex string
 other than the artifact and snapshot hashes, and every suppressed
-observation leaves the API with its numbers null. The fifth (Phase 4
-Step 1) is the data itself: as the app role, no text or JSON column it can
+observation leaves the API with its numbers null — since Phase 4 Step 5
+the adjusted observations too (expected, ratio, interval, weight), and the
+model card of every model they cite (``/models/{id}``), whose only allowed
+new digests are the models' content hashes and which never carries
+``storage_uri``. The fifth (Phase 4 Step 1) is the data itself: as the app role, no text or JSON column it can
 read anywhere in the golden database holds a participant id (``PT-`` and
 six digits) — the case party's key is its ordinal, and the restricted
 schema is out of the app role's reach altogether.
@@ -226,13 +229,18 @@ def test_no_metrics_route_returns_a_person_key_or_an_unknown_hash(
         artifact_hashes = {
             str(value) for value in session.scalars(text("SELECT raw_sha256 FROM source_record"))
         }
-    allowed = {golden_metrics.result.snapshot.content_hash, *artifact_hashes}
+        model_hashes = {
+            str(value) for value in session.scalars(text("SELECT content_hash FROM outcome_model"))
+        }
+    assert model_hashes, "the golden compute recorded its outcome models"
+    allowed = {golden_metrics.result.snapshot.content_hash, *artifact_hashes, *model_hashes}
 
     registry = golden_api.get("/api/v1/metrics")
     assert registry.status_code == 200
     _assert_no_person_and_only_known_hashes(registry.json(), allowed, "/metrics")
 
     observation_ids: list[str] = []
+    model_ids: set[str] = set()
     suppressed_seen = 0
     for kind, ids in (("judges", golden_fixture.judge_ids), ("courts", golden_fixture.court_ids)):
         for code, subject_id in sorted(ids.items()):
@@ -245,8 +253,18 @@ def test_no_metrics_route_returns_a_person_key_or_an_unknown_hash(
                 assert item["snapshot_hash"] == golden_metrics.result.snapshot.content_hash
                 observation_ids.append(item["id"])
                 suppressed_seen += int(item["suppressed"])
+                if item["model"] is not None:
+                    model_ids.add(item["model"]["id"])
     assert observation_ids, "the golden compute published observations"
     assert suppressed_seen > 0, "the golden fixture has small cohorts"
+    assert len(model_ids) == len(model_hashes), "every model is cited by an adjusted observation"
+
+    # Every model card: no person, only the snapshot and model hashes, no storage URI.
+    for model_id in sorted(model_ids):
+        response = golden_api.get(f"/api/v1/models/{model_id}")
+        assert response.status_code == 200, (model_id, response.text)
+        _assert_no_person_and_only_known_hashes(response.json(), allowed, f"model {model_id}")
+        assert "storage_uri" not in response.text and "file:" not in response.text
 
     for params in (
         {"metric": "eligible_cases", "jurisdiction_id": str(golden_fixture.jurisdiction_id)},
@@ -260,6 +278,12 @@ def test_no_metrics_route_returns_a_person_key_or_an_unknown_hash(
             "metric": "median_days_to_disposition",
             "court_id": str(golden_fixture.court_ids["C-0001"]),
             "sort": "value",
+        },
+        {
+            "metric": "new_case_observed_expected",
+            "window": 365,
+            "jurisdiction_id": str(golden_fixture.jurisdiction_id),
+            "limit": 100,
         },
     ):
         response = golden_api.get("/api/v1/metrics/compare", params=params)

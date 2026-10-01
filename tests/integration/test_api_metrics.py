@@ -155,7 +155,7 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
     assert [item["term"] for item in adjustment["thresholds"]] == [
         term for term, _ in prose.thresholds
     ]
-    # Every definition of a served kind, in registry order (the adjusted ones are held out).
+    # Every definition of a served kind (every kind since Phase 4 Step 5), in registry order.
     assert [item["slug"] for item in body["definitions"]] == [
         slug for slug, metric in REGISTRY.metrics.items() if metric.kind in SERVED_KINDS
     ]
@@ -226,7 +226,12 @@ def test_judge_metrics_carry_every_presentation_field_grouped_by_slug(
         assert item["snapshot_hash"] == snapshot
         assert item["suppression_threshold"] == REGISTRY[item["slug"]].suppression_threshold
         definition = REGISTRY[item["slug"]]
-        expected_method = {"share": "wilson", "windowed_rate": "wilson", "survival": "greenwood"}
+        expected_method = {
+            "share": "wilson",
+            "windowed_rate": "wilson",
+            "survival": "greenwood",
+            "observed_expected": "bootstrap",
+        }
         assert item["interval_method"] == expected_method.get(definition.kind)
         if item["suppressed"]:
             assert all(item[name] is None for name in SUPPRESSED_FIELDS), item["slug"]
@@ -479,12 +484,14 @@ def test_provenance_endpoint_answers_the_chain_and_404_for_unknown_or_superseded
     assert set(body) == {
         "observation",
         "snapshot",
+        "model",
         "members",
         "source_records",
         "sources",
         "complete",
     }
     assert body["complete"] is True
+    assert body["model"] is None  # a descriptive observation cites no model
     assert body["observation"]["id"] == observation["id"]
     assert body["observation"]["numerator"] == observation["numerator"]
     assert body["observation"]["superseded_at"] is None

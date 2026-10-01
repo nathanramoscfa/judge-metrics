@@ -9,7 +9,7 @@ import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MethodologyPage from "@/app/methodology/page";
-import { ASSOCIATION_STATEMENT } from "@/lib/metrics";
+import { ASSOCIATION_STATEMENT, KIND_TEXT } from "@/lib/metrics";
 
 import { KNOWN_LIMITATIONS, REGISTRY } from "./fixtures/observations";
 
@@ -76,6 +76,45 @@ describe("MethodologyPage", () => {
     expect(screen.getByRole("heading", { name: "How to read a number" })).toBeInTheDocument();
     expect(screen.queryByTestId("metrics-note")).toBeNull();
     expect(screen.getByRole("link", { name: "docs/METHODOLOGY.md" })).toBeInTheDocument();
+  });
+
+  it("renders the adjustment block in an anchored section and the adjusted definitions by kind", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(REGISTRY));
+    render(await MethodologyPage());
+    const section = document.getElementById("adjusted-statistics") as HTMLElement;
+    expect(section).not.toBeNull();
+    expect(section).toHaveAttribute("data-testid", "adjusted-statistics");
+    const scope = within(section);
+    expect(scope.getByRole("heading", { name: "Adjusted statistics" })).toBeInTheDocument();
+    const adjustment = REGISTRY.adjustment;
+    expect(section).toHaveTextContent(`Outcome model specification ${adjustment.specification_version}`);
+    expect(section).toHaveTextContent(adjustment.model_version);
+    expect(scope.getByTestId("adjustment-interpretation").textContent).toBe(adjustment.interpretation);
+    expect(scope.getByTestId("adjustment-pooling")).toHaveTextContent(adjustment.pooling);
+    expect(scope.getByTestId("adjustment-interval")).toHaveTextContent(adjustment.interval);
+    expect(scope.getByTestId("adjustment-targets")).toHaveTextContent("pretrial_release");
+    const features = within(scope.getByTestId("adjustment-features")).getAllByRole("row");
+    expect(features).toHaveLength(adjustment.features.length + 1);
+    expect(features[1]).toHaveTextContent(adjustment.features[0].leakage);
+    expect(scope.getByTestId("adjustment-exclusions")).toHaveTextContent("judge");
+    expect(scope.getByTestId("adjustment-thresholds")).toHaveTextContent("Cohort");
+    expect(scope.getByTestId("adjustment-controls")).toHaveTextContent("Temporal");
+    expect(within(scope.getByTestId("adjustment-limitations")).getAllByRole("listitem")).toHaveLength(
+      adjustment.limitations.length,
+    );
+    expect(scope.getByTestId("validation-link").getAttribute("href")).toMatch(/docs\/VALIDATION\.md$/);
+    // Each adjusted definition is described through KIND_TEXT with its adjustment.
+    const ratio = document.getElementById("new_case_observed_expected") as HTMLElement;
+    expect(ratio).toHaveTextContent(KIND_TEXT.observed_expected);
+    expect(ratio).toHaveTextContent("unit: ratio");
+    expect(within(ratio).getByTestId("definition-adjustment")).toHaveTextContent(
+      "model target new_case; withheld below 5 expected events",
+    );
+    expect(ratio).toHaveTextContent("30 (suppressed below this many members in the ratio, below 5 expected events");
+    expect(within(ratio).getByRole("link", { name: "adjusted statistics" })).toHaveAttribute(
+      "href",
+      "#adjusted-statistics",
+    );
   });
 
   it("keeps the statement and renders the error state when the registry fetch fails", async () => {

@@ -17,7 +17,19 @@ threshold cannot reach a client through any construction path; the
 ``eligible_count`` and the ``suppression_threshold`` stay, which is how a
 reader learns why the number was withheld. ``interval_method`` follows the
 metric's kind: ``wilson`` for shares and fixed-window rates, ``greenwood``
-for Kaplan-Meier estimates, none otherwise.
+for Kaplan-Meier estimates, ``bootstrap`` for an observed-to-expected ratio,
+none otherwise.
+
+Phase 4 Step 5 serves the ``observed_expected`` kind. Its figures are the
+adjusted fields every observation and compare row carries (null for every
+descriptive kind): ``expected`` (the model-expected count E), ``expected_rate``
+(E / n), ``ratio`` (the pooled ratio (alpha + O) / (alpha + E)), ``ratio_lower``
+and ``ratio_upper`` (its 95% bootstrap interval, unbounded above, where
+``lower``/``upper`` stay shares in [0, 1] and are null for this kind), and
+``pooling_weight`` (E / (E + alpha)). They are withheld with the other figures
+when the row is suppressed; ``suppression_reason`` (why) and ``model`` (the
+fitted model it cites, ``ModelRef``) survive suppression, so a reader can
+always learn which model and which rule withheld the number.
 """
 
 from __future__ import annotations
@@ -31,10 +43,15 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 from judgemetrics.schemas.common import Page
 from judgemetrics.schemas.judges import SYNTHETIC_DESCRIPTION, CourtRef
 
-MetricKind = Literal["count", "share", "windowed_rate", "survival", "distribution", "median"]
+MetricKind = Literal[
+    "count", "share", "windowed_rate", "survival", "distribution", "median", "observed_expected"
+]
 MetricSubjectType = Literal["judge", "court"]
-IntervalMethod = Literal["wilson", "greenwood"]
-CompareSort = Literal["rate", "numerator", "denominator", "value", "name"]
+MetricUnit = Literal["count", "share", "days", "ratio"]
+IntervalMethod = Literal["wilson", "greenwood", "bootstrap"]
+CompareSort = Literal["rate", "numerator", "denominator", "value", "ratio", "name"]
+SuppressionReason = Literal["below_threshold", "expected_below_minimum", "model_unavailable"]
+ModelStatus = Literal["fitted", "insufficient_events", "not_converged"]
 SortOrder = Literal["asc", "desc"]
 CorrectionTargetType = Literal["judge", "court", "case", "metric_observation"]
 CorrectionStatusOut = Literal["received"]
@@ -45,8 +62,9 @@ INTERVAL_METHOD_BY_KIND: dict[str, IntervalMethod] = {
     "share": "wilson",
     "windowed_rate": "wilson",
     "survival": "greenwood",
+    "observed_expected": "bootstrap",
 }
-# The figures a suppressed observation never carries.
+# The figures a suppressed observation never carries (the reason and the model survive).
 SUPPRESSED_FIELDS: tuple[str, ...] = (
     "numerator",
     "denominator",
@@ -55,6 +73,12 @@ SUPPRESSED_FIELDS: tuple[str, ...] = (
     "distribution",
     "lower",
     "upper",
+    "expected",
+    "expected_rate",
+    "ratio",
+    "ratio_lower",
+    "ratio_upper",
+    "pooling_weight",
 )
 METHODOLOGY_URL_DESCRIPTION = (
     "The methodology page anchored at the metric's slug: how the number is computed, "
@@ -86,6 +110,15 @@ class AttributionOut(BaseModel):
     )
 
 
+class DefinitionAdjustmentOut(BaseModel):
+    """An ``observed_expected`` metric's model target and minimum expected count."""
+
+    target: str = Field(description="The outcome model specification's target the ratio reads.")
+    minimum_expected: float = Field(
+        ge=0.0, description="The model-expected count below which the ratio is withheld."
+    )
+
+
 class MetricDefinitionOut(BaseModel):
     """One registry entry: what a number means and how it is computed."""
 
@@ -107,9 +140,12 @@ class MetricDefinitionOut(BaseModel):
     suppression_threshold: int = Field(
         ge=0, description="The denominator below which an observation is suppressed."
     )
-    unit: Literal["count", "share", "days"]
+    unit: MetricUnit
     version: str = Field(description="The definition's version; bumped when its semantics change.")
     methodology_url: str = Field(description=METHODOLOGY_URL_DESCRIPTION)
+    adjustment: DefinitionAdjustmentOut | None = Field(
+        description="An observed-to-expected metric's model target; null for every other kind."
+    )
 
 
 class SuppressionOut(BaseModel):
@@ -224,6 +260,21 @@ class ObservationCoverage(BaseModel):
     )
 
 
+class ModelRef(BaseModel):
+    """The fitted outcome model an adjusted figure was computed with."""
+
+    id: uuid.UUID
+    content_hash: str = Field(
+        min_length=64,
+        max_length=64,
+        pattern=SHA256_PATTERN,
+        description="The sha256 of the model's canonical artifact: its identity.",
+    )
+    model_version: str
+    spec_version: int = Field(ge=1, description="The outcome model specification version.")
+    url: str = Field(description="The model card: `GET /api/v1/models/{id}`.")
+
+
 class SuppressibleFigures(BaseModel):
     """The figures a suppressed row withholds; the validator nulls them whenever ``suppressed``."""
 
@@ -250,16 +301,59 @@ class SuppressibleFigures(BaseModel):
     distribution: dict[str, int] | None = Field(
         description="The whole map of a distribution (vocabulary value → count); null otherwise."
     )
-    lower: float | None = Field(ge=0.0, le=1.0, description="The 95% interval's lower bound.")
-    upper: float | None = Field(ge=0.0, le=1.0, description="The 95% interval's upper bound.")
+    lower: float | None = Field(
+        ge=0.0,
+        le=1.0,
+        description="The 95% interval's lower bound of a rate; null for an adjusted ratio.",
+    )
+    upper: float | None = Field(
+        ge=0.0,
+        le=1.0,
+        description="The 95% interval's upper bound of a rate; null for an adjusted ratio.",
+    )
+    expected: float | None = Field(
+        ge=0.0,
+        description="The model-expected count E of an adjusted ratio; null for other kinds.",
+    )
+    expected_rate: float | None = Field(
+        ge=0.0, le=1.0, description="E / n: the expected count over the members in the ratio."
+    )
+    ratio: float | None = Field(
+        ge=0.0,
+        description=(
+            "The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially "
+            "pooled toward 1; null for other kinds."
+        ),
+    )
+    ratio_lower: float | None = Field(
+        ge=0.0, description="The pooled ratio's 95% bootstrap interval, lower bound."
+    )
+    ratio_upper: float | None = Field(
+        ge=0.0, description="The pooled ratio's 95% bootstrap interval, upper bound (unbounded)."
+    )
+    pooling_weight: float | None = Field(
+        ge=0.0,
+        le=1.0,
+        description="E / (E + alpha): the weight the subject's own data carries in the ratio.",
+    )
+    model: ModelRef | None = Field(
+        description="The outcome model an adjusted ratio cites (kept when suppressed)."
+    )
     suppressed: bool = Field(
         description=(
-            "True when the denominator is below the metric's suppression threshold: the "
-            "numerator, denominator, rate, value, distribution, and interval are withheld."
+            "True when the number is withheld (a denominator below the metric's threshold; for "
+            "an adjusted ratio also too few expected events or no fitted model): every figure "
+            "is withheld."
         )
     )
     suppression_threshold: int = Field(
         ge=0, description="The metric's threshold, stated so a reader knows why."
+    )
+    suppression_reason: SuppressionReason | None = Field(
+        description=(
+            "Why a suppressed row is withheld: below_threshold, expected_below_minimum, or "
+            "model_unavailable; null when the row is published."
+        )
     )
 
     @model_validator(mode="after")
@@ -277,7 +371,7 @@ class Observation(SuppressibleFigures):
     slug: str
     name: str = Field(description="The metric's name from the registry.")
     kind: MetricKind
-    unit: Literal["count", "share", "days"]
+    unit: MetricUnit
     version: str = Field(description="The definition version the observation was computed under.")
     subject_type: MetricSubjectType
     subject_id: uuid.UUID
@@ -295,7 +389,10 @@ class Observation(SuppressibleFigures):
         ),
     )
     interval_method: IntervalMethod | None = Field(
-        description="wilson for shares and fixed-window rates, greenwood for survival estimates."
+        description=(
+            "wilson for shares and fixed-window rates, greenwood for survival estimates, "
+            "bootstrap for an adjusted ratio."
+        )
     )
     coverage: ObservationCoverage
     methodology_version: str
@@ -458,11 +555,35 @@ class SourceOut(BaseModel):
     observable_outcomes: list[str]
 
 
+class TrainingOut(BaseModel):
+    """What a model was fitted on: the index events, their outcomes, and their time range."""
+
+    index_events: int = Field(ge=0, description="Index events (design rows) the fit is over.")
+    events: int = Field(ge=0, description="Of those, the events of the target outcome.")
+    start: datetime | None = Field(description="The earliest index time; null without rows.")
+    end: datetime | None = Field(description="The latest index time; null without rows.")
+
+
+class ProvenanceModel(ModelRef):
+    """The outcome model in an adjusted observation's chain, with its artifact check."""
+
+    target: str
+    window_days: int | None
+    status: ModelStatus
+    training: TrainingOut
+    artifact_ok: bool = Field(
+        description="The artifact exists under the snapshot and hashes to the content hash."
+    )
+
+
 class ObservationProvenance(BaseModel):
     """The brief's chain, top-down: observation → snapshot → members → cases → records → sources."""
 
     observation: TracedObservation
     snapshot: SnapshotOut
+    model: ProvenanceModel | None = Field(
+        description="The fitted model of an adjusted observation; null for a descriptive one."
+    )
     members: list[MemberGroup] = Field(description="By member kind.")
     source_records: list[SourceRecordOut] = Field(
         description="The distinct artifacts behind every member, newest retrieval first."
@@ -471,9 +592,76 @@ class ObservationProvenance(BaseModel):
     complete: bool = Field(
         description=(
             "True when every member resolved to a canonical row and every row to a source "
-            "record with its artifact digest."
+            "record with its artifact digest (and, adjusted, the model's artifact holds)."
         )
     )
+
+
+# --- the model card -----------------------------------------------------------------------
+
+
+class CalibrationBinOut(BaseModel):
+    """One decile of predicted probability on the temporal test set."""
+
+    bin: int = Field(ge=0)
+    count: int = Field(ge=0)
+    mean_predicted: float | None
+    observed_rate: float | None
+
+
+class ModelValidationOut(BaseModel):
+    """The temporal-split diagnostics: fitted before the cutoff, scored after it."""
+
+    split_cutoff: datetime | None = Field(
+        description="Index events at or after it are the test set; null without a split."
+    )
+    train_index_events: int = Field(ge=0)
+    train_events: int = Field(ge=0)
+    test_index_events: int = Field(ge=0)
+    test_events: int = Field(ge=0)
+    base_rate_train: float | None
+    brier: float | None = Field(description="Brier score on the test set.")
+    brier_skill: float | None = Field(description="1 - Brier / the base rate's Brier.")
+    auc: float | None
+    calibration_in_the_large: float | None
+    calibration_slope: float | None
+    bins: list[CalibrationBinOut] = Field(description="Ten calibration bins; empty when unfitted.")
+
+
+class CoefficientOut(BaseModel):
+    """One design column of the published fit."""
+
+    column: str = Field(description="The design column's name (a data level by its rank label).")
+    feature: str | None = Field(description="Null for the intercept.")
+    level: str | None = Field(description="The level the column encodes.")
+    reference: str | None = Field(description="The feature's reference level.")
+    estimate: float | None = Field(description="The penalized log-odds coefficient.")
+    sd: float | None = Field(description="Its standard deviation over the bootstrap replicates.")
+    sign_agreement: float | None = Field(
+        description="The share of converged replicates whose sign agrees with the estimate."
+    )
+
+
+class ModelCard(BaseModel):
+    """One fitted outcome model, from the catalogue (never its storage location)."""
+
+    id: uuid.UUID
+    content_hash: str = Field(min_length=64, max_length=64, pattern=SHA256_PATTERN)
+    snapshot_hash: str = Field(min_length=64, max_length=64, pattern=SHA256_PATTERN)
+    source: str = Field(description="Source register key.")
+    synthetic: bool = Field(description=SYNTHETIC_DESCRIPTION)
+    target: str
+    window_days: int | None = Field(description="Null for the release target.")
+    spec_version: int = Field(ge=1)
+    model_version: str
+    seed: int
+    status: ModelStatus
+    fitted_at: datetime
+    code_version: str
+    training: TrainingOut
+    validation: ModelValidationOut
+    coefficients: list[CoefficientOut] = Field(description="In design order; empty when unfitted.")
+    methodology_url: str = Field(description="The methodology's adjusted statistics section.")
 
 
 # --- corrections ----------------------------------------------------------------------------
@@ -529,6 +717,8 @@ __all__ = [
     "INTERVAL_METHOD_BY_KIND",
     "SUPPRESSED_FIELDS",
     "AttributionOut",
+    "CalibrationBinOut",
+    "CoefficientOut",
     "CompareCohort",
     "ComparePage",
     "CompareRow",
@@ -536,6 +726,7 @@ __all__ = [
     "CorrectionAccepted",
     "CorrectionIn",
     "CorrectionTargetType",
+    "DefinitionAdjustmentOut",
     "IntervalMethod",
     "MemberGroup",
     "MethodologyChange",
@@ -543,9 +734,15 @@ __all__ = [
     "MetricDefinitionOut",
     "MetricKind",
     "MetricSubjectType",
+    "MetricUnit",
+    "ModelCard",
+    "ModelRef",
+    "ModelStatus",
+    "ModelValidationOut",
     "Observation",
     "ObservationCoverage",
     "ObservationProvenance",
+    "ProvenanceModel",
     "Registry",
     "SnapshotOut",
     "SortOrder",
@@ -555,6 +752,8 @@ __all__ = [
     "SubjectSummary",
     "SuppressibleFigures",
     "SuppressionOut",
+    "SuppressionReason",
     "TracedObservation",
+    "TrainingOut",
     "interval_method_for",
 ]

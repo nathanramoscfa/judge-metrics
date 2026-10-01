@@ -46,6 +46,10 @@ export type ComparePage = Schemas["ComparePage"];
 export type CompareRow = Schemas["CompareRow"];
 export type CompareCohort = Schemas["CompareCohort"];
 export type ObservationProvenance = Schemas["ObservationProvenance"];
+// The adjusted kind and the model card (Phase 4 Step 5).
+export type ModelRef = Schemas["ModelRef"];
+export type ModelCard = Schemas["ModelCard"];
+export type AdjustmentProse = Schemas["AdjustmentOut"];
 export type CorrectionIn = Schemas["CorrectionIn"];
 export type CorrectionAccepted = Schemas["CorrectionAccepted"];
 export type Page<T> = {
@@ -114,7 +118,7 @@ export type CompareParams = {
   jurisdiction_id?: string;
   period_start?: string;
   period_end?: string;
-  sort?: "rate" | "numerator" | "denominator" | "value" | "name";
+  sort?: "rate" | "numerator" | "denominator" | "value" | "ratio" | "name";
   order?: "asc" | "desc";
   limit?: number;
   offset?: number;
@@ -324,6 +328,15 @@ export function getObservationProvenance(
   return call(() =>
     client.GET("/api/v1/metrics/{observation_id}/provenance", {
       params: { path: { observation_id: observationId } },
+    }),
+  );
+}
+
+/** The model card of an expected-outcome model an adjusted figure cites. */
+export function getModel(modelId: string): Promise<ApiResult<ModelCard>> {
+  return call(() =>
+    client.GET("/api/v1/models/{model_id}", {
+      params: { path: { model_id: modelId } },
     }),
   );
 }

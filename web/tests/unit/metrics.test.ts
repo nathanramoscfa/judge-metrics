@@ -2,15 +2,23 @@
 // lib/metrics.ts: grouping by slug → window → dimension, window selection
 // from the registry, every formatter including its null-safe path (a
 // suppressed or not-observable row formats as a dash, never NaN), the
-// cohort labels, the methodology anchor, and the cohort position.
+// cohort labels, the methodology anchor, and the cohort position; and
+// (Phase 4 Step 5) the adjusted kind: the ratio formatters, the
+// suppression reasons in words, the adjusted panel, and the cohort
+// definition.
 import { describe, expect, it } from "vitest";
 
 import {
+  ADJUSTS,
   COHORTS,
+  COMPARED_KINDS,
+  COMPARE_SORTS,
   COURT_PANELS,
   DEFAULT_COMPARE_METRIC,
   DEFAULT_WINDOW_DAYS,
   JUDGE_PANELS,
+  adjustedCohortDefinition,
+  adjustedSuppressionText,
   cohortLabel,
   cohortPosition,
   compareHref,
@@ -18,28 +26,38 @@ import {
   definitionsFor,
   dimensionValues,
   eligibleCasesHref,
+  featureLabel,
   firstObservationId,
   formatCount,
   formatCoverage,
   formatDays,
+  formatExpected,
   formatFraction,
   formatInterval,
   formatPeriod,
   formatRate,
+  formatRatio,
+  formatRatioBounds,
+  formatRatioInterval,
   groupObservations,
+  isAdjusted,
   isSuppressed,
   isWindowed,
   methodologyHref,
+  modelHref,
   panelDefinitions,
+  poolingSentence,
   parseCohort,
   pickObservation,
   pickWindow,
   primaryFigure,
   resolveWindow,
+  uncoveredDefinitions,
   windowsFromRegistry,
 } from "@/lib/metrics";
 
 import {
+  ADJUSTED,
   COUNT,
   DEFINITIONS,
   DISTRIBUTION,
@@ -49,7 +67,9 @@ import {
   REGISTRY,
   SHARE,
   SUPPRESSED,
+  adjustedRow,
   compareRow,
+  suppressedAdjusted,
 } from "./fixtures/observations";
 
 describe("groupObservations", () => {
@@ -221,11 +241,131 @@ describe("cohortPosition", () => {
   });
 });
 
+describe("the adjusted kind (Phase 4 Step 5)", () => {
+  const adjusted = DEFINITIONS.filter(isAdjusted);
+
+  it("formats ratios, their bootstrap interval, expected counts, and the pooling weight, null-safe", () => {
+    expect(formatRatio(1.0974)).toBe("1.10");
+    expect(formatRatio(0)).toBe("0.00");
+    expect(formatRatio(null)).toBe("—");
+    expect(formatRatio(Number.NaN)).toBe("—");
+    expect(formatRatioInterval(0.9912, 1.2087)).toBe("0.99–1.21 (95% bootstrap interval)");
+    expect(formatRatioInterval(null, 1.2)).toBe("—");
+    expect(formatRatioBounds(0.9912, 1.2087)).toBe("[0.99–1.21]");
+    expect(formatRatioBounds(0.9, null)).toBe("—");
+    expect(formatInterval(0.9, 1.1, "bootstrap")).toContain("95% bootstrap interval");
+    expect(formatExpected(276.4182)).toBe("276.4");
+    expect(formatExpected(1234)).toBe("1,234.0");
+    expect(formatExpected(undefined)).toBe("—");
+    expect(poolingSentence(0.6213)).toBe(
+      "estimate pooled toward 1.0; this judge's own data carries weight 0.62",
+    );
+    expect(poolingSentence(null)).toBe("—");
+  });
+
+  it("chooses the ratio as the primary figure, sorts by it, and compares the kind", () => {
+    expect(primaryFigure(ADJUSTED)).toBe("1.10");
+    expect(primaryFigure(suppressedAdjusted("below_threshold"))).toBe("—");
+    expect(defaultSort({ kind: "observed_expected" })).toBe("ratio");
+    expect(COMPARE_SORTS).toContain("ratio");
+    expect(COMPARED_KINDS.has("observed_expected")).toBe(true);
+    // The cohort position ranks the published pooled ratios.
+    const rows = [
+      adjustedRow({ subject_id: "a", ratio: 1.3 }),
+      adjustedRow({ subject_id: JUDGE_ID, ratio: 1.0974 }),
+      adjustedRow({ subject_id: "c", ratio: 0.9 }),
+      adjustedRow({ subject_id: "d", ratio: null, rate: null, suppressed: true, suppression_reason: "below_threshold" }),
+    ];
+    expect(cohortPosition(rows, JUDGE_ID, 4)).toEqual({ judges: 4, published: 3, median: 1.0974, rank: 2 });
+  });
+
+  it("states each suppression reason in words with the registry's numbers", () => {
+    expect(adjustedSuppressionText("below_threshold", 30, 5)).toBe(
+      "Suppressed: fewer than 30 followed members in the ratio; the ratio is withheld to protect a small cohort.",
+    );
+    expect(adjustedSuppressionText("expected_below_minimum", 30, 5)).toContain("fewer than 5 expected events");
+    expect(adjustedSuppressionText("model_unavailable", 30, 5)).toContain(
+      "the expected-outcome model could not be fitted for this window",
+    );
+    expect(adjustedSuppressionText(null, 30, null)).toContain("fewer than 30 followed members");
+  });
+
+  it("collects exactly the adjusted definitions in the adjusted panel and in no other", () => {
+    const spec = JUDGE_PANELS.find((panel) => panel.id === "adjusted");
+    expect(spec?.title).toBe("Risk-adjusted comparison");
+    expect(JUDGE_PANELS.map((panel) => panel.id)).toEqual([
+      "cases",
+      "pretrial",
+      "outcomes",
+      "adjusted",
+      "disposition",
+      "sentencing",
+    ]);
+    const panel = panelDefinitions(spec!, DEFINITIONS);
+    expect(panel.named.map((d) => d.slug)).toEqual(adjusted.map((d) => d.slug));
+    expect(panel.named.map((d) => d.slug)).toEqual(["pretrial_release_observed_expected", "new_case_observed_expected"]);
+    expect(panel.windowed).toEqual([]);
+    for (const other of JUDGE_PANELS.filter((panel) => panel.id !== "adjusted")) {
+      const shown = panelDefinitions(other, DEFINITIONS);
+      expect([...shown.named, ...shown.windowed].some(isAdjusted), other.id).toBe(false);
+    }
+    // The new-case ratio shares the outcomes panel's index event and still lands only in its own panel.
+    const outcomes = panelDefinitions(JUDGE_PANELS.find((panel) => panel.id === "outcomes")!, DEFINITIONS);
+    expect(outcomes.windowed.map((d) => d.slug)).toEqual(["new_case_rate", "rearrest_rate"]);
+    // "Other metrics" never lists an adjusted metric.
+    expect(uncoveredDefinitions(DEFINITIONS).some(isAdjusted)).toBe(false);
+    expect(uncoveredDefinitions([...DEFINITIONS, { ...DEFINITIONS[0], slug: "loose_count" }]).map((d) => d.slug)).toEqual([
+      "statutory_release_count",
+      "loose_count",
+    ]);
+  });
+
+  it("names the raw rate each ratio adjusts and links the model card", () => {
+    expect(ADJUSTS).toEqual({
+      pretrial_release_observed_expected: "pretrial_release_share",
+      new_case_observed_expected: "new_case_rate",
+      failure_to_appear_observed_expected: "failure_to_appear_rate",
+    });
+    expect(modelHref("abc")).toBe("/models/abc");
+    expect(featureLabel("prior_failures_to_appear")).toBe("prior failures to appear");
+  });
+
+  it("writes the cohort definition from the model, its training, and the cohort", () => {
+    expect(
+      adjustedCohortDefinition({
+        modelVersion: "expected-logit-v1",
+        specVersion: 1,
+        indexEvents: 4534,
+        source: "synthetic",
+        coverage: ADJUSTED.coverage,
+        features: ["lead_severity", "prior_cases"],
+        cohort: cohortLabel(ADJUSTED),
+      }),
+    ).toBe(
+      "Expected counts from model expected-logit-v1, specification 1, fitted on 4,534 events of synthetic (Jan 1, 2016 – Dec 31, 2023), adjusting for lead severity, prior cases; compared within Same court, same period (Jan 1, 2016 – Dec 31, 2023).",
+    );
+    expect(
+      adjustedCohortDefinition({
+        modelVersion: "m",
+        specVersion: 2,
+        indexEvents: null,
+        source: "synthetic",
+        coverage: ADJUSTED.coverage,
+        features: [],
+        cohort: "x",
+      }),
+    ).toContain("fitted on the index events of synthetic");
+  });
+});
+
 describe("panels (Phase 3 Step 5)", () => {
-  it("names the court-only counts on the court's Pretrial panel and shares the judge panels' anchors", () => {
+  it("names the court-only counts on the court's Pretrial panel; court panel ids are a subset of judge panel ids", () => {
     const pretrial = COURT_PANELS.find((spec) => spec.id === "pretrial");
     expect(pretrial?.slugs).toEqual(expect.arrayContaining(["statutory_release_count", "unknown_actor_pretrial_count"]));
-    expect(COURT_PANELS.map((spec) => spec.id)).toEqual(JUDGE_PANELS.map((spec) => spec.id));
+    const judgeIds = JUDGE_PANELS.map((spec) => spec.id as string);
+    for (const spec of COURT_PANELS) expect(judgeIds).toContain(spec.id);
+    // The adjusted ratios are judge-only: the court has no adjusted panel.
+    expect(COURT_PANELS.map((spec) => spec.id as string)).not.toContain("adjusted");
     expect(DEFAULT_COMPARE_METRIC).toBe("pretrial_release_share");
   });
 

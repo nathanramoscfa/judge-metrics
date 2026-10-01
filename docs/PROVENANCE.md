@@ -102,10 +102,17 @@ can be audited.
 
 `GET /api/v1/metrics/{observation_id}/provenance` returns
 `ObservationProvenance` (`docs/API.md` "Metrics"): the same chain for a
-*current* observation of a kind the API serves — 404 for an unknown or
-superseded id, and (the hold-out, until Phase 4 Step 5) for an adjusted
-observation's id: the first statement filters by kind — in at
-most six statements (three today). Two fields of the CLI's output are
+*current* observation of a kind the API serves (every kind since Phase 4
+Step 5) — 404 for an unknown or superseded id — in at most six statements
+(three today). For an adjusted observation the body names the model
+(`model`: id, content hash, model and specification versions, the card's
+`url`, target, window, status, the training counts and range, and
+`artifact_ok`); the API checks the artifact under its own
+`JUDGEMETRICS_SNAPSHOT_DIR`, so `complete` holds only where the API can
+read the snapshot directory the compute wrote (an API without it answers
+`complete: false`, `artifact_ok: false`). The model itself is served by
+`GET /api/v1/models/{id}` (`docs/API.md` "Models") without its
+`storage_uri`. Two fields of the CLI's output are
 withheld on the public surface, the way `raw_object_path` is never
 returned: the snapshot's `storage_uri` (a path on the operator's
 machine) and any artifact URI that is not a public `http(s)` URL (a

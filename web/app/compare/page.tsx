@@ -7,7 +7,10 @@
 // metric does not have, a malformed id, or an unknown sort renders an
 // ErrorState, never a crash), and validated again by the API. The controls
 // are a plain GET form; the table is /metrics/compare's order, so a
-// suppressed row never reveals its figure through its position.
+// suppressed row never reveals its figure through its position. An adjusted
+// metric (observed to expected) sorts by its pooled ratio by default, and its
+// comparison notes state the pooling formula, the brief's interpretation,
+// and link the methodology and the model the ratios cite.
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -21,6 +24,7 @@ import {
   getRegistry,
   listCourts,
   listJurisdictions,
+  type AdjustmentProse,
   type ApiError,
   type ComparePage,
   type CourtSummary,
@@ -39,8 +43,10 @@ import {
   defaultSort,
   definitionsFor,
   formatPeriod,
+  isAdjusted,
   isWindowed,
   methodologyHref,
+  modelHref,
   windowsFromRegistry,
 } from "@/lib/metrics";
 
@@ -286,8 +292,19 @@ function Controls({
   );
 }
 
-function Results({ state, page }: { state: CompareState; page: ComparePage }) {
+function Results({
+  state,
+  page,
+  adjustment,
+}: {
+  state: CompareState;
+  page: ComparePage;
+  adjustment: AdjustmentProse;
+}) {
   const { definition } = state;
+  const adjusted = isAdjusted(definition);
+  // Every row of one source, target, and window cites the same model.
+  const model = page.items.find((row) => row.model !== null)?.model ?? null;
   return (
     <>
       <section aria-labelledby="table-heading" className="flex flex-col gap-3">
@@ -361,10 +378,21 @@ function Results({ state, page }: { state: CompareState; page: ComparePage }) {
               most rows share; a row over a different period carries a coverage warning.
             </dd>
             <dt className="text-muted-foreground">Formula</dt>
-            <dd>
-              <span className="font-medium">Numerator:</span> {definition.numerator}{" "}
-              <span className="font-medium">Denominator:</span> {definition.denominator}
-            </dd>
+            {adjusted ? (
+              <dd data-testid="adjusted-formula">
+                O/E (pooled) = (α + O) / (α + E): O is the observed events, E the events the model
+                expects for the same cases, and α the pooling strength fitted over every judge of
+                the source, so a judge with few expected events is pulled toward 1. The weight is
+                E / (E + α); the interval is a 95% bootstrap interval of the pooled estimate.{" "}
+                <span className="font-medium">Observed:</span> {definition.numerator}{" "}
+                <span className="font-medium">Expected:</span> {definition.denominator}
+              </dd>
+            ) : (
+              <dd>
+                <span className="font-medium">Numerator:</span> {definition.numerator}{" "}
+                <span className="font-medium">Denominator:</span> {definition.denominator}
+              </dd>
+            )}
             <dt className="text-muted-foreground">Methodology</dt>
             <dd>
               <Link
@@ -375,6 +403,22 @@ function Results({ state, page }: { state: CompareState; page: ComparePage }) {
                 {definition.name} — methodology version {page.methodology_version}
               </Link>
             </dd>
+            {adjusted ? (
+              <>
+                <dt className="text-muted-foreground">Model</dt>
+                <dd>
+                  {model ? (
+                    <Link href={modelHref(model.id)} className="text-primary hover:underline" data-testid="model-link">
+                      Model {model.model_version}, specification {model.spec_version}
+                    </Link>
+                  ) : (
+                    <span>No row of this page cites a model.</span>
+                  )}
+                </dd>
+                <dt className="text-muted-foreground">Interpretation</dt>
+                <dd data-testid="adjusted-interpretation">{adjustment.interpretation}</dd>
+              </>
+            ) : null}
             <dt className="text-muted-foreground">Reading</dt>
             <dd data-testid="association-statement">
               {ASSOCIATION_STATEMENT} Rates depend on case mix: a judge who handles a higher-risk
@@ -402,8 +446,9 @@ export default async function ComparePageView({ searchParams }: { searchParams: 
       <p className="max-w-3xl text-muted-foreground">
         One objective metric across the judges of a court or a jurisdiction over the same source
         period, with every row&apos;s numerator, denominator, interval, sample size, and coverage
-        warning. Cohorts below the suppression threshold are marked suppressed and never ranked
-        by a withheld number.
+        warning — or, for a risk-adjusted metric, its observed and expected events, pooled ratio,
+        bootstrap interval, and pooling weight. Cohorts below the suppression threshold are
+        marked suppressed and never ranked by a withheld number.
       </p>
     </header>
   );
@@ -459,7 +504,7 @@ export default async function ComparePageView({ searchParams }: { searchParams: 
       ) : !compared.ok ? (
         <ErrorState what="the comparison" error={compared.error} />
       ) : (
-        <Results state={read.state} page={compared.data} />
+        <Results state={read.state} page={compared.data} adjustment={registry.data.adjustment} />
       )}
     </article>
   );

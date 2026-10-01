@@ -6,7 +6,10 @@
 // labels, and the methodology anchor. Every formatter is null-safe so a
 // suppressed or not-observable row formats as a dash, never as "NaN%". The
 // follow-up windows are read from the registry response (`windows_days`),
-// never hard-coded here.
+// never hard-coded here. Phase 4 Step 5 adds the adjusted kind
+// (`observed_expected`): its ratio and bootstrap-interval formatters, the
+// pooling-weight sentence, the suppression reasons in words, the adjusted
+// panel of the judge page, and the descriptive rate each ratio adjusts.
 import type {
   CompareRow,
   MetricDefinition,
@@ -127,6 +130,7 @@ export function formatRate(rate: number | null | undefined, digits = 1): string 
 const INTERVAL_METHOD_LABEL: Record<string, string> = {
   wilson: "95% Wilson interval",
   greenwood: "95% Greenwood interval",
+  bootstrap: "95% bootstrap interval",
 };
 
 /** "17.6%–27.3% (95% Wilson interval)"; a dash when either bound is null. */
@@ -139,6 +143,94 @@ export function formatInterval(
   const label = method ? INTERVAL_METHOD_LABEL[method] ?? `95% ${titleCase(method)} interval` : "95% interval";
   return `${formatRate(lower)}–${formatRate(upper)} (${label})`;
 }
+
+/** Each registry kind in words, for the methodology page's definition sections. */
+export const KIND_TEXT: Record<MetricDefinition["kind"], string> = {
+  count: "count",
+  share: "share (numerator over denominator, Wilson interval)",
+  windowed_rate: "fixed-window rate per observation window (Wilson interval)",
+  survival: "Kaplan–Meier cumulative incidence per observation window",
+  distribution: "distribution of counts by dimension value",
+  median: "median",
+  observed_expected:
+    "observed-to-expected ratio, partially pooled toward 1 (95% bootstrap interval; see Adjusted statistics)",
+};
+
+/** The registry kind of an observed-to-expected ratio. */
+export const ADJUSTED_KIND = "observed_expected";
+
+export function isAdjusted(item: Pick<MetricDefinition, "kind">): boolean {
+  return item.kind === ADJUSTED_KIND;
+}
+
+/** "1.10" for an observed-to-expected ratio (two decimals); a dash for null. */
+export function formatRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return value.toFixed(2);
+}
+
+/** "[0.99–1.21]": the bounds alone, where the method is stated once (a table header); null-safe. */
+export function formatRatioBounds(
+  lower: number | null | undefined,
+  upper: number | null | undefined,
+): string {
+  if (lower === null || lower === undefined || upper === null || upper === undefined) return "—";
+  return `[${formatRatio(lower)}–${formatRatio(upper)}]`;
+}
+
+/** "0.99–1.21 (95% bootstrap interval)"; a dash when either bound is null. */
+export function formatRatioInterval(
+  lower: number | null | undefined,
+  upper: number | null | undefined,
+): string {
+  if (lower === null || lower === undefined || upper === null || upper === undefined) return "—";
+  return `${formatRatio(lower)}–${formatRatio(upper)} (${INTERVAL_METHOD_LABEL.bootstrap})`;
+}
+
+/** "276.4" for a model-expected count (one decimal: a sum of probabilities); a dash for null. */
+export function formatExpected(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return value.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+/** The pooling weight as a sentence; a dash for null. */
+export function poolingSentence(weight: number | null | undefined): string {
+  if (weight === null || weight === undefined || !Number.isFinite(weight)) return "—";
+  return `estimate pooled toward 1.0; this judge's own data carries weight ${weight.toFixed(2)}`;
+}
+
+export type SuppressionReason = NonNullable<Observation["suppression_reason"]>;
+
+/**
+ * Why an adjusted ratio is withheld, in words: too few members in the ratio,
+ * too few expected events, or no fitted model. The threshold and the minimum
+ * expected count come from the registry, never from a literal here.
+ */
+export function adjustedSuppressionText(
+  reason: Observation["suppression_reason"],
+  threshold: number,
+  minimumExpected: number | null | undefined,
+): string {
+  switch (reason) {
+    case "expected_below_minimum":
+      return `Suppressed: fewer than ${minimumExpected ?? "the minimum"} expected events in the ratio; a ratio over so few predicted events is withheld as unstable.`;
+    case "model_unavailable":
+      return "Suppressed: the expected-outcome model could not be fitted for this window, so no expected count exists and no ratio is published.";
+    default:
+      return `Suppressed: fewer than ${threshold} followed members in the ratio; the ratio is withheld to protect a small cohort.`;
+  }
+}
+
+/**
+ * The descriptive rate each adjusted ratio adjusts: its observed rate is
+ * shown beside the ratio so a reader sees the raw number the model
+ * conditions. Keyed by the adjusted metric's slug.
+ */
+export const ADJUSTS: Readonly<Record<string, string>> = {
+  pretrial_release_observed_expected: "pretrial_release_share",
+  new_case_observed_expected: "new_case_rate",
+  failure_to_appear_observed_expected: "failure_to_appear_rate",
+};
 
 /** "150.5 days" for a median; whole numbers without a decimal; a dash for null. */
 export function formatDays(value: number | null | undefined): string {
@@ -180,12 +272,15 @@ export function formatFraction(
 /**
  * The primary figure of an observation by kind: a percentage for a share,
  * fixed-window rate, survival estimate, or one value of a distribution; days
- * for a median; an integer for a count. A dash when the figure is withheld.
+ * for a median; an integer for a count; the pooled ratio for an adjusted
+ * metric. A dash when the figure is withheld.
  */
 export function primaryFigure(
-  observation: Pick<Observation, "kind" | "numerator" | "denominator" | "rate" | "value">,
+  observation: Pick<Observation, "kind" | "numerator" | "denominator" | "rate" | "value" | "ratio">,
 ): string {
   switch (observation.kind) {
+    case "observed_expected":
+      return formatRatio(observation.ratio);
     case "count":
       return formatCount(observation.numerator);
     case "median":
@@ -253,21 +348,26 @@ export function isWindowed(definition: Pick<MetricDefinition, "windows_days">): 
 }
 
 /** The compare sort keys the API accepts. */
-export const COMPARE_SORTS = ["rate", "numerator", "denominator", "value", "name"] as const;
+export const COMPARE_SORTS = ["rate", "numerator", "denominator", "value", "ratio", "name"] as const;
 export type CompareSort = (typeof COMPARE_SORTS)[number];
 export const COMPARE_ORDERS = ["asc", "desc"] as const;
 export type CompareOrder = (typeof COMPARE_ORDERS)[number];
 
-/** The sort a metric's figure lives under: medians sort by value, everything else by rate. */
+/**
+ * The sort a metric's figure lives under: medians by value, counts and
+ * distributions by numerator, an adjusted metric by its pooled ratio,
+ * everything else by rate.
+ */
 export function defaultSort(definition: Pick<MetricDefinition, "kind">): CompareSort {
   if (definition.kind === "median") return "value";
+  if (definition.kind === ADJUSTED_KIND) return "ratio";
   if (definition.kind === "count" || definition.kind === "distribution") return "numerator";
   return "rate";
 }
 
-/** The comparable figure of a compare row: the rate, or the median's value. */
-export function compareFigure(row: Pick<CompareRow, "rate" | "value">): number | null {
-  return row.rate ?? row.value ?? null;
+/** The comparable figure of a compare row: the pooled ratio, the rate, or the median's value. */
+export function compareFigure(row: Pick<CompareRow, "rate" | "value" | "ratio">): number | null {
+  return row.ratio ?? row.rate ?? row.value ?? null;
 }
 
 export interface CohortPosition {
@@ -318,8 +418,10 @@ export type IndexEvent = "pretrial_release" | "disposition" | "sentence";
 
 export interface JudgePanelSpec {
   /** The section anchor. */
-  id: "cases" | "pretrial" | "outcomes" | "disposition" | "sentencing";
+  id: "cases" | "pretrial" | "outcomes" | "adjusted" | "disposition" | "sentencing";
   title: string;
+  /** A panel that collects every definition of one kind (the adjusted panel), in registry order. */
+  kind?: MetricDefinition["kind"];
   /** Unwindowed metrics shown in this order (registry names are the labels). */
   slugs: readonly string[];
   /** The index event whose windowed metrics (rates and survival estimates) the panel also shows. */
@@ -331,8 +433,9 @@ export interface JudgePanelSpec {
 /**
  * The judge page's panels. Windowed metrics are placed by the registry's
  * `index_event`, not by slug, so a new outcome metric lands in the right
- * panel without a change here; a judge metric no panel names is listed
- * under "Other metrics" rather than dropped.
+ * panel without a change here; the adjusted ratios are collected by kind
+ * into "Risk-adjusted comparison" and no other panel; a judge metric no
+ * panel names is listed under "Other metrics" rather than dropped.
  */
 export const JUDGE_PANELS: readonly JudgePanelSpec[] = [
   {
@@ -355,6 +458,14 @@ export const JUDGE_PANELS: readonly JudgePanelSpec[] = [
     slugs: [],
     indexEvent: "pretrial_release",
     casesFilter: null,
+  },
+  {
+    id: "adjusted",
+    title: "Risk-adjusted comparison",
+    slugs: [],
+    indexEvent: null,
+    casesFilter: null,
+    kind: ADJUSTED_KIND,
   },
   {
     id: "disposition",
@@ -389,6 +500,8 @@ export interface CourtPanelSpec {
  * counts the registry publishes for a court subject (`statutory_release_count`,
  * `unknown_actor_pretrial_count`: the pretrial rows no judge's metric may
  * count). Windowed metrics are placed by `index_event` as on the judge page.
+ * The adjusted ratios are judge-only, so the court has no adjusted panel:
+ * its panel ids are a subset of the judge page's.
  */
 export const COURT_PANELS: readonly CourtPanelSpec[] = [
   { id: "cases", title: "Cases", slugs: ["eligible_cases", "eligible_defendants"], indexEvent: null },
@@ -431,6 +544,7 @@ export const COMPARED_KINDS: ReadonlySet<MetricDefinition["kind"]> = new Set([
   "windowed_rate",
   "survival",
   "median",
+  ADJUSTED_KIND,
 ]);
 
 /** The metric the court and jurisdiction compare tables open on. */
@@ -455,21 +569,68 @@ export function firstObservationId(grouped: GroupedObservations, slugs: readonly
  * The definitions a panel shows: the named slugs in order, then the windowed
  * metrics of the panel's index event grouped by outcome in registry order of
  * first appearance (a fixed-window rate beside the Kaplan–Meier estimate of
- * the same outcome).
+ * the same outcome). A panel with a `kind` collects exactly the definitions
+ * of that kind, in registry order; an adjusted ratio is never placed by its
+ * index event, so it appears in no other panel.
  */
 export function panelDefinitions(
-  spec: { slugs: readonly string[]; indexEvent: IndexEvent | null },
+  spec: { slugs: readonly string[]; indexEvent: IndexEvent | null; kind?: MetricDefinition["kind"] },
   definitions: MetricDefinition[],
 ): { named: MetricDefinition[]; windowed: MetricDefinition[] } {
-  const bySlug = new Map(definitions.map((d) => [d.slug, d]));
-  const outcomeOrder = [...new Set(definitions.map((d) => d.outcome ?? ""))];
+  if (spec.kind) return { named: definitions.filter((d) => d.kind === spec.kind), windowed: [] };
+  const descriptive = definitions.filter((d) => !isAdjusted(d));
+  const bySlug = new Map(descriptive.map((d) => [d.slug, d]));
+  const outcomeOrder = [...new Set(descriptive.map((d) => d.outcome ?? ""))];
   const named = spec.slugs.map((slug) => bySlug.get(slug)).filter((d): d is MetricDefinition => !!d);
   const windowed = spec.indexEvent
-    ? definitions
+    ? descriptive
         .filter((d) => d.index_event === spec.indexEvent)
         .sort((a, b) => outcomeOrder.indexOf(a.outcome ?? "") - outcomeOrder.indexOf(b.outcome ?? ""))
     : [];
   return { named, windowed };
+}
+
+/**
+ * The judge metrics no panel shows: not a named slug, not windowed (a
+ * windowed metric is placed by its index event), and not adjusted (the
+ * adjusted panel collects those by kind).
+ */
+export function uncoveredDefinitions(definitions: MetricDefinition[]): MetricDefinition[] {
+  const covered = new Set<string>(JUDGE_PANELS.flatMap((spec) => [...spec.slugs]));
+  return definitions.filter((d) => !covered.has(d.slug) && !isWindowed(d) && !isAdjusted(d));
+}
+
+/** The model card page of a model an adjusted figure cites. */
+export function modelHref(modelId: string): string {
+  return `/models/${encodeURIComponent(modelId)}`;
+}
+
+/** A feature name of the model specification in words: "lead_severity" → "lead severity". */
+export function featureLabel(name: string): string {
+  return name.replace(/_/g, " ");
+}
+
+/**
+ * The cohort definition under an adjusted ratio: the model, the
+ * specification, what it was fitted on (when the model card is known), the
+ * features it adjusts for, and the cohort the ratio is compared within.
+ */
+export function adjustedCohortDefinition(params: {
+  modelVersion: string;
+  specVersion: number;
+  indexEvents: number | null;
+  source: string;
+  coverage: ObservationCoverage;
+  features: string[];
+  cohort: string;
+}): string {
+  const fitted =
+    params.indexEvents === null
+      ? `fitted on the index events of ${params.source}`
+      : `fitted on ${formatCount(params.indexEvents)} events of ${params.source}`;
+  const window = formatPeriod(params.coverage.coverage_start, params.coverage.coverage_end);
+  const features = params.features.length > 0 ? params.features.map(featureLabel).join(", ") : "no feature";
+  return `Expected counts from model ${params.modelVersion}, specification ${params.specVersion}, ${fitted} (${window}), adjusting for ${features}; compared within ${params.cohort}.`;
 }
 
 /** The judge's case list with a panel's filter, when the cases route supports one. */

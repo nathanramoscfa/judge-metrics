@@ -12,6 +12,24 @@ export const SYNTHETIC_DATA_URL = `${REPOSITORY_URL}/blob/main/docs/SYNTHETIC_DA
 /** The Markdown render of the metric registry, versioned with the code. */
 export const METHODOLOGY_DOC_URL = `${REPOSITORY_URL}/blob/main/docs/METHODOLOGY.md`;
 
+/** The model validation report (methodology 1.0), rendered from the latest snapshot's models. */
+export const VALIDATION_DOC_URL = `${REPOSITORY_URL}/blob/main/docs/VALIDATION.md`;
+
+/**
+ * The validation report's calibration section of one model: GitHub's anchor
+ * for the heading "synthetic: new_case, 365 days" (lowercased, punctuation
+ * dropped, spaces as hyphens; the first heading of that text is the
+ * calibration section's).
+ */
+export function validationSectionUrl(source: string, target: string, windowDays: number | null): string {
+  const heading = `${source}: ${target}${windowDays === null ? "" : `, ${windowDays} days`}`;
+  const anchor = heading
+    .toLowerCase()
+    .replace(/[^a-z0-9_ -]/g, "")
+    .replace(/ /g, "-");
+  return `${VALIDATION_DOC_URL}#${anchor}`;
+}
+
 /** The GitHub issue form for a wrong, changed, or misread data source. */
 export function dataIssueUrl(title: string): string {
   const params = new URLSearchParams({

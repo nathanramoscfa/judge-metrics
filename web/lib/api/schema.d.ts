@@ -310,6 +310,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The model card of an expected-outcome model an adjusted observation cites */
+        get: operations["get_model_api_v1_models__model_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ready": {
         parameters: {
             query?: never;
@@ -503,6 +520,20 @@ export interface components {
              */
             discretion: string[] | null;
         };
+        /**
+         * CalibrationBinOut
+         * @description One decile of predicted probability on the temporal test set.
+         */
+        CalibrationBinOut: {
+            /** Bin */
+            bin: number;
+            /** Count */
+            count: number;
+            /** Mean Predicted */
+            mean_predicted: number | null;
+            /** Observed Rate */
+            observed_rate: number | null;
+        };
         /** CaseDetail */
         CaseDetail: {
             /**
@@ -637,6 +668,47 @@ export interface components {
             violent_flag: boolean | null;
         };
         /**
+         * CoefficientOut
+         * @description One design column of the published fit.
+         */
+        CoefficientOut: {
+            /**
+             * Column
+             * @description The design column's name (a data level by its rank label).
+             */
+            column: string;
+            /**
+             * Estimate
+             * @description The penalized log-odds coefficient.
+             */
+            estimate: number | null;
+            /**
+             * Feature
+             * @description Null for the intercept.
+             */
+            feature: string | null;
+            /**
+             * Level
+             * @description The level the column encodes.
+             */
+            level: string | null;
+            /**
+             * Reference
+             * @description The feature's reference level.
+             */
+            reference: string | null;
+            /**
+             * Sd
+             * @description Its standard deviation over the bootstrap replicates.
+             */
+            sd: number | null;
+            /**
+             * Sign Agreement
+             * @description The share of converged replicates whose sign agrees with the estimate.
+             */
+            sign_agreement: number | null;
+        };
+        /**
          * CompareCohort
          * @description What the rows are compared within.
          */
@@ -671,7 +743,7 @@ export interface components {
              * Sort
              * @enum {string}
              */
-            sort: "rate" | "numerator" | "denominator" | "value" | "name";
+            sort: "rate" | "numerator" | "denominator" | "value" | "ratio" | "name";
             /**
              * Version
              * @description The definition version compared.
@@ -747,13 +819,25 @@ export interface components {
              * @description Sample size before any follow-up restriction.
              */
             eligible_count: number;
+            /**
+             * Expected
+             * @description The model-expected count E of an adjusted ratio; null for other kinds.
+             */
+            expected: number | null;
+            /**
+             * Expected Rate
+             * @description E / n: the expected count over the members in the ratio.
+             */
+            expected_rate: number | null;
             /** Interval Method */
-            interval_method: ("wilson" | "greenwood") | null;
+            interval_method: ("wilson" | "greenwood" | "bootstrap") | null;
             /**
              * Lower
-             * @description The 95% interval's lower bound.
+             * @description The 95% interval's lower bound of a rate; null for an adjusted ratio.
              */
             lower: number | null;
+            /** @description The outcome model an adjusted ratio cites (kept when suppressed). */
+            model: components["schemas"]["ModelRef"] | null;
             /**
              * Name
              * @description The judge's canonical name.
@@ -780,10 +864,30 @@ export interface components {
              */
             period_start: string;
             /**
+             * Pooling Weight
+             * @description E / (E + alpha): the weight the subject's own data carries in the ratio.
+             */
+            pooling_weight: number | null;
+            /**
              * Rate
              * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
              */
             rate: number | null;
+            /**
+             * Ratio
+             * @description The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.
+             */
+            ratio: number | null;
+            /**
+             * Ratio Lower
+             * @description The pooled ratio's 95% bootstrap interval, lower bound.
+             */
+            ratio_lower: number | null;
+            /**
+             * Ratio Upper
+             * @description The pooled ratio's 95% bootstrap interval, upper bound (unbounded).
+             */
+            ratio_upper: number | null;
             /** Source */
             source: string;
             /**
@@ -793,9 +897,14 @@ export interface components {
             subject_id: string;
             /**
              * Suppressed
-             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             * @description True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.
              */
             suppressed: boolean;
+            /**
+             * Suppression Reason
+             * @description Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.
+             */
+            suppression_reason: ("below_threshold" | "expected_below_minimum" | "model_unavailable") | null;
             /**
              * Suppression Threshold
              * @description The metric's threshold, stated so a reader knows why.
@@ -808,7 +917,7 @@ export interface components {
             synthetic: boolean;
             /**
              * Upper
-             * @description The 95% interval's upper bound.
+             * @description The 95% interval's upper bound of a rate; null for an adjusted ratio.
              */
             upper: number | null;
             /**
@@ -1085,6 +1194,22 @@ export interface components {
             public_person_key: string | null;
         };
         /**
+         * DefinitionAdjustmentOut
+         * @description An ``observed_expected`` metric's model target and minimum expected count.
+         */
+        DefinitionAdjustmentOut: {
+            /**
+             * Minimum Expected
+             * @description The model-expected count below which the ratio is withheld.
+             */
+            minimum_expected: number;
+            /**
+             * Target
+             * @description The outcome model specification's target the ratio reads.
+             */
+            target: string;
+        };
+        /**
          * ErrorBody
          * @description Every non-2xx response body. Never a stack trace, never SQL.
          */
@@ -1333,6 +1458,8 @@ export interface components {
          * @description One registry entry: what a number means and how it is computed.
          */
         MetricDefinitionOut: {
+            /** @description An observed-to-expected metric's model target; null for every other kind. */
+            adjustment: components["schemas"]["DefinitionAdjustmentOut"] | null;
             attribution: components["schemas"]["AttributionOut"];
             /** Denominator */
             denominator: string;
@@ -1354,7 +1481,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median" | "observed_expected";
             /**
              * Methodology Url
              * @description The methodology page anchored at the metric's slug: how the number is computed, its attribution rule, and the known limitations.
@@ -1382,7 +1509,7 @@ export interface components {
              * Unit
              * @enum {string}
              */
-            unit: "count" | "share" | "days";
+            unit: "count" | "share" | "days" | "ratio";
             /**
              * Version
              * @description The definition's version; bumped when its semantics change.
@@ -1410,6 +1537,138 @@ export interface components {
             models: components["schemas"]["ModelsReadiness"] | null;
             /** Snapshot Hash */
             snapshot_hash: string;
+        };
+        /**
+         * ModelCard
+         * @description One fitted outcome model, from the catalogue (never its storage location).
+         */
+        ModelCard: {
+            /** Code Version */
+            code_version: string;
+            /**
+             * Coefficients
+             * @description In design order; empty when unfitted.
+             */
+            coefficients: components["schemas"]["CoefficientOut"][];
+            /** Content Hash */
+            content_hash: string;
+            /**
+             * Fitted At
+             * Format: date-time
+             */
+            fitted_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Methodology Url
+             * @description The methodology's adjusted statistics section.
+             */
+            methodology_url: string;
+            /** Model Version */
+            model_version: string;
+            /** Seed */
+            seed: number;
+            /** Snapshot Hash */
+            snapshot_hash: string;
+            /**
+             * Source
+             * @description Source register key.
+             */
+            source: string;
+            /** Spec Version */
+            spec_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fitted" | "insufficient_events" | "not_converged";
+            /**
+             * Synthetic
+             * @description True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.
+             */
+            synthetic: boolean;
+            /** Target */
+            target: string;
+            training: components["schemas"]["TrainingOut"];
+            validation: components["schemas"]["ModelValidationOut"];
+            /**
+             * Window Days
+             * @description Null for the release target.
+             */
+            window_days: number | null;
+        };
+        /**
+         * ModelRef
+         * @description The fitted outcome model an adjusted figure was computed with.
+         */
+        ModelRef: {
+            /**
+             * Content Hash
+             * @description The sha256 of the model's canonical artifact: its identity.
+             */
+            content_hash: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Version */
+            model_version: string;
+            /**
+             * Spec Version
+             * @description The outcome model specification version.
+             */
+            spec_version: number;
+            /**
+             * Url
+             * @description The model card: `GET /api/v1/models/{id}`.
+             */
+            url: string;
+        };
+        /**
+         * ModelValidationOut
+         * @description The temporal-split diagnostics: fitted before the cutoff, scored after it.
+         */
+        ModelValidationOut: {
+            /** Auc */
+            auc: number | null;
+            /** Base Rate Train */
+            base_rate_train: number | null;
+            /**
+             * Bins
+             * @description Ten calibration bins; empty when unfitted.
+             */
+            bins: components["schemas"]["CalibrationBinOut"][];
+            /**
+             * Brier
+             * @description Brier score on the test set.
+             */
+            brier: number | null;
+            /**
+             * Brier Skill
+             * @description 1 - Brier / the base rate's Brier.
+             */
+            brier_skill: number | null;
+            /** Calibration In The Large */
+            calibration_in_the_large: number | null;
+            /** Calibration Slope */
+            calibration_slope: number | null;
+            /**
+             * Split Cutoff
+             * @description Index events at or after it are the test set; null without a split.
+             */
+            split_cutoff: string | null;
+            /** Test Events */
+            test_events: number;
+            /** Test Index Events */
+            test_index_events: number;
+            /** Train Events */
+            train_events: number;
+            /** Train Index Events */
+            train_index_events: number;
         };
         /**
          * ModelsReadiness
@@ -1481,23 +1740,33 @@ export interface components {
              */
             eligible_count: number;
             /**
+             * Expected
+             * @description The model-expected count E of an adjusted ratio; null for other kinds.
+             */
+            expected: number | null;
+            /**
+             * Expected Rate
+             * @description E / n: the expected count over the members in the ratio.
+             */
+            expected_rate: number | null;
+            /**
              * Id
              * Format: uuid
              */
             id: string;
             /**
              * Interval Method
-             * @description wilson for shares and fixed-window rates, greenwood for survival estimates.
+             * @description wilson for shares and fixed-window rates, greenwood for survival estimates, bootstrap for an adjusted ratio.
              */
-            interval_method: ("wilson" | "greenwood") | null;
+            interval_method: ("wilson" | "greenwood" | "bootstrap") | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median" | "observed_expected";
             /**
              * Lower
-             * @description The 95% interval's lower bound.
+             * @description The 95% interval's lower bound of a rate; null for an adjusted ratio.
              */
             lower: number | null;
             /**
@@ -1507,6 +1776,8 @@ export interface components {
             methodology_url: string;
             /** Methodology Version */
             methodology_version: string;
+            /** @description The outcome model an adjusted ratio cites (kept when suppressed). */
+            model: components["schemas"]["ModelRef"] | null;
             /**
              * Name
              * @description The metric's name from the registry.
@@ -1529,10 +1800,30 @@ export interface components {
              */
             period_start: string;
             /**
+             * Pooling Weight
+             * @description E / (E + alpha): the weight the subject's own data carries in the ratio.
+             */
+            pooling_weight: number | null;
+            /**
              * Rate
              * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
              */
             rate: number | null;
+            /**
+             * Ratio
+             * @description The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.
+             */
+            ratio: number | null;
+            /**
+             * Ratio Lower
+             * @description The pooled ratio's 95% bootstrap interval, lower bound.
+             */
+            ratio_lower: number | null;
+            /**
+             * Ratio Upper
+             * @description The pooled ratio's 95% bootstrap interval, upper bound (unbounded).
+             */
+            ratio_upper: number | null;
             /** Slug */
             slug: string;
             /**
@@ -1557,9 +1848,14 @@ export interface components {
             subject_type: "judge" | "court";
             /**
              * Suppressed
-             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             * @description True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.
              */
             suppressed: boolean;
+            /**
+             * Suppression Reason
+             * @description Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.
+             */
+            suppression_reason: ("below_threshold" | "expected_below_minimum" | "model_unavailable") | null;
             /**
              * Suppression Threshold
              * @description The metric's threshold, stated so a reader knows why.
@@ -1574,10 +1870,10 @@ export interface components {
              * Unit
              * @enum {string}
              */
-            unit: "count" | "share" | "days";
+            unit: "count" | "share" | "days" | "ratio";
             /**
              * Upper
-             * @description The 95% interval's upper bound.
+             * @description The 95% interval's upper bound of a rate; null for an adjusted ratio.
              */
             upper: number | null;
             /**
@@ -1624,7 +1920,7 @@ export interface components {
         ObservationProvenance: {
             /**
              * Complete
-             * @description True when every member resolved to a canonical row and every row to a source record with its artifact digest.
+             * @description True when every member resolved to a canonical row and every row to a source record with its artifact digest (and, adjusted, the model's artifact holds).
              */
             complete: boolean;
             /**
@@ -1632,6 +1928,8 @@ export interface components {
              * @description By member kind.
              */
             members: components["schemas"]["MemberGroup"][];
+            /** @description The fitted model of an adjusted observation; null for a descriptive one. */
+            model: components["schemas"]["ProvenanceModel"] | null;
             observation: components["schemas"]["TracedObservation"];
             snapshot: components["schemas"]["SnapshotOut"];
             /**
@@ -1801,6 +2099,49 @@ export interface components {
              * @description True when the artifact belongs to a source of type `synthetic` (the in-repo generator): the row is demo data, never a court record.
              */
             synthetic: boolean;
+        };
+        /**
+         * ProvenanceModel
+         * @description The outcome model in an adjusted observation's chain, with its artifact check.
+         */
+        ProvenanceModel: {
+            /**
+             * Artifact Ok
+             * @description The artifact exists under the snapshot and hashes to the content hash.
+             */
+            artifact_ok: boolean;
+            /**
+             * Content Hash
+             * @description The sha256 of the model's canonical artifact: its identity.
+             */
+            content_hash: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Version */
+            model_version: string;
+            /**
+             * Spec Version
+             * @description The outcome model specification version.
+             */
+            spec_version: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fitted" | "insufficient_events" | "not_converged";
+            /** Target */
+            target: string;
+            training: components["schemas"]["TrainingOut"];
+            /**
+             * Url
+             * @description The model card: `GET /api/v1/models/{id}`.
+             */
+            url: string;
+            /** Window Days */
+            window_days: number | null;
         };
         /** ReadyResponse */
         ReadyResponse: {
@@ -2214,23 +2555,33 @@ export interface components {
              */
             eligible_count: number;
             /**
+             * Expected
+             * @description The model-expected count E of an adjusted ratio; null for other kinds.
+             */
+            expected: number | null;
+            /**
+             * Expected Rate
+             * @description E / n: the expected count over the members in the ratio.
+             */
+            expected_rate: number | null;
+            /**
              * Id
              * Format: uuid
              */
             id: string;
             /**
              * Interval Method
-             * @description wilson for shares and fixed-window rates, greenwood for survival estimates.
+             * @description wilson for shares and fixed-window rates, greenwood for survival estimates, bootstrap for an adjusted ratio.
              */
-            interval_method: ("wilson" | "greenwood") | null;
+            interval_method: ("wilson" | "greenwood" | "bootstrap") | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median";
+            kind: "count" | "share" | "windowed_rate" | "survival" | "distribution" | "median" | "observed_expected";
             /**
              * Lower
-             * @description The 95% interval's lower bound.
+             * @description The 95% interval's lower bound of a rate; null for an adjusted ratio.
              */
             lower: number | null;
             /**
@@ -2240,6 +2591,8 @@ export interface components {
             methodology_url: string;
             /** Methodology Version */
             methodology_version: string;
+            /** @description The outcome model an adjusted ratio cites (kept when suppressed). */
+            model: components["schemas"]["ModelRef"] | null;
             /**
              * Name
              * @description The metric's name from the registry.
@@ -2262,10 +2615,30 @@ export interface components {
              */
             period_start: string;
             /**
+             * Pooling Weight
+             * @description E / (E + alpha): the weight the subject's own data carries in the ratio.
+             */
+            pooling_weight: number | null;
+            /**
              * Rate
              * @description numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.
              */
             rate: number | null;
+            /**
+             * Ratio
+             * @description The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.
+             */
+            ratio: number | null;
+            /**
+             * Ratio Lower
+             * @description The pooled ratio's 95% bootstrap interval, lower bound.
+             */
+            ratio_lower: number | null;
+            /**
+             * Ratio Upper
+             * @description The pooled ratio's 95% bootstrap interval, upper bound (unbounded).
+             */
+            ratio_upper: number | null;
             /** Registry Version */
             registry_version: number;
             /** Slug */
@@ -2297,9 +2670,14 @@ export interface components {
             superseded_at: string | null;
             /**
              * Suppressed
-             * @description True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.
+             * @description True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.
              */
             suppressed: boolean;
+            /**
+             * Suppression Reason
+             * @description Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.
+             */
+            suppression_reason: ("below_threshold" | "expected_below_minimum" | "model_unavailable") | null;
             /**
              * Suppression Threshold
              * @description The metric's threshold, stated so a reader knows why.
@@ -2314,10 +2692,10 @@ export interface components {
              * Unit
              * @enum {string}
              */
-            unit: "count" | "share" | "days";
+            unit: "count" | "share" | "days" | "ratio";
             /**
              * Upper
-             * @description The 95% interval's upper bound.
+             * @description The 95% interval's upper bound of a rate; null for an adjusted ratio.
              */
             upper: number | null;
             /**
@@ -2335,6 +2713,32 @@ export interface components {
              * @description The follow-up window of a windowed metric.
              */
             window_days: number | null;
+        };
+        /**
+         * TrainingOut
+         * @description What a model was fitted on: the index events, their outcomes, and their time range.
+         */
+        TrainingOut: {
+            /**
+             * End
+             * @description The latest index time; null without rows.
+             */
+            end: string | null;
+            /**
+             * Events
+             * @description Of those, the events of the target outcome.
+             */
+            events: number;
+            /**
+             * Index Events
+             * @description Index events (design rows) the fit is over.
+             */
+            index_events: number;
+            /**
+             * Start
+             * @description The earliest index time; null without rows.
+             */
+            start: string | null;
         };
     };
     responses: never;
@@ -2976,8 +3380,8 @@ export interface operations {
                 period_start?: string | null;
                 /** @description Only observations whose period ends on this date. */
                 period_end?: string | null;
-                /** @description Sort key; a suppressed row sorts as if its figure were null. */
-                sort?: "rate" | "numerator" | "denominator" | "value" | "name";
+                /** @description Sort key; a suppressed row sorts as if its figure were null. Defaults to ratio (the pooled observed-to-expected ratio) for an adjusted metric and to rate otherwise. */
+                sort?: ("rate" | "numerator" | "denominator" | "value" | "ratio" | "name") | null;
                 /** @description Sort direction. */
                 order?: "asc" | "desc";
                 /** @description Page size, at most 100. */
@@ -3038,6 +3442,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ObservationProvenance"];
+                };
+            };
+            /** @description The resource does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description A parameter is invalid, or a query parameter is not one the route declares. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_model_api_v1_models__model_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCard"];
                 };
             };
             /** @description The resource does not exist. */
