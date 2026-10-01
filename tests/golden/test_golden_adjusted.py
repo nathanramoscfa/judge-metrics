@@ -173,7 +173,7 @@ def test_every_adjusted_observation_equals_its_descriptive_numerator_and_the_tru
     assert observation.suppression_reason == reason
     assert observation.suppressed_flag is (reason is not None)
     assert observation.registry_version == REGISTRY.version == 2
-    assert observation.methodology_version == REGISTRY.methodology_version == "0.3"
+    assert observation.methodology_version == REGISTRY.methodology_version == "1.0"
 
 
 def test_members_are_the_judges_existing_cohort_decisions(

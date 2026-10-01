@@ -354,6 +354,110 @@ export interface components {
          * @enum {string}
          */
         ActorType: "judge" | "prosecutor" | "defense" | "jury" | "clerk" | "law_enforcement" | "legislature_or_mandatory_rule" | "appellate_court" | "unknown";
+        /**
+         * AdjustmentFeatureOut
+         * @description One feature of the expected-outcome model, as the methodology states it.
+         */
+        AdjustmentFeatureOut: {
+            /** Description */
+            description: string;
+            /**
+             * Known At
+             * @description The instant before which every value is read.
+             */
+            known_at: string;
+            /**
+             * Leakage
+             * @description Why the feature cannot carry the outcome.
+             */
+            leakage: string;
+            /**
+             * Levels
+             * @description The levels in design order, the reference marked.
+             */
+            levels: string;
+            /**
+             * Missing
+             * @description What happens to an index event without a value.
+             */
+            missing: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * AdjustmentOut
+         * @description The adjusted statistics' methodology (methodology 1.0), from the model specification.
+         *
+         *     The same text ``docs/METHODOLOGY.md`` renders under "Adjusted statistics".
+         */
+        AdjustmentOut: {
+            /**
+             * Controls
+             * @description The temporal and jurisdiction controls.
+             */
+            controls: components["schemas"]["MethodologyTerm"][];
+            /**
+             * Exclusions
+             * @description What the model never reads, each with its reason.
+             */
+            exclusions: components["schemas"]["MethodologyTerm"][];
+            /** Expected Count */
+            expected_count: string;
+            /**
+             * Features
+             * @description In specification order.
+             */
+            features: components["schemas"]["AdjustmentFeatureOut"][];
+            /**
+             * Interpretation
+             * @description The brief's reading of an O/E ratio, verbatim.
+             */
+            interpretation: string;
+            /**
+             * Interval
+             * @description The bootstrap interval and what it describes.
+             */
+            interval: string;
+            /** Intro */
+            intro: string;
+            /**
+             * Limitations
+             * @description The limitations of adjustment.
+             */
+            limitations: string[];
+            /**
+             * Model
+             * @description The model, its penalty, and what it is fitted over.
+             */
+            model: string;
+            /** Model Version */
+            model_version: string;
+            /**
+             * Pooling
+             * @description The gamma-Poisson partial pooling: formula and weight.
+             */
+            pooling: string;
+            /**
+             * Specification Version
+             * @description The outcome model specification.
+             */
+            specification_version: number;
+            /**
+             * Targets
+             * @description The modelled outcomes, by target name.
+             */
+            targets: components["schemas"]["MethodologyTerm"][];
+            /**
+             * Thresholds
+             * @description Each threshold and its reason.
+             */
+            thresholds: components["schemas"]["MethodologyTerm"][];
+            /**
+             * Validation
+             * @description Where the model's validation is published.
+             */
+            validation: string;
+        };
         /** AssignmentOut */
         AssignmentOut: {
             /**
@@ -1719,10 +1823,12 @@ export interface components {
          * @description The versioned metric registry the methodology page is rendered from.
          *
          *     The prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,
-         *     ``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered
-         *     from, so the web page and the committed document never diverge.
+         *     ``changelog``, ``adjustment``) are the same constants ``docs/METHODOLOGY.md``
+         *     is rendered from, so the web page and the committed document never diverge.
          */
         Registry: {
+            /** @description The adjusted statistics' methodology: the model, its features, the pooling, the interval, the thresholds, and the limitations of adjustment. */
+            adjustment: components["schemas"]["AdjustmentOut"];
             /**
              * Attribution Notes
              * @description How rows are tied to a judge, and what is never attributed.

@@ -132,12 +132,48 @@ class MethodologyChange(BaseModel):
     text: str
 
 
+class AdjustmentFeatureOut(BaseModel):
+    """One feature of the expected-outcome model, as the methodology states it."""
+
+    name: str
+    description: str
+    levels: str = Field(description="The levels in design order, the reference marked.")
+    known_at: str = Field(description="The instant before which every value is read.")
+    missing: str = Field(description="What happens to an index event without a value.")
+    leakage: str = Field(description="Why the feature cannot carry the outcome.")
+
+
+class AdjustmentOut(BaseModel):
+    """The adjusted statistics' methodology (methodology 1.0), from the model specification.
+
+    The same text ``docs/METHODOLOGY.md`` renders under "Adjusted statistics".
+    """
+
+    specification_version: int = Field(ge=1, description="The outcome model specification.")
+    model_version: str
+    intro: str
+    interpretation: str = Field(description="The brief's reading of an O/E ratio, verbatim.")
+    model: str = Field(description="The model, its penalty, and what it is fitted over.")
+    targets: list[MethodologyTerm] = Field(description="The modelled outcomes, by target name.")
+    features: list[AdjustmentFeatureOut] = Field(description="In specification order.")
+    exclusions: list[MethodologyTerm] = Field(
+        description="What the model never reads, each with its reason."
+    )
+    expected_count: str
+    pooling: str = Field(description="The gamma-Poisson partial pooling: formula and weight.")
+    interval: str = Field(description="The bootstrap interval and what it describes.")
+    thresholds: list[MethodologyTerm] = Field(description="Each threshold and its reason.")
+    controls: list[MethodologyTerm] = Field(description="The temporal and jurisdiction controls.")
+    limitations: list[str] = Field(description="The limitations of adjustment.")
+    validation: str = Field(description="Where the model's validation is published.")
+
+
 class Registry(BaseModel):
     """The versioned metric registry the methodology page is rendered from.
 
     The prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,
-    ``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered
-    from, so the web page and the committed document never diverge.
+    ``changelog``, ``adjustment``) are the same constants ``docs/METHODOLOGY.md``
+    is rendered from, so the web page and the committed document never diverge.
     """
 
     registry_version: int = Field(ge=1)
@@ -163,6 +199,10 @@ class Registry(BaseModel):
         description="Each assignment gate (`AttributionOut.assignment_gate`) in words."
     )
     changelog: list[MethodologyChange] = Field(description="Oldest version first.")
+    adjustment: AdjustmentOut = Field(
+        description="The adjusted statistics' methodology: the model, its features, "
+        "the pooling, the interval, the thresholds, and the limitations of adjustment."
+    )
     definitions: list[MetricDefinitionOut] = Field(description="In registry order.")
 
 

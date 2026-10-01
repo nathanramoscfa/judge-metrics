@@ -319,12 +319,35 @@ methodology prose the web page renders — `how_to_read` and `semantics`
 (lists of `{term, text}`), `attribution_notes`, `gate_descriptions`
 (each `assignment_gate` in words), and the `changelog` (`{version,
 text}`, oldest first) — which are the same constants
-`docs/METHODOLOGY.md` is rendered from (`metrics/methodology.py`), and
+`docs/METHODOLOGY.md` is rendered from (`metrics/methodology.py`), the
+`adjustment` block (methodology 1.0, below), and
 one `MetricDefinitionOut` per metric in registry order (slug, name,
 kind, subject types, description, numerator, denominator, eligibility,
 the structured attribution rule, index event, outcome, windows,
 dimension, threshold, unit, version, `methodology_url`). It needs no
 database and is cacheable.
+
+**The `adjustment` block (methodology 1.0, Phase 4 Step 4).** The adjusted
+statistics' methodology, from the same `adjustment_prose` that renders
+`docs/METHODOLOGY.md` "Adjusted statistics" out of the outcome model
+specification (`data/reference/outcome_model.yaml`) and the registry:
+
+| Field                                   | Meaning                                                                                 |
+|-----------------------------------------|-----------------------------------------------------------------------------------------|
+| `specification_version`, `model_version` | The specification the models are fitted under (`1`, `expected-logit-v1`)               |
+| `intro`, `interpretation`               | What the adjusted metrics compare; the brief's reading of an O/E ratio, verbatim       |
+| `model`                                 | The regularized logistic model, its penalty and solver limits, what it is fitted over  |
+| `targets`                               | `{term, text}` per modelled outcome, with its windows                                  |
+| `features`                              | Per feature: `name`, `description`, `levels` (the reference marked), `known_at`, `missing`, `leakage` |
+| `exclusions`                            | `{term, text}`: what the model never reads (restricted attributes, the judge, the release terms, anything after the index, the latent propensity) and why |
+| `expected_count`, `pooling`, `interval` | E as the sum of predicted probabilities; the gamma-Poisson pooling and its weight; the person-cluster bootstrap and what its interval describes |
+| `thresholds`, `controls`                | `{term, text}`: each threshold and its reason; the temporal and jurisdiction controls  |
+| `limitations`                           | The limitations of adjustment (strings)                                                 |
+| `validation`                            | Where the validation is published (`docs/VALIDATION.md`)                                |
+
+The block names no restricted attribute value and no feature's source
+columns (the public contract test scans it). It describes the
+`observed_expected` kind whose figures Step 5 serves.
 
 `GET /judges/{judge_id}/metrics` and `GET /courts/{court_id}/metrics`
 return `SubjectMetrics`: the subject summary, the versions, `total`, and
@@ -365,9 +388,10 @@ more that also settles whether the cohort exists.
 **The hold-out (Phase 4 Step 3).** Registry version 2 defines a seventh
 kind, `observed_expected` — three judge-level observed-to-expected ratios
 with partial pooling and bootstrap intervals (`docs/METHODOLOGY.md`
-"Observed-to-expected ratios") — which `metrics compute` computes and
+"Adjusted statistics") — which `metrics compute` computes and
 stores but no public response serves until Phase 4 Step 5, after
-methodology 1.0 publishes the estimator's validation (Phase 4 Step 4): an
+methodology 1.0 publishes the estimator's validation (Phase 4 Step 4,
+`docs/VALIDATION.md`): an
 adjusted ratio must not reach a reader before the evidence that it
 recovers what it claims to, and the response schemas (`MetricKind`,
 `unit`) and the web's renderer do not know the kind yet. The served kinds

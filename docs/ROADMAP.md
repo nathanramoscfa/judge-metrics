@@ -23,7 +23,12 @@ fit|list|show|verify`); Step 3 — expected counts, ratios, partial
 pooling, and the recovery test — is complete (registry version 2 with the
 `observed_expected` kind, methodology `0.3`, migration
 `0010_adjusted_observations`, held out of every public response until
-Step 5); Step 4 (the validation report and methodology `1.0`) is next.
+Step 5); Step 4 — the validation report and methodology `1.0` — is
+complete (`judgemetrics.validation`, `judgemetrics validation
+report|recovery`, the committed `docs/VALIDATION.md` checked by the `e2e`
+job, the "Adjusted statistics" methodology served by `GET /api/v1/metrics`
+as `adjustment`); Step 5 (risk-adjusted panels, adjusted compare, and the
+model card) is next.
 Phase 3
 (Metrics Engine and the Complete Local Demo — the first milestone)
 completed on 2026-09-29 with Step 6 (QA, `scripts/verify_phase03.py`,
@@ -50,6 +55,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-01 | **Phase 4 Step 4 (PR #43).** The validation report and methodology `1.0` (`docs/VALIDATION.md`, `docs/METHODOLOGY.md` "Adjusted statistics", `docs/ARCHITECTURE.md` "Validation", `docs/API.md` "The `adjustment` block", `docs/SYNTHETIC_DATA.md` "Temporal transport" and "Restricted controls"). `src/judgemetrics/validation/` — `inputs.py` (the snapshot's models with their designs, in memory), `fairness.py` (the one reader of the `restricted` schema: one parameterized statement on the ingest role's session, aggregate cells withheld below 30 index events or 5 expected events), `sensitivity.py` (complete-case refit), `stability.py` (interval widths, share excluding 1, rank-interval widths as distributions), `recovery.py` (the published figures against `truth/effects.json`), `report.py` (deterministic render, `--check`); `judgemetrics validation report [--out] [--check] [--truth DIR]` and `validation recovery --truth DIR [--json]`. Registry `methodology_version` `1.0` (registry `version` stays 2), changelog 0.1-1.0, the "Interval" term restated (the pooled estimate's sampling variability, not a confidence interval for the true ratio); `GET /api/v1/metrics` gains `adjustment` (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). The `e2e` job runs `validation report --check --truth data/synthetic/ci`. On the demo seed every recovery tolerance is met on the database path (Spearman 0.934 / 0.719 / 0.963), the age-band positive control shows the planted direction (Spearman 0.9 with the planted effects), and every negative-control cell lies in [0.8, 1.25]. Tests: `test_validation_report.py`, `test_subgroup_calibration.py`, `test_restricted_readers.py`, `test_fairness_analysis.py`, the methodology render and API registry tests extended. |
 | 2026-09-30 | **Phase 4 Step 3 (PR #41).** Observed-to-expected ratios (`docs/ARCHITECTURE.md` "Observed-to-expected ratios", `docs/DATA_MODEL.md`, `docs/SYNTHETIC_DATA.md` "Recovery"). Registry version 2, methodology `0.3`: the kind `observed_expected` (unit `ratio`, a required `adjustment` block) and three judge metrics — `pretrial_release_observed_expected`, `new_case_observed_expected`, `failure_to_appear_observed_expected` (six windows) — with their descriptive twins' eligibility and attribution, threshold 30, minimum expected count 5. `metrics/adjustment/expected.py` (one design per target and window over every eligible event of the source; per judge n, O, E from the published coefficients read back from the artifact), `pooling.py` (the gamma–Poisson shape by maximum marginal likelihood, Σ log(α+k) exact, a 200-point log grid refined by golden-section; pooled ratio (α+O)/(α+E), weight E/(E+α)), `bootstrap.py` (the fit's person-cluster replicates replayed from the stored coefficients; 2.5/97.5% quantiles), `ratios.py` (the drafts). Migration `0010_adjusted_observations` (`outcome_model_id`, `pooling_weight`, `suppression_reason` with two checks; stored suppressed rows backfilled `below_threshold`). `metrics compute` fits the snapshot's missing models first; pipeline step 13 computes the descriptive kinds only and `publish` is scoped by kind; `metrics verify` recomputes an adjusted observation from its cited artifact; the provenance trace names the model and checks its artifact; the public hold-out (`SERVED_KINDS`) on the registry, subject, compare, and provenance routes; `/api/v1/ready` reports the latest snapshot's models. Recovery on the demo world (`test_golden_recovery.py`): Spearman 0.934 / 0.719 / 0.963 against raw rates 0.689 / 0.716 / 0.871, expected counts tracking the oracle (≥ 0.986), intervals covering the true ratio for 60–68% of judges; tolerances recorded in `outcome_model.yaml`. Tests: `test_pooling.py` (15), `test_bootstrap.py` (5), `test_golden_adjusted.py` (84), `test_golden_recovery.py` (6), `test_api_adjusted.py` (6), the step-13 test, migration `0010`. Findings: interval under-coverage and the thin new-case margin — Step 4 task block and `docs/SYNTHETIC_DATA.md`; what serving the kind must undo — Step 5 task block; the double-prefixed constraint names — fixed in-step, lesson in `AGENTS.md`; a reused snapshot's version columns — known issues below. |
 | 2026-09-30 | **Phase 4 Step 2 (PR #39).** The expected-outcome model as a versioned contract and a deterministic fit (`docs/ARCHITECTURE.md` "Risk adjustment", `docs/DATA_MODEL.md` "Outcome model specification"). `data/reference/outcome_model.yaml` (`version` 1, `expected-logit-v1`: three targets tied to the registry's `pretrial_decisions`, `new_case_rate`, and `failure_to_appear_rate` gates; eleven features with their frame columns, levels, references, known-at instants, missing rules, and leakage statements, checked against the builders' contracts and the vocabulary; the exclusions with reasons, every restricted attribute through the vocabulary; the L2 penalty, solver limits, temporal split, seed, 500-replicate person-cluster bootstrap, gamma-Poisson pooling bounds, thresholds, and recovery tolerances). `src/judgemetrics/metrics/adjustment/` — `spec`, `features` (one row per eligible index event through the published gates; history strictly before 00:00 UTC of the index case's filing, the index case's charges strictly before the decision; equal to the generator's risk features on all 4,534 demo decisions; rows and data levels ordered by source-assigned keys), `logistic` (Newton-Raphson, `np.einsum` and a NumPy Cholesky only: bit-identical fits), `resample`, `diagnostics` (Brier and skill, AUC with ties, decile bins, observed/expected, slope, stability, `refit_complete_cases`), `artifacts` (canonical JSON, sha256 id, written once under `<snapshot_dir>/<hash>/models/`), `fit`, `catalog`; the frame's `courts`; migration `0009_outcome_models` (app `SELECT`, ingest DML); `judgemetrics models fit|list|show|verify [--refit]`; `numpy` the one new runtime dependency (container smoke imports the solver; the `e2e` job fits and verifies the demo seed). Every golden model is `insufficient_events`; every demo model `fitted` (13, about 30 s). Tests: `test_outcome_model_spec.py` (7), `test_logistic.py` (7), `test_adjustment_features.py` (15, the golden world equal to the generator), `test_feature_leakage.py` (2 properties: truncation at the known-at instants and UUID relabelling), `test_model_diagnostics.py` (9), `test_model_artifacts.py` (5, the inspection over golden and demo fits), `test_model_resample.py` (3), `test_outcome_models.py` (5), migrations through `0009`. Findings: the demo new-case models do not transport out of time (test AUC 0.49-0.55) while the release model does (0.81) — Step 3 and Step 4 task blocks; interfaces as landed — Step 3 task block; CLI test and solver lessons — `AGENTS.md`; the bootstrap cluster key — known issues below; the stale README phase status fixed. |
 | 2026-09-30 | **Phase 4 Step 1 (PR #37).** The planted answer and the restricted schema (`docs/SYNTHETIC_DATA.md` "Planted effects" and "Restricted controls", `docs/DATA_MODEL.md` "The restricted schema", `docs/ARCHITECTURE.md` "Restricted schema"). The generator (`GENERATOR_VERSION` 3; new `effects` and `attributes` streams; `synthetic/effects.py`) assigns the initial judge by an observable risk index and the judges' docket tilts (ordered inversely to their new-case effects per court: planted confounding), makes release and failure to appear logistic in the banded observable features plus the judge's leniency or failure-to-appear effect, skews the next filing by the releasing judge's new-case effect, adds age-band effects on both later outcomes (the restricted positive control) and an abstract `synthetic_group` read by no draw (the negative control), and blanks `age_at_filing` with the date of birth. `TRUTH_VERSION` 3 writes `truth/effects.json` (every parameter; each judge's effects raw and court-centered; per judge, target, and window the cohort, the observed count, and the oracle expected counts with and without the judge's effect; aggregates only). Calibrated on the demo seed: oracle Spearman 0.944 (release), 0.846 (365-day new case), 0.933 (365-day failure to appear), totals within 1.6%, raw new-case ranking 0.716. Exposure is deferred by every incarceration term of the person in the engine and the truth (methodology `0.2`, Phase 3 finding 1.4, carry-over item 1). Migration `0008_restricted_schema`: the `restricted` schema and `restricted.party_attribute` (ingest and admin roles only; the app role has no `USAGE`), `include_schemas`, and `case_party.source_row_id` rewritten to `<party_type>:<ordinal>`; the connector (parser version 2) publishes `age_band` and `synthetic_group` there. Vocabulary version 2 (the restricted kinds); the scrubber denylist gains `age_band`, `synthetic_group`, `attribute_value`; the snapshot refuses the restricted schema by schema; `verify_phase03.py` check 14 compares the golden manifest with the source constants. Golden fixture regenerated. |
@@ -233,11 +239,12 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
   "Exposure"). `release_violation` and `rearrest` are not observable for
   the synthetic source and are published for no subject until a source
   documents them.
-- Methodology `0.1` publishes descriptive statistics only: no expected
-  count, expected rate, observed-to-expected ratio, or adjusted interval
-  exists until Phase 4's methodology `1.0`. Suppression thresholds are
-  fixed at 10 for every share, rate, survival estimate, and median
-  before any real data (revisited per metric in Phase 5).
+- Methodology `1.0` (Phase 4 Step 4) publishes the expected-outcome
+  model, the observed-to-expected ratios, and their validation; the API
+  still holds the adjusted figures out until Phase 4 Step 5 serves them.
+  Suppression thresholds are fixed at 10 for every share, rate, survival
+  estimate, and median and at 30 members and 5 expected events for a
+  ratio before any real data (revisited per metric in Phase 5).
 - Snapshots live on the local filesystem (`JUDGEMETRICS_SNAPSHOT_DIR`,
   git-ignored, never overwritten); the object-store variant is Phase 8.
 - Correction contacts are Fernet-encrypted with a symmetric key the
@@ -411,14 +418,46 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
   step-13 exception"). Run `uv run poe compute-metrics` after an ingest to
   bring them current.
 
+- **The validation is synthetic.** `docs/VALIDATION.md` validates the
+  models on the demo seed only, against a generator whose planted effects
+  and controls are known; it says nothing about how the models behave on a
+  real source. Real-data validation (calibration, transport across years,
+  subgroup calibration under the legal review the brief requires) is
+  Phase 6 §6.1. The report renders whatever sources the latest snapshot
+  holds, so it extends to a real source without code changes, but the
+  committed document stays the demo seed's until then.
+- **Architectural question (operator): the adjusted interval.** The
+  published 95% interval is the percentile interval of the *pooled*
+  estimate over the bootstrap replicates; because the estimate is shrunk
+  toward 1, it covers the planted true ratio for only 60-68% of the demo
+  judges (`docs/SYNTHETIC_DATA.md` "Recovery"). Methodology `1.0` states
+  that it describes the pooled estimate's sampling variability, not a
+  confidence interval for the judge's true ratio. A bias-corrected
+  bootstrap interval or the gamma posterior's own interval would target
+  the true ratio; either is a methodology change that bumps the outcome
+  model specification's `version`, so it is the operator's decision and has
+  not been adopted.
+- **Temporal transport of the new-case models.** The temporal split shows
+  the new-case models do not transport across years on the synthetic
+  source (test AUC 0.49-0.55, observed over expected up to 1.69), because
+  the generator places a person's next filing within the remaining corpus
+  span and the new-case rate rises toward the corpus end; the published fit
+  absorbs it through the calendar-year feature (`docs/SYNTHETIC_DATA.md`
+  "Temporal transport"). The specification is not tuned to it.
+- A reused snapshot keeps the methodology version it was first recorded
+  under (`metric_snapshot.methodology_version`): after the `1.0` bump the
+  demo database's observations cite `1.0` while their snapshot row says
+  `0.2`, the version of the export that first produced those tables. The
+  observation's own version is the one the API and the provenance trace
+  show beside the number.
+
 ## Next milestones
 
-1. **Phase 4 Step 4.** The validation report (`docs/VALIDATION.md`:
-   temporal-split calibration and discrimination, missing-data
-   sensitivity, the restricted-attribute subgroup calibration with its
-   positive and negative controls, recovery on the database path) and
-   methodology `1.0`, stating the interval's under-coverage of the true
-   ratio as found (`docs/roadmap/phase04-roadmap.md` Step 4).
+1. **Phase 4 Step 5.** The risk-adjusted panels, the adjusted compare,
+   and the model card: `observed_expected` joins `SERVED_KINDS` with its
+   schema, and the web renders the adjusted ratios beside the raw rates
+   with the methodology's interval statement
+   (`docs/roadmap/phase04-roadmap.md` Step 5).
 2. **Phase 4 exit (`v0.4.0-phase-4`).** Methodology `1.0`: the
    expected-outcome model, expected counts and rates, observed-to-expected
    ratios with adjusted intervals, planted judge effects in the

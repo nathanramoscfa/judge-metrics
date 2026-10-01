@@ -50,7 +50,7 @@
 # events. Every suppressed row records why (suppression_reason:
 # below_threshold, expected_below_minimum, model_unavailable).
 version: 2
-methodology_version: "0.3"
+methodology_version: "1.0"
 
 known_limitations:
   - >-

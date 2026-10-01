@@ -154,6 +154,8 @@ uv run judgemetrics provenance trace <observation id> [--json]  # the chain from
 uv run judgemetrics models fit [--snapshot HASH] [--json]       # fit and record every expected-outcome model the latest (or named) snapshot lacks (ingest role); idempotent
 uv run judgemetrics models list|show <id or hash> [--json]      # the model catalogue and a model card (app role); never the storage URI
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
+uv run judgemetrics validation report [--out docs/VALIDATION.md] [--check] [--truth DIR]   # the model validation from the latest snapshot (ingest role); --check exits 1 with a diff, 2 without a snapshot or model
+uv run judgemetrics validation recovery --truth DIR [--json]   # the planted-effect recovery of the published figures; exit 1 below a tolerance, 2 for a truth no source ingested
 uv run poe bootstrap                             # up → migrate → ingest-fjc → seed → compute-metrics: the one-command startup (idempotent; `make bootstrap` runs `uv sync` first)
 uv run judgemetrics seed --out data/synthetic/ci  # the seed into another directory (the CI e2e job)
 ```
@@ -985,6 +987,51 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   pooled estimate is shrunk), both carried to Step 4. `relabel_frame` moved
   into `tests/property/support.py`. CLI tests that invoke a command twice
   with different environments clear `get_settings` around each call.
+- Validation report and methodology 1.0 (Phase 4 Step 4,
+  docs/ARCHITECTURE.md "Validation", docs/VALIDATION.md,
+  docs/METHODOLOGY.md "Adjusted statistics"): `judgemetrics.validation`
+  (`inputs`, `fairness`, `sensitivity`, `stability`, `recovery`,
+  `report`, `statistics`) renders `docs/VALIDATION.md` from the latest
+  snapshot's models, the committed document being the demo seed's; the
+  `e2e` job re-renders it from `data/synthetic/ci` (a byte-identical
+  manifest) with `--check`, so a CI difference is an order-invariance bug,
+  never a reason to drop the check. The report names no UUID, hash, code
+  version, run timestamp, judge, judge code, or local path (a data level
+  is its rank label; the coefficient rows' `level` holds the court id and
+  is never read), every list has a data-fixed order, and the statistics
+  over judges are tie-averaged rank correlations, medians, quartiles, and
+  shares. After a registry, specification, or estimator change: `uv run
+  poe compute-metrics`, then `uv run judgemetrics validation report`, and
+  commit the document with the change. `validation/fairness.py` is the
+  only reader of the `restricted` schema (`require_ingest_role` compares
+  `current_user` with the ingest URL's user; one statement with the
+  decision ids bound as one array; cells withheld below `minimum_cohort`
+  events or `minimum_expected` expected events with no figure); the static
+  `tests/unit/test_restricted_readers.py` matches `party_attribute`,
+  `PartyAttribute`, `restricted.<name>`, and `schema="restricted"` (the
+  ORM class too, which the step's three patterns alone would miss) and
+  allows the reader, the ORM model, `db/models/__init__.py`, and Step 1's
+  write path; `logging.py`'s comment no longer spells the table.
+  Methodology `1.0` is the registry's `methodology_version` (registry
+  `version` stays 2: no entry changed); `metrics/methodology.py`'s
+  `adjustment_prose(spec, registry)` builds the "Adjusted statistics"
+  section and `GET /api/v1/metrics`'s `adjustment` block from the outcome
+  model specification and the registry — the old "Observed-to-expected
+  ratios" section and `ADJUSTMENT_TEXT` are gone, and `INTERPRETATION`
+  (the brief's O/E reading, verbatim) lives there. The served prose must
+  name no restricted attribute value or name (`age_band`,
+  `synthetic_group`, `party_attribute` are scanned by the public contract
+  test; no module under `metrics/` may spell them, so the prose says "age
+  band") and no feature source column (`charges.person_id` would trip the
+  person marker). A methodology bump republishes every observation (the
+  publish compares `methodology_version`; the demo compute took about
+  three minutes) while a reused snapshot row keeps its first version. The
+  subgroup-calibration test asserts the positive control's direction at
+  the extreme bands and a Spearman of at least 0.8 with the planted
+  effects, not a strict order (45-54 sits above 35-44 by chance on the
+  demo world, Spearman 0.9). The new-case models' poor temporal transport
+  is a generator artifact (next filing within the remaining corpus span:
+  docs/SYNTHETIC_DATA.md "Temporal transport"), reported, not tuned.
 
 ## End-of-session report (from the brief)
 

@@ -321,5 +321,32 @@ export const REGISTRY: Registry = {
     court_of_case: "the court of the case (a court-only metric)",
   },
   changelog: [{ version: "0.1", text: "first registry (Phase 3 Step 1)." }],
+  adjustment: {
+    specification_version: 1,
+    model_version: "expected-logit-v1",
+    intro: "The adjusted metrics compare what a judge's cohort shows with what a versioned model expects.",
+    interpretation:
+      "An O/E ratio above 1 means observed outcomes exceeded the model's expected count for the defined cohort.",
+    model: "A regularized logistic regression, one model per source, target, and window.",
+    targets: [{ term: "pretrial_release", text: "Whether a discretionary pretrial decision released the defendant." }],
+    features: [
+      {
+        name: "lead_severity",
+        description: "The most severe charge of the index case.",
+        levels: "misdemeanor_b (reference), misdemeanor_a, felony_3, felony_2, felony_1",
+        known_at: "the pretrial decision",
+        missing: "an index event without a value is excluded from the model",
+        leakage: "Read from the charges filed strictly before the pretrial decision.",
+      },
+    ],
+    exclusions: [{ term: "judge", text: "The judge is the subject of comparison." }],
+    expected_count: "A judge's expected count E is the sum of the predicted probabilities.",
+    pooling: "The published ratio is the posterior mean (alpha + O) / (alpha + E).",
+    interval: "A person-cluster bootstrap with the model refitted.",
+    thresholds: [{ term: "Cohort", text: "A ratio is withheld below 30 members in the ratio." }],
+    controls: [{ term: "Temporal", text: "The calendar year of the index event is a feature." }],
+    limitations: ["Unobserved confounding and selection on unobservables."],
+    validation: "docs/VALIDATION.md reports the model's validation.",
+  },
   definitions: DEFINITIONS,
 };

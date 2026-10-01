@@ -4339,9 +4339,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 4 — Validation Report and Methodology 1.0
+## Step 4 — Validation Report and Methodology 1.0 ✅
 
-**Status:** Not started
+**Status:** Complete — PR #43 (2026-10-01)
 
 > **Goal:** Publish the validation before any adjusted number is shown. The
 > `judgemetrics.validation` package assembles, from the current snapshot's
@@ -5726,6 +5726,45 @@ phase-boundary hygiene.
       `docs/VALIDATION.md` is
       committed and checked in the
       `e2e` job.
+    - Note from Step 4 (what Step 5
+      builds on): the `adjustment`
+      block (`schemas.metrics.AdjustmentOut`:
+      `specification_version`,
+      `model_version`, `intro`,
+      `interpretation`, `model`,
+      `targets`, `features` with
+      `levels`/`known_at`/`missing`/`leakage`,
+      `exclusions`, `expected_count`,
+      `pooling`, `interval`,
+      `thresholds`, `controls`,
+      `limitations`, `validation`)
+      comes from
+      `metrics/methodology.adjustment_prose`;
+      the web methodology page does
+      not render it yet, and
+      `web/tests/unit/fixtures/observations.ts`
+      `REGISTRY.adjustment` is a
+      minimal fixture. Every shown
+      adjusted interval needs the
+      interval statement (the pooled
+      estimate's sampling
+      variability, not a confidence
+      interval for the judge's true
+      ratio) and the brief's
+      interpretation
+      (`methodology.INTERPRETATION`).
+      Served text must name no
+      restricted attribute name or
+      value and no feature source
+      column (`charges.person_id`
+      trips the public contract's
+      person marker). Any change that
+      alters a model or a published
+      figure needs `uv run poe
+      compute-metrics` and `uv run
+      judgemetrics validation report`
+      before the commit, or the `e2e`
+      check fails.
     - The API conventions: routes →
       services → repositories →
       schemas; `StrictQuery` per
@@ -6752,9 +6791,15 @@ Conversation is New per phase-boundary hygiene.
     30. `src/judgemetrics/validation/`
         has `__init__`, `report`,
         `fairness`, `sensitivity`,
-        `stability`, `recovery`.
+        `stability`, `recovery` (and
+        Step 4's `inputs` and
+        `statistics`).
     31. Under `src/judgemetrics/`,
-        `party_attribute`, a
+        `party_attribute`, the ORM
+        class `PartyAttribute` (the
+        name `fairness.py` reads
+        through; Step 4 added it to the
+        test's patterns), a
         schema-qualified
         `restricted.<name>`, or
         `schema="restricted"`
@@ -7435,7 +7480,7 @@ workflow above maps directly to the corresponding row below.
 | 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #41 |
-| 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
+| 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #43 |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Not started |
 | V1   | Planted effects and restricted schema scope    | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |

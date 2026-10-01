@@ -93,7 +93,7 @@ def test_the_registry_response_lists_no_adjusted_definition(adjusted_api: TestCl
     assert [item["slug"] for item in body["definitions"]] == [
         slug for slug, metric in REGISTRY.metrics.items() if metric.kind in SERVED_KINDS
     ]
-    assert body["registry_version"] == 2 and body["methodology_version"] == "0.3"
+    assert body["registry_version"] == 2 and body["methodology_version"] == "1.0"
     _no_adjusted(response.text)
 
 

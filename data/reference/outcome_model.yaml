@@ -9,7 +9,8 @@
 # feature may name a restricted attribute (the vocabulary's
 # restricted_attribute values), an excluded variable, or an excluded column.
 # docs/ARCHITECTURE.md "Risk adjustment" describes the builder, the solver,
-# and the artifacts; Step 4 renders this file into the methodology.
+# and the artifacts; metrics/methodology.py renders this file into the
+# "Adjusted statistics" section of docs/METHODOLOGY.md and GET /api/v1/metrics.
 #
 # Versioning: `version` is bumped whenever a value changes in a way that
 # alters a fitted model or a published figure - a target, a feature, a
@@ -229,8 +230,8 @@ excluded:
       Every restricted attribute the vocabulary lists stays in the restricted
       schema and is never a model feature by default: the brief requires a
       documented methodological purpose, legal review, fairness analysis, and
-      publication rationale first. Step 4 uses the synthetic ones only for
-      the aggregate subgroup calibration.
+      publication rationale first. The validation uses the synthetic ones
+      only for the aggregate subgroup calibration (docs/VALIDATION.md).
   - name: judge
     columns: [assignments.judge_id, decisions.judge_id, events.judge_id, sentences.judge_id]
     reason: >-

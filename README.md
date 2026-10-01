@@ -77,7 +77,11 @@ expected-outcome model — the versioned specification
 a deterministic L2-penalized logistic fit with a person-cluster
 bootstrap and temporal-split diagnostics, and content-addressed model
 artifacts operated by `uv run judgemetrics models fit|list|show|verify`
-([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) "Risk adjustment"). See:
+([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) "Risk adjustment"); Step 3
+the observed-to-expected ratios with partial pooling and bootstrap
+intervals; Step 4 their validation,
+[`docs/VALIDATION.md`](docs/VALIDATION.md) (`uv run judgemetrics
+validation report`), and methodology `1.0`. See:
 
 - [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -212,7 +216,9 @@ uv run judgemetrics models fit [--snapshot HASH]   # fit and record every expect
 uv run judgemetrics models list [--snapshot HASH] [--json]   # the snapshot's models with their status and split counts
 uv run judgemetrics models show <id or content hash> [--json]   # a model card: columns and coefficients, counts, diagnostics
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row (--refit: a fresh fit reproduces it byte for byte); exit 1 on any mismatch
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace, models fit|list|show|verify
+uv run judgemetrics validation report --check   # docs/VALIDATION.md equals the render from the latest snapshot's models (omit --check to rewrite it; --truth DIR names the synthetic dataset)
+uv run judgemetrics validation recovery --truth data/synthetic/20260916   # the planted-effect recovery of the published figures; exit 1 below a tolerance
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace, models fit|list|show|verify, validation report|recovery
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
@@ -365,6 +371,7 @@ judge-metrics/
 │   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export); the web client is generated from it
 │   ├── DATA_MODEL.md       the twenty-seven tables, natural keys, indexes, grants
 │   ├── METHODOLOGY.md      rendered from the metric registry (judgemetrics methodology render); the semantics behind every number
+│   ├── VALIDATION.md       the expected-outcome models' validation on the demo seed (judgemetrics validation report; checked in CI)
 │   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
 │   ├── roadmap/            ROADMAP.md (project roadmap) and phaseNN-roadmap.md (executable per-phase plans)
 │   └── brief/              the product specification, verbatim

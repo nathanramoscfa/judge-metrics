@@ -12,9 +12,10 @@ schema itself (``schemas.metrics.SuppressibleFigures``), so this module
 never decides what to withhold. The registry response is built from
 ``metrics.registry.load_registry`` alone — no database — plus the
 methodology prose constants of ``metrics.methodology`` (how to read a
-number, the index-event semantics, the attribution notes, the changelog),
-so the web methodology page shows the text ``docs/METHODOLOGY.md`` is
-rendered from rather than a second copy. The compare
+number, the index-event semantics, the attribution notes, the changelog,
+and — methodology 1.0 — the adjusted statistics' prose from
+``adjustment_prose``), so the web methodology page shows the text
+``docs/METHODOLOGY.md`` is rendered from rather than a second copy. The compare
 service validates the metric and window against the registry before any
 query and turns ``repositories.metrics.compare_page`` rows into
 ``CompareRow``s with their ``coverage_warning``. The provenance service
@@ -51,6 +52,7 @@ from judgemetrics.metrics.methodology import (
     GATE_TEXT,
     HOW_TO_READ,
     SEMANTICS,
+    adjustment_prose,
 )
 from judgemetrics.metrics.provenance import TraceError, trace
 from judgemetrics.metrics.registry import (
@@ -67,6 +69,8 @@ from judgemetrics.repositories.metrics import (
 )
 from judgemetrics.schemas.judges import CourtRef
 from judgemetrics.schemas.metrics import (
+    AdjustmentFeatureOut,
+    AdjustmentOut,
     AttributionOut,
     CompareCohort,
     ComparePage,
@@ -130,6 +134,42 @@ def definition_out(definition: MetricDefinitionSpec, settings: Settings) -> Metr
     )
 
 
+def adjustment_out(registry: Registry) -> AdjustmentOut:
+    """The adjusted statistics' methodology from ``metrics.methodology.adjustment_prose``."""
+    prose = adjustment_prose(registry=registry)
+
+    def terms(items: tuple[tuple[str, str], ...]) -> list[MethodologyTerm]:
+        return [MethodologyTerm(term=term, text=text) for term, text in items]
+
+    return AdjustmentOut(
+        specification_version=prose.specification_version,
+        model_version=prose.model_version,
+        intro=prose.intro,
+        interpretation=prose.interpretation,
+        model=prose.model,
+        targets=terms(prose.targets),
+        features=[
+            AdjustmentFeatureOut(
+                name=feature.name,
+                description=feature.description,
+                levels=feature.levels,
+                known_at=feature.known_at,
+                missing=feature.missing,
+                leakage=feature.leakage,
+            )
+            for feature in prose.features
+        ],
+        exclusions=terms(prose.exclusions),
+        expected_count=prose.expected_count,
+        pooling=prose.pooling,
+        interval=prose.interval,
+        thresholds=terms(prose.thresholds),
+        controls=terms(prose.controls),
+        limitations=list(prose.limitations),
+        validation=prose.validation,
+    )
+
+
 def registry_response(settings: Settings, registry: Registry | None = None) -> RegistryOut:
     """The registry as the API serves it: definitions, versions, thresholds, known limitations."""
     registry = registry or load_registry()
@@ -149,6 +189,7 @@ def registry_response(settings: Settings, registry: Registry | None = None) -> R
         attribution_notes=list(ATTRIBUTION_TEXT),
         gate_descriptions=dict(GATE_TEXT),
         changelog=[MethodologyChange(version=version, text=text) for version, text in CHANGELOG],
+        adjustment=adjustment_out(registry),
         definitions=[
             definition_out(item, settings)
             for item in registry.metrics.values()
