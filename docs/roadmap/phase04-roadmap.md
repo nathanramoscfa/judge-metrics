@@ -4339,9 +4339,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 4 — Validation Report and Methodology 1.0
+## Step 4 — Validation Report and Methodology 1.0 ✅
 
-**Status:** Not started
+**Status:** Complete — PR #43 (2026-10-01)
 
 > **Goal:** Publish the validation before any adjusted number is shown. The
 > `judgemetrics.validation` package assembles, from the current snapshot's
@@ -7480,7 +7480,7 @@ workflow above maps directly to the corresponding row below.
 | 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
 | 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #41 |
-| 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
+| 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #43 |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Not started |
 | V1   | Planted effects and restricted schema scope    | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
