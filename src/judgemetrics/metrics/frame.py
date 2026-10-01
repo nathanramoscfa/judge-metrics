@@ -30,6 +30,9 @@ Schemas (id columns are marked ``*``; ``?`` marks a nullable column):
   a ``justice_event_type`` vocabulary value)
 - ``persons``: id* (the resolved person, after merges: the frame's only
   person column)
+- ``courts``: id*, jurisdiction_id* (the courts of the frame's cases; Phase 4
+  Step 2: the expected-outcome model's ``court`` and ``jurisdiction``
+  features read it)
 
 Every timestamp column is a Polars ``Datetime`` with time zone ``UTC``
 (any time unit). Day-level facts are placed on their day the way the case
@@ -145,6 +148,7 @@ SCHEMAS: Mapping[str, Mapping[str, ColumnSpec]] = MappingProxyType(
             }
         ),
         "persons": MappingProxyType({"id": ID}),
+        "courts": MappingProxyType({"id": ID, "jurisdiction_id": ID}),
     }
 )
 TABLE_NAMES: tuple[str, ...] = tuple(SCHEMAS)
@@ -210,6 +214,7 @@ class Frame:
     events: pl.DataFrame
     justice_events: pl.DataFrame
     persons: pl.DataFrame
+    courts: pl.DataFrame
     coverage_start: date
     coverage_end: date
     observable_outcomes: frozenset[str] = frozenset()

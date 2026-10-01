@@ -46,7 +46,7 @@ append-only audit log (`judgemetrics er run|review list|review decide`,
 case, timeline, judge-cases, and coverage endpoints with a `synthetic`
 flag on every response, the case page, the judge cases panel and list,
 the coverage page, and the site-wide demo-data banner. Phase 3 (the
-metrics engine and the complete local demo) is in progress: Step 1
+metrics engine and the complete local demo) is complete: Step 1
 shipped the versioned metric registry, the analytic frame, and the
 generated methodology ([`docs/METHODOLOGY.md`](docs/METHODOLOGY.md));
 Step 2 the computation engine — `uv run poe compute-metrics` exports a
@@ -68,7 +68,16 @@ corrections form (`/corrections`, through a same-origin route handler),
 the court page's metric panels and comparable-judge table, the
 jurisdiction page, the one-command `uv run poe bootstrap`, and the
 first-milestone walkthrough (`web/tests/e2e/first-milestone.spec.ts`,
-run in CI over the seeded demo dataset). See:
+run in CI over the seeded demo dataset). Phase 4 (risk adjustment and
+statistical validation) is in progress: Step 1 planted known per-judge
+effects and case-mix confounding in the synthetic world and moved the
+restricted attributes into the `restricted` schema; Step 2 the
+expected-outcome model — the versioned specification
+(`data/reference/outcome_model.yaml`), a leakage-safe feature builder,
+a deterministic L2-penalized logistic fit with a person-cluster
+bootstrap and temporal-split diagnostics, and content-addressed model
+artifacts operated by `uv run judgemetrics models fit|list|show|verify`
+([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) "Risk adjustment"). See:
 
 - [`docs/roadmap/ROADMAP.md`](docs/roadmap/ROADMAP.md) — the eight-phase plan.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current phase, completed
@@ -199,7 +208,11 @@ uv run judgemetrics er run   # recompute person candidates and apply system merg
 uv run judgemetrics methodology render --check   # docs/METHODOLOGY.md equals the metric registry render (omit --check to rewrite it)
 uv run judgemetrics metrics verify   # recompute every current observation from its snapshot; exit 1 on any mismatch
 uv run judgemetrics provenance trace <observation id> [--json]   # the chain from a published number to the raw artifacts; exit 1 when incomplete
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace
+uv run judgemetrics models fit [--snapshot HASH]   # fit and record every expected-outcome model the latest (or named) snapshot lacks; artifacts under data/snapshots/<hash>/models/
+uv run judgemetrics models list [--snapshot HASH] [--json]   # the snapshot's models with their status and split counts
+uv run judgemetrics models show <id or content hash> [--json]   # a model card: columns and coefficients, counts, diagnostics
+uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row (--refit: a fresh fit reproduces it byte for byte); exit 1 on any mismatch
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace, models fit|list|show|verify
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
@@ -350,7 +363,7 @@ judge-metrics/
 │   ├── ARCHITECTURE.md     ingest pipeline, raw lake, idempotency rules, roles, API layering
 │   ├── API.md              the API contract: pagination, filters, errors, rate limits, provenance
 │   ├── openapi.json        the generated OpenAPI document (judgemetrics openapi export); the web client is generated from it
-│   ├── DATA_MODEL.md       the twenty-six tables, natural keys, indexes, grants
+│   ├── DATA_MODEL.md       the twenty-seven tables, natural keys, indexes, grants
 │   ├── METHODOLOGY.md      rendered from the metric registry (judgemetrics methodology render); the semantics behind every number
 │   ├── SYNTHETIC_DATA.md   the synthetic dataset: world model, source format, planted edge cases, truth/, determinism
 │   ├── roadmap/            ROADMAP.md (project roadmap) and phaseNN-roadmap.md (executable per-phase plans)

@@ -220,8 +220,9 @@ def frame_from_world(world: World, spec: ScaleSpec) -> Frame:
     planted duplicate source record is one row, as after ingest); justice
     events are the truth generator's outcomes per case (``outcomes_of``),
     one row per distinct (person, type, instant, case) as the ingest
-    natural key collapses them; the coverage window is the corpus and the
-    observable outcomes those the synthetic source documents.
+    natural key collapses them; the courts carry their codes and the
+    jurisdiction's name as ids (Phase 4 Step 2); the coverage window is the
+    corpus and the observable outcomes those the synthetic source documents.
     """
     cases: list[dict[str, Any]] = []
     assignments: list[dict[str, Any]] = []
@@ -330,6 +331,10 @@ def frame_from_world(world: World, spec: ScaleSpec) -> Frame:
         events=_table("events", events),
         justice_events=_table("justice_events", justice_rows),
         persons=_table("persons", [{"id": person.true_id} for person in world.persons]),
+        courts=_table(
+            "courts",
+            [{"id": court.code, "jurisdiction_id": court.jurisdiction} for court in world.courts],
+        ),
         coverage_start=spec.corpus_start,
         coverage_end=spec.corpus_end,
         observable_outcomes=SYNTHETIC_OBSERVABLE,

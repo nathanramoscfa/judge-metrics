@@ -2,18 +2,19 @@
 """Every canonical entity of the brief, exported so Alembic autogenerate and
 the application see one complete ``Base.metadata``.
 
-Twenty-six tables: the brief's twenty-three — jurisdiction, court, judge,
+Twenty-seven tables: the brief's twenty-three — jurisdiction, court, judge,
 judge_service, person, person_identifier, court_case, case_party,
 judge_assignment, charge, court_event, decision, pretrial_release,
 sentence, justice_event, source, source_record, ingest_run,
 entity_resolution_candidate, metric_definition, metric_observation,
 data_quality_issue, correction_request — the append-only audit_log the
-brief's security requirements ask for (revision 0004), and the metrics
-engine's metric_snapshot and metric_observation_member (revision 0005).
+brief's security requirements ask for (revision 0004), the metrics
+engine's metric_snapshot and metric_observation_member (revision 0005),
+and the fitted expected-outcome models' outcome_model (revision 0009).
 
 Beside them, the ``restricted`` PostgreSQL schema (revision 0008) holds
 ``restricted.party_attribute``; its tables are listed in
-``RESTRICTED_SCHEMA_TABLES``, not among the twenty-six public tables.
+``RESTRICTED_SCHEMA_TABLES``, not among the twenty-seven public tables.
 """
 
 from judgemetrics.db.base import Base
@@ -47,6 +48,7 @@ from judgemetrics.db.models.metrics import (
     MetricObservationMember,
     MetricSnapshot,
 )
+from judgemetrics.db.models.outcome_models import OUTCOME_MODEL_STATUSES, OutcomeModel
 from judgemetrics.db.models.persons import JusticeEvent, Person, PersonIdentifier
 from judgemetrics.db.models.provenance import (
     SYNTHETIC_SOURCE_TYPE,
@@ -83,6 +85,7 @@ CANONICAL_TABLES: tuple[str, ...] = (
     "metric_observation",
     "metric_snapshot",
     "metric_observation_member",
+    "outcome_model",
     "data_quality_issue",
     "correction_request",
     "audit_log",
@@ -101,6 +104,7 @@ RESTRICTED_SCHEMA_TABLES: frozenset[str] = frozenset({"party_attribute"})
 __all__ = [
     "CANONICAL_TABLES",
     "MEMBER_KINDS",
+    "OUTCOME_MODEL_STATUSES",
     "PG_ENUM_NAMES",
     "RESTRICTED_SCHEMA",
     "RESTRICTED_SCHEMA_TABLES",
@@ -133,6 +137,7 @@ __all__ = [
     "MetricObservation",
     "MetricObservationMember",
     "MetricSnapshot",
+    "OutcomeModel",
     "PartyAttribute",
     "Person",
     "PersonIdentifier",

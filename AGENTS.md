@@ -151,6 +151,9 @@ uv run poe compute-metrics                       # judgemetrics metrics compute:
 uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
 uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
 uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role); exit 1 when incomplete
+uv run judgemetrics models fit [--snapshot HASH] [--json]       # fit and record every expected-outcome model the latest (or named) snapshot lacks (ingest role); idempotent
+uv run judgemetrics models list|show <id or hash> [--json]      # the model catalogue and a model card (app role); never the storage URI
+uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
 uv run poe bootstrap                             # up → migrate → ingest-fjc → seed → compute-metrics: the one-command startup (idempotent; `make bootstrap` runs `uv sync` first)
 uv run judgemetrics seed --out data/synthetic/ci  # the seed into another directory (the CI e2e job)
 ```
@@ -853,6 +856,64 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   run-level (`source_record_id` NULL) issues of the case-level entity
   types, which no purge reached and which leaked into later modules' and
   sessions' issue counts.
+- Expected-outcome model (Phase 4 Step 2, docs/ARCHITECTURE.md "Risk
+  adjustment", docs/DATA_MODEL.md "Outcome model specification"):
+  `data/reference/outcome_model.yaml` (`version` 1, `model_version`
+  `expected-logit-v1`) is the third versioned reference file; a value that
+  alters a fitted model or a published figure bumps `version`, a `recovery`
+  tolerance does not. `metrics/adjustment/spec.py` validates every feature
+  against `FEATURE_CONTRACTS` (kind, known-at instant, the exact frame
+  columns read; the same keys as `features.FEATURE_BUILDERS`), so adding a
+  feature means a builder, a contract, and a YAML entry together; a feature
+  naming a `restricted_attribute` value (read from the vocabulary — no
+  module under `metrics/` may spell one), an excluded name, or an excluded
+  column is rejected first. Targets name registry metrics as populations
+  (`pretrial_decisions`, `new_case_rate`, `failure_to_appear_rate`) and the
+  design reuses `pretrial_decisions_for`, `index_events`, `with_exposure`,
+  `first_outcomes`, and `member_windows` judge by judge (the published
+  gate). History features read strictly before 00:00 UTC of the index
+  case's filing date; the index case's own charges strictly before the
+  pretrial decision. A prior case is pending as of the filing when one of
+  its charges filed before it was pending then (disposed at or after it,
+  or `pending`) or none was disposed before it — a charge without a
+  recorded disposition is ignored; that rule is what keeps the features
+  leakage-free (the "latest disposed charge" rule is not: it reads whether
+  a later charge was disposed) and it equals the generator's on every
+  synthetic world (`test_adjustment_features.py` compares the golden
+  world's design with `case.draws.features`; the demo world matched on
+  all 4,534 decisions). Data levels are ordered by row count and then a
+  source-assigned key (a court's earliest `<filed_at>|<source_row_id>`),
+  courts and jurisdictions labelled by rank, so artifacts carry no UUID;
+  the catalogue row's `coefficients` map a rank back to the court id. The
+  solver uses only `np.einsum` (default `optimize=False`, never BLAS) and a
+  NumPy column Cholesky (never LAPACK) so fits are bit-identical; an
+  unpenalized fit of separated data "converges" at a runaway coefficient
+  because the gradient vanishes — only the calibration slope is
+  unpenalized. Bootstrap streams are `bootstrap:<target>:<window or
+  none>` derived like `synthetic/rng.py`'s; replicate refits start from the
+  published coefficients. The events-per-column gate counts the limiting
+  class (the fewer of outcomes and non-outcomes) against every design
+  column including the intercept: every golden model is
+  `insufficient_events`, every demo model `fitted` (13; about 30 s with
+  500 replicates each). Artifacts are canonical JSON (sorted keys, twelve
+  significant digits) at `<snapshot_dir>/<snapshot>/models/<sha256>.json`,
+  written with `open(path, "xb")` through `artifacts.artifact_path`, which
+  validates both hashes; `models verify` rebuilds the path from settings,
+  never from `storage_uri`, and `--refit` renders under the row's
+  `code_version` so a later commit does not count as a mismatch. Revision
+  0009 adds `outcome_model` (unique key `NULLS NOT DISTINCT` over snapshot,
+  source, spec version, target, window, seed; `SELECT` for the app role,
+  DML for ingest) — twenty-seven `CANONICAL_TABLES`; `purge_source` in
+  `tests/integration/conftest.py` deletes a source's models after its
+  observations and before the snapshots they cite. The frame gained
+  `courts` (id, jurisdiction) — the snapshot already exported it — so a
+  `Frame(...)` construction must pass it (`snapshot.py`,
+  `tests/property/support.frame_from_world`). Integration tests that
+  invoke the CLI from a module-scoped fixture must clear `get_settings`
+  first (the autouse per-test clear runs after module fixtures) and parse
+  `result.stdout` (log lines go to stderr, which `result.output` mixes in).
+  `metrics compute` does not fit in this step: the `e2e` job runs `models
+  fit` and `models verify` after it.
 
 ## End-of-session report (from the brief)
 

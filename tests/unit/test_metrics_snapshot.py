@@ -315,6 +315,8 @@ def test_the_frame_of_a_source_resolves_merges_and_derives_other_case_outcomes(
     assert frame.charges["person_id"].to_list() == [SURVIVOR] * 3  # the alias re-pointed
     assert frame.persons["id"].to_list() == [SURVIVOR]
     assert frame.persons.columns == ["id"]
+    # Phase 4 Step 2: the courts of the source's cases with their jurisdiction.
+    assert frame.courts.to_dicts() == [{"id": "court-1", "jurisdiction_id": "jur"}]
     assert (frame.coverage_start, frame.coverage_end) == (date(2020, 1, 1), date(2020, 12, 31))
     assert frame.observable_outcomes == {"failure_to_appear", "new_case"}
     events = {

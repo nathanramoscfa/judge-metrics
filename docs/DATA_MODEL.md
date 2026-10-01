@@ -73,6 +73,7 @@ observation).
 | `metric_snapshot`              | One hashed export of the canonical tables that observations are computed from (0005): `content_hash` (unique), `label`, `exported_at`, `code_version`, `registry_version`, `methodology_version`, `row_counts`, `coverage` (per source id: `coverage_start`, `coverage_end`), `storage_uri`. | — |
 | `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. `period_start`/`period_end` are the source's coverage window. | via `metric_snapshot` and its members |
 | `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
+| `outcome_model`                | One fitted expected-outcome model (0009, Phase 4 Step 2) per snapshot, source, specification version, target, window, and seed: `content_hash` (the sha256 of its canonical JSON artifact, unique), `snapshot_id` and `source_id` (RESTRICT), `spec_version`, `model_version`, `target`, `window_days` (null for the release target), `seed`, `status` (`fitted`, `insufficient_events`, `not_converged`), the temporal split's `n_train`/`events_train` (before the cutoff) and `n_test`/`events_test` (at or after it; the published fit is over both), `train_start`/`train_end` (the index-time range) and `split_cutoff`, `diagnostics` and `coefficients` (JSONB, so a model card needs no artifact), `storage_uri` (the artifact under the snapshot directory; never returned by a public surface), `code_version`, `fitted_at`. No person-level column. | via `metric_snapshot` and its artifact |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
 | `correction_request`           | A public correction request (`POST /api/v1/corrections`): `target_type` (`judge`, `court`, `case`, `metric_observation`), `target_id`, `requester_contact` (Fernet ciphertext under `JUDGEMETRICS_CORRECTION_CONTACT_KEY`, never plaintext), `reason`, `supporting_material_path` (an optional http(s) URL), `status` (`received` at intake), `resolved_at`. **Restricted**: the app role inserts and never reads. | — |
 | `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
@@ -110,6 +111,7 @@ was computed from (Phase 3 Step 2 writes both; Step 3's
 | `metric_definition`| `(slug, version)`                                                                               | `metric_definition_slug_version`             |
 | `metric_snapshot`  | `content_hash`                                                                                  | `uq_metric_snapshot_content_hash`            |
 | `metric_observation` | `(metric_definition_id, subject_type, subject_id, source_id, period_start, period_end, window_days, dimension_value, snapshot_id)`, `NULLS NOT DISTINCT` | `uq_metric_observation_key` |
+| `outcome_model`    | `(snapshot_id, source_id, spec_version, target, window_days, seed)`, `NULLS NOT DISTINCT`; `content_hash` | `uq_outcome_model_key`, `uq_outcome_model_content_hash` |
 
 The ingest runner upserts on these keys (`INSERT … ON CONFLICT`) and
 deduplicates drafts by the same keys within a run. Judge resolution is
@@ -256,6 +258,33 @@ or changing a metric bumps the entry's `version` and the registry
 them); a change of semantics bumps `methodology_version` and adds a
 changelog entry.
 
+### Outcome model specification
+
+`data/reference/outcome_model.yaml` (`version: 1`, `model_version:
+expected-logit-v1`, Phase 4 Step 2) is the third versioned reference file:
+the contract every risk-adjusted figure is computed against
+(`docs/ARCHITECTURE.md` "Risk adjustment"). `metrics.adjustment.spec.load_spec`
+loads it once with `yaml.safe_load` and validates it: the targets
+(`pretrial_release` over the `pretrial_decisions` gate; `new_case` and
+`failure_to_appear` over the pretrial-release cohort of the registry's
+windowed rates, one model per window), the eleven features (each with its
+frame columns, kind, levels or bands, reference, known-at instant, missing
+rule, and leakage statement, checked against the builder the code
+implements and, for fixed levels, against the case vocabulary: every
+`severity` and `offense_category` value listed once), the exclusions (every
+`restricted_attribute` value through the vocabulary, the judge, the release
+terms, anything at or after the index, the latent propensity — each with
+its reason), the L2 penalty and solver limits, the temporal split, the
+seed, the bootstrap, the pooling bounds, the thresholds, and the recovery
+tolerances. A change that alters a fitted model or a published figure
+bumps `version` (the old `outcome_model` rows keep theirs as history); a
+`recovery` tolerance alters neither and does not.
+
+The analytic frame (`metrics/frame.py`) gained `courts` (id,
+jurisdiction) in the same step: the courts of the frame's cases, which the
+snapshot already exported, for the model's court and jurisdiction
+features.
+
 ## JSONB columns
 
 | Column                     | Content                                                                                       |
@@ -276,6 +305,8 @@ changelog entry.
 | `metric_definition.subject_types`, `.attribution`, `.windows_days` | `["judge", "court"]`; `{"decision_type": …, "actor_types": […], "discretion": […], "assignment_gate": …}`; `[30, 90, 180, 365, 730, 1095]` or null. |
 | `metric_snapshot.row_counts`, `.coverage` | `{"<table>": <rows>}` over the eleven exported tables; `{"<source id>": {"name": …, "coverage_start": …, "coverage_end": …}}`. |
 | `metric_observation.distribution` | `{"<dimension value>": <count>, …}` for a distribution observation; null otherwise. |
+| `outcome_model.diagnostics` | `{"status": …, "base_rate_train", "brier", "brier_skill", "auc", "calibration_in_the_large", "calibration_slope", "bins": [{"bin", "count", "mean_predicted", "observed_rate"} × 10]}` — the temporal-split test set's diagnostics; `status` alone when the split could not be fitted. |
+| `outcome_model.coefficients` | `[{"column", "feature", "level", "reference", "estimate", "sd", "sign_agreement"}, …]` per design column of a fitted model (the bootstrap standard deviation and sign agreement); a court's `level` and `reference` are its id, the artifact keeps the rank label (`column`); null unless `fitted`. |
 
 Restricted attributes never appear in any of these columns.
 
@@ -283,8 +314,8 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier` | `correction_request`                          | The `restricted` schema (0008)          | Every other table                       |
 |-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows) |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables explicitly; the metrics engine writes as this role) |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; and `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables and 0009 `outcome_model` explicitly; the metrics engine and `models fit` write as this role) |
 | `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all, and by default privilege on later tables | all |
 
 `PUBLIC` holds nothing on `restricted` (revoked by 0008).
@@ -379,4 +410,4 @@ FROM` guard, inside the ingest transaction. The synthetic connector
 publishes `age_band` (from `participants.csv`'s `age_at_filing`, blank →
 `unknown`) and `synthetic_group`. `RESTRICTED_SCHEMA_TABLES`
 (`db/models/__init__.py`) lists the schema's tables beside
-`RESTRICTED_TABLES`; the twenty-six `CANONICAL_TABLES` stay public.
+`RESTRICTED_TABLES`; the twenty-seven `CANONICAL_TABLES` stay public.
