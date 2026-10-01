@@ -13,11 +13,11 @@
 # methodology change (0.1 is the first registry; 1.0 is Phase 4's).
 #
 # Fields per metric: slug (snake_case, unique), name, kind (count, share,
-# windowed_rate, survival, distribution, median), subject_types (judge,
-# court), population (which rows the metric reads: cases, defendants,
-# pretrial_decisions, disposed_charges, disposed_cases, sentences,
-# index_events), description, numerator, denominator, eligibility (prose
-# the methodology publishes), attribution (decision_type, actor_types,
+# windowed_rate, survival, distribution, median, observed_expected),
+# subject_types (judge, court), population (which rows the metric reads:
+# cases, defendants, pretrial_decisions, disposed_charges, disposed_cases,
+# sentences, index_events), description, numerator, denominator,
+# eligibility (prose the methodology publishes), attribution (decision_type, actor_types,
 # discretion, assignment_gate: deciding_judge, assigned_at_time,
 # assigned_ever, sentencing_judge, court_of_case - the gate applies to a
 # judge subject; a court subject always takes the court's cases),
@@ -26,9 +26,13 @@
 # (pretrial_release, disposition, sentence, or null), outcome (a
 # justice_event_type value or null), windows_days (the brief's six or
 # null), dimension (disposition, offense_category, or null),
-# suppression_threshold, unit (count, share, days), version, and an
+# suppression_threshold, unit (count, share, days, ratio), version, an
 # optional truth_note stating how the prose differs from the golden
-# fixture's truth/metrics.json definitions.
+# fixture's truth/metrics.json definitions, and - for an observed_expected
+# metric only, where it is required - adjustment (target: the outcome
+# model specification's target the ratio reads, data/reference/
+# outcome_model.yaml; minimum_expected: the model-expected count below which
+# the ratio is withheld).
 #
 # Suppression rationale: the brief asks that judge-level measures over
 # too small a sample be suppressed or flagged and the thresholds
@@ -37,9 +41,16 @@
 # rate by ten points or more; a median of fewer than ten values is one or
 # two cases). Counts and distributions carry threshold 0: they are the
 # sample sizes the presentation rules require beside every rate, and a
-# count is not an unstable estimate of anything.
-version: 1
-methodology_version: "0.2"
+# count is not an unstable estimate of anything. An observed-to-expected
+# ratio (registry version 2) is suppressed below a cohort of 30 and below a
+# model-expected count of 5, and whenever its model is not fitted: a ratio
+# of two small counts is unstable well above the ten members a share needs
+# (its numerator and its denominator both move by chance), and an expected
+# count below five makes the ratio a function of a handful of predicted
+# events. Every suppressed row records why (suppression_reason:
+# below_threshold, expected_below_minimum, model_unavailable).
+version: 2
+methodology_version: "0.3"
 
 known_limitations:
   - >-
@@ -71,10 +82,13 @@ suppression:
   default_threshold: 10
   rule: >-
     An observation whose denominator is below the metric's
-    suppression_threshold is stored with suppressed_flag = true; every public
-    surface then shows that the cohort was too small and withholds the
-    numerator, denominator, value, and interval. The stored row keeps its
-    numbers so `metrics verify` can reproduce it.
+    suppression_threshold is stored with suppressed_flag = true and the reason
+    below_threshold; every public surface then shows that the cohort was too
+    small and withholds the numerator, denominator, value, and interval. An
+    observed-to-expected ratio is also suppressed when its model-expected count
+    is below the metric's minimum (expected_below_minimum) or its outcome model
+    is not fitted (model_unavailable). The stored row keeps its numbers so
+    `metrics verify` can reproduce it.
   rationale: >-
     Shares, windowed rates, survival estimates, and medians are suppressed
     below a denominator of 10: with fewer than ten followed members a single
@@ -82,6 +96,11 @@ suppression:
     than ten values describes one or two cases. Counts and distributions carry
     a threshold of 0 because they are the sample sizes the presentation rules
     require beside every rate, and a count is not an unstable estimate.
+    Observed-to-expected ratios are suppressed below a cohort of 30 and below an
+    expected count of 5: a ratio of two small counts is unstable well above the
+    ten members a share needs, because both its numerator and its denominator
+    move by chance, and an expected count below five makes the ratio a function
+    of a handful of predicted events.
 
 metrics:
   # --- eligibility -------------------------------------------------------------
@@ -1118,3 +1137,124 @@ metrics:
     suppression_threshold: 10
     unit: days
     version: "1"
+
+  # --- observed-to-expected ratios (registry version 2, methodology 0.3) -------
+  # Computed by the full `metrics compute` only and not served by the API until
+  # methodology 1.0 publishes their validation (docs/ARCHITECTURE.md "Risk
+  # adjustment").
+  - slug: pretrial_release_observed_expected
+    name: Pretrial releases, observed to expected
+    kind: observed_expected
+    subject_types: [judge]
+    population: pretrial_decisions
+    description: >-
+      The judge's pretrial releases over the number the outcome model expects
+      for the same decisions under the source's average practice, partially
+      pooled toward 1 (an association with the judge's decisions, not a causal
+      effect).
+    numerator: >-
+      Observed releases: the attributed pretrial decisions with detained =
+      false (pretrial_released).
+    denominator: >-
+      Expected releases: the sum over the same decisions of the outcome model's
+      predicted probability of release (target pretrial_release), from the
+      published coefficients; a decision whose model features are missing under
+      an exclude rule is outside the ratio and counted in the eligible count.
+    eligibility: >-
+      The attributed pretrial decisions of pretrial_decisions; every decision
+      carries a detained flag, so the denominator is the whole set.
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: null
+    outcome: null
+    windows_days: null
+    dimension: null
+    suppression_threshold: 30
+    unit: ratio
+    version: "1"
+    adjustment:
+      target: pretrial_release
+      minimum_expected: 5
+
+  - slug: new_case_observed_expected
+    name: New cases after pretrial release, observed to expected
+    kind: observed_expected
+    subject_types: [judge]
+    population: index_events
+    description: >-
+      The judge's followed pretrial-release cohort members with a new case filed
+      within the window over the number the outcome model expects for the same
+      members, partially pooled toward 1 (an association, not a causal effect).
+    numerator: >-
+      Followed cohort members with at least one new_case event in (exposure
+      start, exposure start + w days] in another case of the person
+      (new_case_rate's numerator).
+    denominator: >-
+      Expected new cases: the sum over the same followed members of the outcome
+      model's predicted probability of a new case within the window (target
+      new_case, window w), from the published coefficients; a member whose
+      model features are missing under an exclude rule is outside the ratio.
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 30
+    unit: ratio
+    version: "1"
+    adjustment:
+      target: new_case
+      minimum_expected: 5
+
+  - slug: failure_to_appear_observed_expected
+    name: Failures to appear after pretrial release, observed to expected
+    kind: observed_expected
+    subject_types: [judge]
+    population: index_events
+    description: >-
+      The judge's followed pretrial-release cohort members with a documented
+      failure to appear within the window over the number the outcome model
+      expects for the same members, partially pooled toward 1 (an association,
+      not a causal effect).
+    numerator: >-
+      Followed cohort members with at least one failure_to_appear event in
+      (exposure start, exposure start + w days], in any case of the person
+      (failure_to_appear_rate's numerator).
+    denominator: >-
+      Expected failures to appear: the sum over the same followed members of the
+      outcome model's predicted probability of a failure to appear within the
+      window (target failure_to_appear, window w), from the published
+      coefficients; a member whose model features are missing under an exclude
+      rule is outside the ratio.
+    eligibility: >-
+      The pretrial-release cohort: attributed pretrial decisions (the gate of
+      pretrial_decisions) with detained = false and a release time; the index
+      time is the release time, and exposure starts there unless an
+      incarceration term of the person contains it (Exposure).
+    attribution:
+      decision_type: pretrial_release
+      actor_types: [judge]
+      discretion: [discretionary]
+      assignment_gate: deciding_judge
+    index_event: pretrial_release
+    outcome: failure_to_appear
+    windows_days: [30, 90, 180, 365, 730, 1095]
+    dimension: null
+    suppression_threshold: 30
+    unit: ratio
+    version: "1"
+    adjustment:
+      target: failure_to_appear
+      minimum_expected: 5

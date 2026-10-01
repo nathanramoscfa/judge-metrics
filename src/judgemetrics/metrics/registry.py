@@ -13,6 +13,16 @@ other kind carrying none — raising ``RegistryError`` naming the slug and
 the field on any violation, so a misread definition never reaches a
 computation.
 
+Registry version 2 (Phase 4 Step 3) adds the kind ``observed_expected``
+(unit ``ratio``): an observed count over the expected count of the outcome
+model (``data/reference/outcome_model.yaml``), partially pooled. Its entry
+carries the field ``adjustment`` — ``target``, the specification target it
+reads, and ``minimum_expected``, the expected count below which the ratio
+is withheld — which every other kind must not carry; it is a judge-level
+measure (``subject_types: [judge]``) over the release target's decisions
+(no window) or a windowed target's pretrial-release cohort (an index
+event, an outcome, and the brief's six windows).
+
 ``sync_definitions(session)`` mirrors the registry into
 ``metric_definition`` on ``(slug, version)``: new versions are inserted,
 rows whose substantive columns changed are updated, unchanged rows are not
@@ -44,7 +54,19 @@ DEFAULT_PATH = REPO_ROOT / "data" / "reference" / "metric_registry.yaml"
 
 # The brief's observation windows (<outcome_definitions>), in days.
 WINDOWS_DAYS: tuple[int, ...] = (30, 90, 180, 365, 730, 1095)
-KINDS: tuple[str, ...] = ("count", "share", "windowed_rate", "survival", "distribution", "median")
+OBSERVED_EXPECTED = "observed_expected"
+KINDS: tuple[str, ...] = (
+    "count",
+    "share",
+    "windowed_rate",
+    "survival",
+    "distribution",
+    "median",
+    OBSERVED_EXPECTED,
+)
+# The Phase 3 kinds: descriptive figures computed from the frame alone (pipeline step 13
+# recomputes these; an adjusted figure needs a model fitted over every judge).
+DESCRIPTIVE_KINDS: frozenset[str] = frozenset(KINDS) - {OBSERVED_EXPECTED}
 WINDOWED_KINDS: frozenset[str] = frozenset({"windowed_rate", "survival"})
 SUBJECT_TYPES: tuple[str, ...] = ("judge", "court")
 POPULATIONS: tuple[str, ...] = (
@@ -65,7 +87,7 @@ ASSIGNMENT_GATES: tuple[str, ...] = (
 )
 INDEX_EVENTS: tuple[str, ...] = ("pretrial_release", "disposition", "sentence")
 DIMENSIONS: tuple[str, ...] = ("disposition", "offense_category")
-UNITS: tuple[str, ...] = ("count", "share", "days")
+UNITS: tuple[str, ...] = ("count", "share", "days", "ratio")
 MEASURES: tuple[str, ...] = ("days_to_disposition", "incarceration_days", "probation_days")
 # `counted` conditions: the column and the vocabulary kind its value must
 # belong to (`None` for a boolean flag).
@@ -92,13 +114,17 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "unit",
     "version",
 )
-OPTIONAL_FIELDS: tuple[str, ...] = ("counted", "measure", "truth_note")
+OPTIONAL_FIELDS: tuple[str, ...] = ("counted", "measure", "truth_note", "adjustment")
 ATTRIBUTION_FIELDS: tuple[str, ...] = (
     "decision_type",
     "actor_types",
     "discretion",
     "assignment_gate",
 )
+ADJUSTMENT_FIELDS: tuple[str, ...] = ("target", "minimum_expected")
+# The populations an adjusted figure is defined over: the release target's
+# decisions, or a windowed target's pretrial-release index events.
+ADJUSTED_POPULATIONS: tuple[str, ...] = ("pretrial_decisions", "index_events")
 
 
 class RegistryError(ValueError):
@@ -121,6 +147,17 @@ class AttributionSpec:
             "discretion": None if self.discretion is None else list(self.discretion),
             "assignment_gate": self.assignment_gate,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class AdjustmentSpec:
+    """An ``observed_expected`` metric's model target and its minimum expected count."""
+
+    target: str
+    minimum_expected: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"target": self.target, "minimum_expected": self.minimum_expected}
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,10 +184,18 @@ class MetricDefinitionSpec:
     counted: tuple[tuple[str, str | bool], ...] = ()
     measure: str | None = None
     truth_note: str | None = None
+    adjustment: AdjustmentSpec | None = None
 
     @property
     def is_windowed(self) -> bool:
-        return self.kind in WINDOWED_KINDS
+        """Whether the metric has follow-up windows (an adjusted ratio over a cohort has)."""
+        return self.kind in WINDOWED_KINDS or (
+            self.kind == OBSERVED_EXPECTED and self.windows_days is not None
+        )
+
+    @property
+    def is_adjusted(self) -> bool:
+        return self.kind == OBSERVED_EXPECTED
 
     @property
     def counted_conditions(self) -> dict[str, str | bool]:
@@ -337,6 +382,63 @@ def _threshold(value: Any, slug: str) -> int:
     return value
 
 
+def _adjustment(entry: Mapping[str, Any], slug: str, kind: str) -> AdjustmentSpec | None:
+    """``adjustment`` is required for an ``observed_expected`` metric and rejected otherwise."""
+    block = entry.get("adjustment")
+    if kind != OBSERVED_EXPECTED:
+        if block is not None:
+            raise _fail(slug, "adjustment", f"is only allowed on an {OBSERVED_EXPECTED}")
+        return None
+    if not isinstance(block, dict):
+        raise _fail(slug, "adjustment", f"is required for an {OBSERVED_EXPECTED} (a mapping)")
+    unknown = set(block) - set(ADJUSTMENT_FIELDS)
+    missing = set(ADJUSTMENT_FIELDS) - set(block)
+    if unknown or missing:
+        raise _fail(
+            slug,
+            "adjustment",
+            f"must carry exactly {', '.join(ADJUSTMENT_FIELDS)}"
+            f" (missing {sorted(missing)}, unknown {sorted(unknown)})",
+        )
+    target = block["target"]
+    if not isinstance(target, str) or not SLUG_PATTERN.match(target):
+        raise _fail(slug, "adjustment.target", "must name a specification target (snake_case)")
+    minimum = block["minimum_expected"]
+    if isinstance(minimum, bool) or not isinstance(minimum, int | float) or minimum < 0:
+        raise _fail(slug, "adjustment.minimum_expected", "must be a non-negative number")
+    return AdjustmentSpec(target=target, minimum_expected=float(minimum))
+
+
+def _check_adjusted(
+    slug: str,
+    population: str,
+    subject_types: tuple[str, ...],
+    unit: str,
+    index_event: str | None,
+    outcome: str | None,
+    windows: tuple[int, ...] | None,
+) -> None:
+    """An adjusted ratio is a judge measure over decisions (no window) or a release cohort."""
+    if subject_types != ("judge",):
+        raise _fail(slug, "subject_types", "must be [judge]: an adjusted ratio compares judges")
+    if unit != "ratio":
+        raise _fail(slug, "unit", f"must be ratio for an {OBSERVED_EXPECTED}")
+    if population not in ADJUSTED_POPULATIONS:
+        raise _fail(slug, "population", f"must be one of {', '.join(ADJUSTED_POPULATIONS)}")
+    windowed = population == "index_events"
+    for field_name, value in (
+        ("index_event", index_event),
+        ("outcome", outcome),
+        ("windows_days", windows),
+    ):
+        if windowed and value is None:
+            raise _fail(slug, field_name, "is required for an adjusted ratio over index events")
+        if not windowed and value is not None:
+            raise _fail(slug, field_name, "must be null for an adjusted ratio over decisions")
+    if windowed and index_event != "pretrial_release":
+        raise _fail(slug, "index_event", "must be pretrial_release for an adjusted ratio")
+
+
 def parse_metric(entry: Any) -> MetricDefinitionSpec:
     """Validate one ``metrics:`` entry (a mapping) into a spec."""
     if not isinstance(entry, dict):
@@ -365,7 +467,13 @@ def parse_metric(entry: Any) -> MetricDefinitionSpec:
     if measure is not None:
         measure = _choice(measure, slug, "measure", MEASURES)
     population = _choice(entry["population"], slug, "population", POPULATIONS)
-    if kind in WINDOWED_KINDS:
+    subject_types = _subject_types(entry["subject_types"], slug)
+    unit = _choice(entry["unit"], slug, "unit", UNITS)
+    if kind == OBSERVED_EXPECTED:
+        _check_adjusted(slug, population, subject_types, unit, index_event, outcome, windows)
+    elif unit == "ratio":
+        raise _fail(slug, "unit", f"ratio is only allowed on an {OBSERVED_EXPECTED}")
+    elif kind in WINDOWED_KINDS:
         if index_event is None:
             raise _fail(slug, "index_event", f"is required for a {kind}")
         if outcome is None:
@@ -390,11 +498,14 @@ def parse_metric(entry: Any) -> MetricDefinitionSpec:
         raise _fail(slug, "measure", "is required for a median")
     if kind != "median" and measure is not None:
         raise _fail(slug, "measure", "is only allowed on a median")
+    if kind == OBSERVED_EXPECTED and (dimension is not None or entry.get("counted") is not None):
+        raise _fail(slug, "dimension", f"an {OBSERVED_EXPECTED} has no dimension or counted rows")
+    adjustment = _adjustment(entry, slug, kind)
     return MetricDefinitionSpec(
         slug=slug,
         name=_string(entry, slug, "name"),
         kind=kind,
-        subject_types=_subject_types(entry["subject_types"], slug),
+        subject_types=subject_types,
         population=population,
         description=_string(entry, slug, "description"),
         numerator=_string(entry, slug, "numerator"),
@@ -406,11 +517,12 @@ def parse_metric(entry: Any) -> MetricDefinitionSpec:
         windows_days=windows,
         dimension=dimension,
         suppression_threshold=_threshold(entry["suppression_threshold"], slug),
-        unit=_choice(entry["unit"], slug, "unit", UNITS),
+        unit=unit,
         version=_string(entry, slug, "version"),
         counted=_counted(entry, slug),
         measure=measure,
         truth_note=_optional_string(entry, slug, "truth_note"),
+        adjustment=adjustment,
     )
 
 

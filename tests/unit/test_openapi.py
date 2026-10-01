@@ -334,7 +334,17 @@ def test_metrics_routes_declare_the_presentation_fields_and_the_compare_paramete
         "snapshot_hash",
         "exported_at",
         "methodology_version",
+        "models",
     }
+    # Phase 4 Step 3: the latest snapshot's models as counts and versions, never a hash.
+    assert set(schemas["ModelsReadiness"]["properties"]) == {
+        "fitted",
+        "unavailable",
+        "spec_version",
+        "model_version",
+    }
+    # The hold-out: no served schema names the adjusted kind before Step 5.
+    assert "observed_expected" not in json.dumps(document)
     coverage_source = set(schemas["CoverageSource"]["properties"])
     assert {
         "coverage_start",

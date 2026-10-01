@@ -472,8 +472,16 @@ def recompute_metrics(
     published — unchanged subjects are left in place, changed ones are
     superseded and re-inserted, every other subject is untouched — and the
     snapshot is recorded in ``ingest_run.metrics_snapshot_id``.
+
+    Only the descriptive kinds are recomputed here (Phase 4 Step 3): an
+    ``observed_expected`` figure depends on a model and a pooling shape
+    fitted over every judge of the source, so the full ``metrics compute``
+    recomputes it, and the adjusted observations a touched judge holds keep
+    citing the snapshot and model they came from (``publish`` is scoped by
+    kind and neither compares nor supersedes them).
     """
     from judgemetrics.metrics.engine import compute_and_publish
+    from judgemetrics.metrics.registry import DESCRIPTIVE_KINDS
 
     impacted = impacted_subjects(session, resolved, published)
     if not impacted:
@@ -487,7 +495,11 @@ def recompute_metrics(
         )
         return RecomputeResult(impacted=impacted, engine=None)
     engine = compute_and_publish(
-        session, settings, subjects=list(impacted), label=f"ingest run {run.id}"
+        session,
+        settings,
+        subjects=list(impacted),
+        label=f"ingest run {run.id}",
+        kinds=DESCRIPTIVE_KINDS,
     )
     run.metrics_snapshot_id = engine.published.snapshot_id
     session.add(run)

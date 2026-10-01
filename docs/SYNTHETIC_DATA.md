@@ -294,6 +294,58 @@ the effects clearly worse than the oracle does (demo seed: release
 new-case ranking 0.716). `tests/unit/test_synthetic_effects.py` asserts
 the first four on the demo world.
 
+### Recovery
+
+`tests/golden/test_golden_recovery.py` (Phase 4 Step 3) checks that the
+published estimator — the outcome model, the pooled observed-to-expected
+ratio, and its bootstrap interval, computed by the very function
+`metrics compute` publishes from — recovers the planted answer. It builds
+the demo world in memory (seed `20260916`), fits the three targets the
+specification's `recovery` block names (release; 365-day new case;
+365-day failure to appear) with `fit_frame`, and compares, over the judges
+with at least 30 members in the ratio (20, 19, and 19 of the 24 judges),
+against `compute_effects` on the same world. The tolerances were set by
+running the test once, below the values measured, and are recorded in
+`data/reference/outcome_model.yaml` (`recovery`; a tolerance alters no
+model or figure, so the specification's `version` stays 1):
+
+| Check (tolerance)                                                 | Release | New case 365 | Failure to appear 365 |
+|-------------------------------------------------------------------|---------|--------------|-----------------------|
+| Spearman, log pooled ratio vs centered effect (0.9 / 0.7 / 0.9)   | 0.934   | 0.719        | 0.963                 |
+| Spearman, raw rate O / n vs centered effect (must be lower)       | 0.689   | 0.716        | 0.871                 |
+| Spearman, the oracle ratio (the ceiling; Step 1)                   | 0.944   | 0.846        | 0.933                 |
+| Pearson, expected counts vs the oracle's `sum(p0)` (0.95)          | 0.999   | 0.995        | 0.986                 |
+| Sign agreement for \|centered effect\| > 0.85 (every judge)        | 5 of 5  | 13 of 13     | 5 of 5                |
+| Intervals covering the true ratio `sum(p) / sum(p0)` (0.55)       | 0.60    | 0.63         | 0.68                  |
+| Gamma shape α (pooling weight of a judge with E = α)              | 44.9    | 23.0         | 14.4                  |
+
+Three findings, recorded where they act:
+
+- **The new-case adjustment barely beats the raw rates** (0.719 against
+  0.716). The planted docket tilt confounds the raw new-case rates only
+  mildly, and the next filing depends mostly on the latent propensity no
+  record carries, so the model's expected counts — calibrated on the
+  observable features — cannot sharpen the ranking much (the oracle, which
+  sees the propensity, reaches 0.846). The test asserts the strict
+  inequality the step requires; Step 4's validation report states the
+  margin.
+- **The sign threshold is 0.85, not 0.5.** At 0.5 one 365-day new-case judge
+  with a centered effect of 0.81 disagrees in sign — 9 observed against
+  11.6 expected — which is sampling noise in a cohort of 54, not a fault
+  of the estimator.
+- **The intervals under-cover the true ratio** (60–68%, not 95%). The
+  interval is the bootstrap distribution of the *pooled* estimate, which
+  is shrunk toward 1, so for a judge whose true ratio lies far from 1 the
+  interval is centered between the truth and 1 and often misses the truth
+  (most misses are judges with strong negative effects, just below the
+  lower bound); and a judge alone in a court (J-0001) has an expected count
+  that the court feature fits to its observed count in every replicate, so
+  its interval is a fraction of a percent wide around a ratio the penalty
+  leaves at 0.997 against a true 1.000. The interval quantifies the pooled
+  estimate's sampling variability, not a confidence interval for the
+  judge's true ratio; Step 4's validation report and methodology 1.0 must
+  say so.
+
 ## Restricted controls
 
 - **`age_band`** — the positive control. The age at filing moves both

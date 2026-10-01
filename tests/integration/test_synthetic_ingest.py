@@ -22,7 +22,12 @@ directory — publishes observations for every golden judge and court on
 the first run, supersedes nothing and writes nothing on an identical
 rerun, and after a run that moves one assignment from one judge to
 another supersedes exactly those two judges' observations while every
-other subject's rows stay in place; an FJC run computes nothing.
+other subject's rows stay in place; an FJC run computes nothing. Phase 4
+Step 3: step 13 computes the descriptive kinds only - after a full
+``metrics compute`` has fitted the models and published the adjusted
+observations, a run that touches two judges supersedes their descriptive
+observations and leaves every adjusted one current, citing the full
+compute's snapshot.
 """
 
 from __future__ import annotations
@@ -64,6 +69,7 @@ from judgemetrics.db.models import (
     IssueSeverity,
     Judge,
     JusticeEvent,
+    MetricDefinition,
     MetricObservation,
     Person,
     PersonIdentifier,
@@ -78,6 +84,8 @@ from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.ingest.synthetic.connector import SyntheticConnector
 from judgemetrics.ingest.synthetic.schema import SOURCE_FILES
 from judgemetrics.logging import configure_logging
+from judgemetrics.metrics.engine import compute_and_publish
+from judgemetrics.metrics.registry import DESCRIPTIVE_KINDS, OBSERVED_EXPECTED
 from judgemetrics.normalization.age_bands import age_band
 from judgemetrics.normalization.case_numbers import normalize_case_number
 from judgemetrics.security.identifiers import hash_identifier, name_dob_value
@@ -754,6 +762,46 @@ def _judge_id(session: Session, code: str) -> Any:
     return judge_id
 
 
+def _moved_assignment(tmp_path: Path) -> Path:
+    """A copy of the golden fixture with one J-0001 assignment moved to J-0002."""
+    edited = tmp_path / "edited"
+    shutil.copytree(GOLDEN, edited)
+    assignments = edited / "source" / "assignments.csv"
+    with assignments.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+    header = rows[0]
+    judge_column = header.index("judge_code")
+    target = next(row for row in rows[1:] if row[judge_column] == "J-0001")
+    case_number = target[header.index("case_number")]
+    assert all(
+        row[judge_column] != "J-0002"
+        for row in rows[1:]
+        if row[header.index("case_number")] == case_number
+    )
+    target[judge_column] = "J-0002"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+    assignments.write_text(out.getvalue(), encoding="utf-8")
+    manifest = json.loads((edited / "manifest.json").read_text(encoding="utf-8"))
+    manifest["files"]["source/assignments.csv"] = hashlib.sha256(
+        assignments.read_bytes()
+    ).hexdigest()
+    (edited / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return edited
+
+
+def _current_by_kind(session: Session, kinds: set[str]) -> dict[tuple[str, Any], set[Any]]:
+    """Current observation ids of the given registry kinds per (subject type, subject id)."""
+    grouped: dict[tuple[str, Any], set[Any]] = {}
+    for row in session.execute(
+        select(MetricObservation.subject_type, MetricObservation.subject_id, MetricObservation.id)
+        .join(MetricDefinition, MetricDefinition.id == MetricObservation.metric_definition_id)
+        .where(MetricObservation.superseded_at.is_(None), MetricDefinition.kind.in_(sorted(kinds)))
+    ).all():
+        grouped.setdefault((row[0].value, row[1]), set()).add(row[2])
+    return grouped
+
+
 def test_step_13_recomputes_only_the_subjects_a_run_changed(
     clean_session: Session,
     store: FilesystemRawObjectStore,
@@ -787,29 +835,7 @@ def test_step_13_recomputes_only_the_subjects_a_run_changed(
 
     # 3. Moving one assignment from J-0001 to J-0002 supersedes exactly those two
     #    judges' observations; every other subject (the courts included) stays.
-    edited = tmp_path / "edited"
-    shutil.copytree(GOLDEN, edited)
-    assignments = edited / "source" / "assignments.csv"
-    with assignments.open(encoding="utf-8", newline="") as handle:
-        rows = list(csv.reader(handle))
-    header = rows[0]
-    judge_column = header.index("judge_code")
-    target = next(row for row in rows[1:] if row[judge_column] == "J-0001")
-    case_number = target[header.index("case_number")]
-    assert all(
-        row[judge_column] != "J-0002"
-        for row in rows[1:]
-        if row[header.index("case_number")] == case_number
-    )
-    target[judge_column] = "J-0002"
-    out = io.StringIO()
-    csv.writer(out, lineterminator="\n").writerows(rows)
-    assignments.write_text(out.getvalue(), encoding="utf-8")
-    manifest = json.loads((edited / "manifest.json").read_text(encoding="utf-8"))
-    manifest["files"]["source/assignments.csv"] = hashlib.sha256(
-        assignments.read_bytes()
-    ).hexdigest()
-    (edited / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    edited = _moved_assignment(tmp_path)
     third = _run(session, store, fixture=edited, settings=settings)
     assert third.status is IngestRunStatus.SUCCEEDED, third.failure_reason
     assert third.metrics_snapshot_id is not None
@@ -839,6 +865,54 @@ def test_step_13_recomputes_only_the_subjects_a_run_changed(
     assert [entry["impacted"] for entry in lines] == [len(judges) + len(courts)] * 2
     assert lines[-1]["subjects_published"] == 2
     assert lines[-1]["subjects_unchanged"] == len(judges) + len(courts) - 2
+
+
+def test_step_13_neither_publishes_nor_supersedes_an_adjusted_observation(
+    clean_session: Session, store: FilesystemRawObjectStore, tmp_path: Path
+) -> None:
+    """Step 13 recomputes the descriptive kinds only, even for a judge the run touches."""
+    session = clean_session
+    settings = _settings(metrics_recompute_on_ingest=True, snapshot_dir=tmp_path / "snapshots")
+    first = _run(session, store, settings=settings)
+    assert first.status is IngestRunStatus.SUCCEEDED, first.failure_reason
+    adjusted = {OBSERVED_EXPECTED}
+    descriptive = set(DESCRIPTIVE_KINDS)
+    # 1. Step 13 published descriptive observations and no adjusted one.
+    assert _current_by_kind(session, descriptive)
+    assert not _current_by_kind(session, adjusted)
+    # 2. The full compute fits the snapshot's models and publishes the adjusted ones.
+    full = compute_and_publish(session, settings)
+    assert full.models_fitted == 13 and full.published.subjects_published > 0
+    before = _current_by_kind(session, adjusted)
+    judges = {row["judge_code"] for row in _rows("judges.csv")}
+    assert set(before) == {(SubjectType.JUDGE.value, _judge_id(session, code)) for code in judges}
+    descriptive_before = _current_by_kind(session, descriptive)
+    # 3. A run that moves an assignment from J-0001 to J-0002 recomputes both judges'
+    #    descriptive observations and leaves every adjusted observation in place.
+    third = _run(session, store, fixture=_moved_assignment(tmp_path), settings=settings)
+    assert third.status is IngestRunStatus.SUCCEEDED, third.failure_reason
+    assert third.metrics_snapshot_id is not None
+    session.expire_all()
+    assert _current_by_kind(session, adjusted) == before
+    descriptive_after = _current_by_kind(session, descriptive)
+    for code in ("J-0001", "J-0002"):
+        key = (SubjectType.JUDGE.value, _judge_id(session, code))
+        assert descriptive_after[key].isdisjoint(descriptive_before[key]), code
+    # The adjusted rows keep citing the full compute's snapshot, not the run's.
+    adjusted_ids = set().union(*before.values())
+    cited = set(
+        session.scalars(
+            select(MetricObservation.snapshot_id).where(MetricObservation.id.in_(adjusted_ids))
+        )
+    )
+    assert cited == {full.published.snapshot_id}
+    assert third.metrics_snapshot_id not in cited
+    superseded = session.scalars(
+        select(MetricObservation.id).where(
+            MetricObservation.id.in_(adjusted_ids), MetricObservation.superseded_at.is_not(None)
+        )
+    ).all()
+    assert not superseded
 
 
 # --- refusals ---------------------------------------------------------------------------

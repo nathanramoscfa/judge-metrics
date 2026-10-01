@@ -26,14 +26,17 @@ purged before the source row, and snapshot rows nothing references any
 more go with them, so the golden metrics suite can commit observations
 and the module teardown still empties the source. The source's fitted
 expected-outcome models (Phase 4: ``outcome_model``) are purged after its
-observations and before the snapshots they reference.
+observations — an adjusted observation cites its model (migration 0010) —
+and before the snapshots they reference.
 
 ``golden_metrics`` (Phase 3) runs ``metrics compute`` over the module's
 golden ingest through the Python API — ``compute_and_publish`` as the
 ingest role, the snapshot under a temporary directory — and commits, so
 the metrics routes, the provenance trace, and the golden metric
 assertions all read the same current observations; the module teardown's
-purge removes them with the source.
+purge removes them with the source. Since Phase 4 Step 3 that compute
+also fits the snapshot's thirteen models (all ``insufficient_events`` on
+the golden cohorts) and publishes the adjusted observations.
 """
 
 from __future__ import annotations
@@ -200,7 +203,8 @@ def purge_source(session: Session, name: str) -> None:
     # Metrics first: observations (members cascade) reference the source and
     # runs reference snapshots; a snapshot nothing cites any more is dropped.
     session.execute(delete(MetricObservation).where(MetricObservation.source_id == source_id))
-    # Phase 4: the source's fitted models reference its snapshots (RESTRICT).
+    # Phase 4: the source's fitted models reference its snapshots (RESTRICT), and its
+    # adjusted observations reference the models (0010, RESTRICT): models after them.
     session.execute(delete(OutcomeModel).where(OutcomeModel.source_id == source_id))
     session.execute(
         update(IngestRun).where(IngestRun.source_id == source_id).values(metrics_snapshot_id=None)

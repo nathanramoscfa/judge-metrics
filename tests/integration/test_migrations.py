@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0009): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0010): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -178,7 +178,9 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
         "ix_party_attribute_source_record_id",
     }
     assert not set(RESTRICTED_SCHEMA_TABLES) & set(snapshot.tables)
-    assert current_revision(migrated_database) == head_revision() == "0009"
+    # Revision 0010: an adjusted observation's model.
+    assert "ix_metric_observation_outcome_model_id" in indexes["metric_observation"]
+    assert current_revision(migrated_database) == head_revision() == "0010"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -344,6 +346,72 @@ def test_revision_0009_outcome_model_columns_key_and_grants(migrated_database: E
             granted.setdefault(grantee, set()).add(privilege)
     assert granted["judgemetrics_app"] == {"SELECT"}
     assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= granted["judgemetrics_ingest"]
+
+
+def test_revision_0010_adjusted_observation_columns_checks_and_round_trip(
+    migrated_database: Engine,
+) -> None:
+    """The cited model, the pooling weight, the suppression reason: types, checks, FK, grants."""
+    with migrated_database.connect() as connection:
+        columns = {
+            column: (data_type, nullable == "YES", scale)
+            for column, data_type, nullable, scale in connection.execute(
+                text(
+                    "SELECT column_name, data_type, is_nullable, numeric_scale "
+                    "FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'metric_observation'"
+                )
+            )
+        }
+        assert columns["outcome_model_id"] == ("uuid", True, None)
+        assert columns["pooling_weight"] == ("numeric", True, 6)
+        assert columns["suppression_reason"] == ("text", True, None)
+        for reserved, scale in (
+            ("expected_count", 4),
+            ("expected_rate", 6),
+            ("standardized_ratio", 6),
+        ):
+            assert columns[reserved] == ("numeric", True, scale), reserved
+        checks = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE contype = 'c' AND conrelid = 'metric_observation'::regclass"
+                )
+            )
+        }
+        reason = checks["ck_metric_observation_suppression_reason"]
+        for value in ("below_threshold", "expected_below_minimum", "model_unavailable"):
+            assert value in reason, value
+        assert "suppressed_flag" in checks["ck_metric_observation_suppression_reason_flag"]
+        rule = connection.execute(
+            text(
+                "SELECT delete_rule FROM information_schema.referential_constraints "
+                "WHERE constraint_name = 'fk_metric_observation_outcome_model_id_outcome_model'"
+            )
+        ).scalar()
+        assert rule == "RESTRICT"
+    # 0010 alone round-trips: its three columns go and come back, nothing else moves.
+    url = _url(migrated_database)
+    before = _snapshot(migrated_database)
+    downgrade(url, "0009")
+    try:
+        assert current_revision(migrated_database) == "0009"
+        with migrated_database.connect() as connection:
+            names = set(
+                connection.scalars(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'metric_observation'"
+                    )
+                )
+            )
+        assert not names & {"outcome_model_id", "pooling_weight", "suppression_reason"}
+        assert "expected_count" in names and "standardized_ratio" in names
+    finally:
+        upgrade(url, "head")
+    assert _snapshot(migrated_database) == before
 
 
 def test_revision_0004_columns_check_and_trigger(migrated_database: Engine) -> None:

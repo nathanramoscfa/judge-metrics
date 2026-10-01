@@ -69,7 +69,7 @@ def test_only_the_fjc_fixture_present_means_no_synthetic_source(
     }
     assert body["synthetic_present"] is False
     assert body["registry_version"] >= 1
-    assert body["methodology_version"] == "0.2"
+    assert body["methodology_version"] == "0.3"
     sources = _by_source(body)
     assert "synthetic" not in sources
     assert set(sources["fjc"]) == SOURCE_KEYS

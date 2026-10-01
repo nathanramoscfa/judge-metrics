@@ -53,6 +53,10 @@ KIND_TEXT: dict[str, str] = {
     "survival": "Kaplan-Meier cumulative incidence per observation window",
     "distribution": "distribution of counts by dimension value",
     "median": "median",
+    "observed_expected": (
+        "observed-to-expected ratio, partially pooled (gamma-Poisson), with a "
+        "person-cluster bootstrap percentile interval"
+    ),
 }
 
 HOW_TO_READ: tuple[tuple[str, str], ...] = (
@@ -90,8 +94,9 @@ HOW_TO_READ: tuple[tuple[str, str], ...] = (
         "Interval",
         "a 95% Wilson score interval for every share and fixed-window rate, "
         "a Greenwood interval for every Kaplan-Meier estimate. Adjusted "
-        "statistics (Phase 4) carry their own intervals and methodology "
-        "version; none is published under this version.",
+        "statistics (observed-to-expected ratios) carry a 95% percentile "
+        "interval from a person-cluster bootstrap and their methodology "
+        "version; none is served before methodology 1.0.",
     ),
     (
         "Suppression",
@@ -224,6 +229,60 @@ CHANGELOG: tuple[tuple[str, str], ...] = (
         "Exposure is deferred by every incarceration term of the person, not the "
         "index case's alone (Phase 3 finding 1.4).",
     ),
+    (
+        "0.3",
+        "Observed-to-expected ratios with partial pooling and bootstrap intervals "
+        "are defined and computed for three judge metrics; they are not served "
+        "until the validation that methodology 1.0 publishes.",
+    ),
+)
+
+# The estimator behind every observed_expected metric (docs/METHODOLOGY.md only:
+# the API serves none of these metrics, nor this text, before methodology 1.0).
+ADJUSTMENT_TEXT: tuple[tuple[str, str], ...] = (
+    (
+        "Expected counts",
+        "The outcome model (data/reference/outcome_model.yaml) is fitted once per "
+        "source, target, and window over every eligible index event of the "
+        "source, so every judge is scored by the same model; the judge is never "
+        "one of its inputs. A judge's expected count E is the sum, over the "
+        "judge's members in the ratio, of the predicted probability of the "
+        "outcome from the published coefficients; the observed count O is the "
+        "number of those members with the outcome; n is their number. O / n "
+        "is the observed rate and E / n the expected rate.",
+    ),
+    (
+        "Partial pooling",
+        "A judge's ratio O / E is noisy when E is small, so it is shrunk toward "
+        "1 by an empirical-Bayes gamma-Poisson model: O | theta ~ Poisson(theta "
+        "E), theta ~ Gamma(alpha, alpha). The shape alpha is fitted by maximum "
+        "marginal (negative-binomial) likelihood over every judge with E > 0, "
+        "suppressed or not, on a log-spaced grid refined by golden-section "
+        "search within the specification's bounds; a maximum at the upper bound "
+        "means no between-judge variation is detectable and every ratio is "
+        "pulled almost all the way to 1. The published ratio is the posterior "
+        "mean (alpha + O) / (alpha + E), and the pooling weight E / (E + alpha) "
+        "is the share of it that is the judge's own O / E.",
+    ),
+    (
+        "Bootstrap interval",
+        "The interval is the 2.5th and 97.5th percentiles (linear interpolation) "
+        "of the pooled ratio over the person-cluster bootstrap replicates the "
+        "model was refitted on: each replicate redraws persons with replacement "
+        "from the model's seeded stream, re-predicts every member from that "
+        "replicate's coefficients, recomputes each judge's weighted O and E, "
+        "refits alpha, and recomputes the pooled ratio. A replicate whose refit "
+        "did not converge is skipped. The replicate coefficients are stored in "
+        "the model's artifact, so a recompute reproduces the interval exactly.",
+    ),
+    (
+        "Suppression",
+        "An adjusted ratio is withheld below a cohort of 30 (below_threshold), "
+        "below an expected count of 5 (expected_below_minimum), and when the "
+        "model is not fitted (model_unavailable: too few events per design "
+        "column, or a fit that did not converge). The stored row keeps every "
+        "figure it has so a recompute can reproduce it.",
+    ),
 )
 
 
@@ -291,6 +350,24 @@ def _metric_section(metric: MetricDefinitionSpec) -> list[str]:
         lines.append(_bullet(f"Dimension: one observation per {metric.dimension} value."))
     if metric.measure is not None:
         lines.append(_bullet(f"Measure: {metric.measure}."))
+    if metric.adjustment is not None:
+        lines.append(
+            _bullet(
+                f"Adjustment: outcome model target `{metric.adjustment.target}` "
+                "(data/reference/outcome_model.yaml); the pooled ratio, its "
+                "pooling weight, and its bootstrap interval are defined under "
+                "Observed-to-expected ratios."
+            )
+        )
+        lines.append(
+            _bullet(
+                f"Suppression threshold: {metric.suppression_threshold} (suppressed "
+                "below this cohort), and suppressed below an expected count of "
+                f"{metric.adjustment.minimum_expected:g} or without a fitted model."
+            )
+        )
+        lines.append("")
+        return lines
     lines.append(
         _bullet(
             f"Suppression threshold: {metric.suppression_threshold}"
@@ -339,6 +416,23 @@ def render_methodology(registry: Registry | None = None) -> str:
     for paragraph in ATTRIBUTION_TEXT:
         lines.append(_fill(paragraph))
         lines.append("")
+    if registry.of_kind("observed_expected"):
+        lines.extend(["## Observed-to-expected ratios", ""])
+        lines.append(
+            _fill(
+                "The adjusted metrics compare what a judge's cohort shows with what "
+                "a versioned model expects for defendants with similar observable "
+                "case characteristics under the source's average practice. They are "
+                "defined and computed here but not served by the API until "
+                "methodology 1.0 publishes their validation. A ratio above 1 means "
+                "more outcomes than expected, below 1 fewer: an association with "
+                "the judge's decisions, never a causal effect."
+            )
+        )
+        lines.append("")
+        for term, text in ADJUSTMENT_TEXT:
+            lines.append(_fill(f"**{term}.** {text}"))
+            lines.append("")
     lines.extend(["## Metrics", ""])
     lines.append(
         _fill(

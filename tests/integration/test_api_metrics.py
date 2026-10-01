@@ -36,6 +36,7 @@ from judgemetrics.metrics.methodology import (
 )
 from judgemetrics.metrics.registry import load_registry
 from judgemetrics.schemas.metrics import SUPPRESSED_FIELDS
+from judgemetrics.services.metrics import SERVED_KINDS
 from tests.integration.conftest import GoldenFixture, GoldenMetrics, make_app
 
 pytestmark = pytest.mark.integration
@@ -116,7 +117,10 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
     assert len(body["known_limitations"]) == 8
     assert body["known_limitations"][0] == BRIEF_WARNING_ONE
     assert body["suppression"]["default_threshold"] == 10
-    assert [item["slug"] for item in body["definitions"]] == list(REGISTRY.metrics)
+    # Every definition of a served kind, in registry order (the adjusted ones are held out).
+    assert [item["slug"] for item in body["definitions"]] == [
+        slug for slug, metric in REGISTRY.metrics.items() if metric.kind in SERVED_KINDS
+    ]
     for item in body["definitions"]:
         assert item["methodology_url"] == f"/methodology#{item['slug']}"
         assert set(item) >= {

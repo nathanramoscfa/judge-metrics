@@ -18,7 +18,13 @@
   content-addressed, under the snapshot directory.
 - ``fit`` fits a frame's (``fit_frame``) or a snapshot's (``fit_models``)
   models; ``catalog`` records them in ``outcome_model`` and lists, shows,
-  and verifies them (``judgemetrics models fit|list|show|verify``).
+  and verifies them (``judgemetrics models fit|list|show|verify``), and
+  reads them back from their artifacts for the compute.
+- ``expected`` (Phase 4 Step 3) scores a design with a model's published
+  coefficients and sums each judge's expected count; ``pooling`` fits the
+  gamma–Poisson shape and gives the pooled ratio and its weight;
+  ``bootstrap`` replays the fit's person-cluster replicates for the
+  interval; ``ratios`` turns them into the ``observed_expected`` drafts.
 
 Nothing here reads the ``restricted`` schema or names a restricted attribute.
 """

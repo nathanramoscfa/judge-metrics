@@ -71,7 +71,7 @@ observation).
 | `entity_resolution_candidate`  | One ordered pair per model version: features (booleans, counts, the stage trace), score, decision, `stage`, `decided_at`/`decided_by` (`system:<model version>` or a reviewer label), `reason`, `ingest_run_id` (0004). **Restricted.** | `ingest_run_id` |
 | `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions, and (0005) the registry columns `kind`, `subject_types`, `attribution`, `index_event`, `outcome`, `windows_days`, `dimension`, `suppression_threshold`, `unit`, `registry_version`, `methodology_version`, mirrored from `data/reference/metric_registry.yaml` by `sync_definitions`. | — |
 | `metric_snapshot`              | One hashed export of the canonical tables that observations are computed from (0005): `content_hash` (unique), `label`, `exported_at`, `code_version`, `registry_version`, `methodology_version`, `row_counts`, `coverage` (per source id: `coverage_start`, `coverage_end`), `storage_uri`. | — |
-| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. `period_start`/`period_end` are the source's coverage window. | via `metric_snapshot` and its members |
+| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. An `observed_expected` observation (0010, Phase 4 Step 3) keeps O in `observed_count`, n (the members in the ratio: followed for the window and every excluded-on-missing model feature known) in `cohort_size`, the cohort before the follow-up restriction in `eligible_count`, O / n in `observed_rate`, the model-expected count E in `expected_count` (Numeric(14, 4)), E / n in `expected_rate`, the pooled ratio (α + O) / (α + E) in `standardized_ratio`, its bootstrap percentile interval in the bounds, E / (E + α) in `pooling_weight` (Numeric(9, 6)), and the fitted model it was computed with in `outcome_model_id` (→ `outcome_model`, RESTRICT; null for every other kind); without a fitted model the expected and pooled figures are null. Every suppressed row carries `suppression_reason` — `below_threshold` for the descriptive kinds (0010 backfilled the stored rows), `below_threshold`, `expected_below_minimum`, or `model_unavailable` for an adjusted one — and no other row does (two check constraints). `period_start`/`period_end` are the source's coverage window. | via `metric_snapshot` and its members (and, adjusted, the model's artifact) |
 | `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
 | `outcome_model`                | One fitted expected-outcome model (0009, Phase 4 Step 2) per snapshot, source, specification version, target, window, and seed: `content_hash` (the sha256 of its canonical JSON artifact, unique), `snapshot_id` and `source_id` (RESTRICT), `spec_version`, `model_version`, `target`, `window_days` (null for the release target), `seed`, `status` (`fitted`, `insufficient_events`, `not_converged`), the temporal split's `n_train`/`events_train` (before the cutoff) and `n_test`/`events_test` (at or after it; the published fit is over both), `train_start`/`train_end` (the index-time range) and `split_cutoff`, `diagnostics` and `coefficients` (JSONB, so a model card needs no artifact), `storage_uri` (the artifact under the snapshot directory; never returned by a public surface), `code_version`, `fitted_at`. No person-level column. | via `metric_snapshot` and its artifact |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
@@ -231,10 +231,10 @@ extend it silently: adding, renaming, or removing a value bumps
 
 ### Metric registry
 
-`data/reference/metric_registry.yaml` (`version: 1`,
-`methodology_version: "0.2"` since Phase 4 Step 1 deferred exposure by
-every incarceration term of the person) is the second versioned
-reference file:
+`data/reference/metric_registry.yaml` (`version: 2`,
+`methodology_version: "0.3"` since Phase 4 Step 3 added the
+observed-to-expected ratios; `0.2` deferred exposure by every
+incarceration term of the person) is the second versioned reference file:
 the contract every published number is computed against
 (`docs/METHODOLOGY.md` is rendered from it; `docs/ARCHITECTURE.md`
 "Metrics engine"). `judgemetrics.metrics.registry.load_registry` loads it
@@ -244,19 +244,33 @@ vocabulary (`attribution.decision_type` → `decision_type`,
 `judicial_discretion_classification`, `outcome` → `justice_event_type`,
 `counted.disposition` → `charge_disposition`, `counted.disposition_actor`
 → `actor_type`) and the fixed enumerations (`kind`: `count`, `share`,
-`windowed_rate`, `survival`, `distribution`, `median`; `subject_types`:
-`judge`, `court`; `assignment_gate`: `deciding_judge`, `assigned_at_time`,
-`assigned_ever`, `sentencing_judge`, `court_of_case`; `index_event`:
-`pretrial_release`, `disposition`, `sentence`; `dimension`:
-`disposition`, `offense_category`; `unit`: `count`, `share`, `days`;
-`windows_days`: the brief's 30, 90, 180, 365, 730, 1095). `sync_definitions`
-mirrors every entry into `metric_definition` on `(slug, version)`; the
-row carries the published fields, while `population`, `counted`, and
-`measure` steer the compute functions and live in the file only. Adding
-or changing a metric bumps the entry's `version` and the registry
-`version` (old rows stay as the history of the observations that cite
-them); a change of semantics bumps `methodology_version` and adds a
-changelog entry.
+`windowed_rate`, `survival`, `distribution`, `median`,
+`observed_expected`; `subject_types`: `judge`, `court`; `assignment_gate`:
+`deciding_judge`, `assigned_at_time`, `assigned_ever`, `sentencing_judge`,
+`court_of_case`; `index_event`: `pretrial_release`, `disposition`,
+`sentence`; `dimension`: `disposition`, `offense_category`; `unit`:
+`count`, `share`, `days`, `ratio`; `windows_days`: the brief's 30, 90, 180,
+365, 730, 1095). `sync_definitions` mirrors every entry into
+`metric_definition` on `(slug, version)`; the row carries the published
+fields, while `population`, `counted`, `measure`, and `adjustment` steer
+the compute functions and live in the file only. Adding or changing a
+metric bumps the entry's `version` and the registry `version` (old rows
+stay as the history of the observations that cite them); a change of
+semantics bumps `methodology_version` and adds a changelog entry.
+
+Registry version 2 (Phase 4 Step 3) adds the kind `observed_expected`
+(unit `ratio`) with three judge metrics —
+`pretrial_release_observed_expected` (population `pretrial_decisions`, no
+window), `new_case_observed_expected` and
+`failure_to_appear_observed_expected` (population `index_events`, index
+event `pretrial_release`, the six windows) — each with the eligibility and
+attribution of the descriptive metric it adjusts (`pretrial_release_share`,
+`new_case_rate`, `failure_to_appear_rate`), `suppression_threshold: 30`,
+and the field `adjustment` (`target`: the outcome model specification's
+target it reads; `minimum_expected: 5`), which the loader requires for the
+kind and rejects on every other. An adjusted entry is judge-only and has
+no dimension and no `counted` conditions. The API serves none of the three
+before Phase 4 Step 5 (docs/API.md "Metrics").
 
 ### Outcome model specification
 
@@ -278,7 +292,9 @@ its reason), the L2 penalty and solver limits, the temporal split, the
 seed, the bootstrap, the pooling bounds, the thresholds, and the recovery
 tolerances. A change that alters a fitted model or a published figure
 bumps `version` (the old `outcome_model` rows keep theirs as history); a
-`recovery` tolerance alters neither and does not.
+`recovery` tolerance alters neither and does not (Phase 4 Step 3 set the
+tolerances from one run of the recovery test and recorded the measured
+values beside them).
 
 The analytic frame (`metrics/frame.py`) gained `courts` (id,
 jurisdiction) in the same step: the courts of the frame's cases, which the

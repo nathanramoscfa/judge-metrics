@@ -18,6 +18,7 @@ The brief's chain, top-down, and where each link lives:
 | Published metric                            | A `metric_definition` row: slug, version, numerator, denominator, eligibility, attribution rule, threshold (`data/reference/metric_registry.yaml`, `docs/METHODOLOGY.md`). |
 | `metric_observation`                        | The number: subject, source, period, window, dimension, `eligible_count`, `cohort_size`, `observed_count`, rate, bounds, value, distribution, `suppressed_flag`, the registry, methodology, and code versions, `computed_at`, `superseded_at`. |
 | The snapshot                                | `metric_snapshot`: the content hash of the Parquet export the number was computed from, its label, export time, code version, row counts, and storage URI (`docs/ARCHITECTURE.md` "Metrics engine"). `metrics verify` recomputes the number from it. |
+| The outcome model (adjusted observations)   | Phase 4 Step 3: an `observed_expected` observation's `outcome_model_id` → the `outcome_model` row (content hash, specification and model versions, target, window, seed, status) and its canonical JSON artifact under the snapshot directory — the coefficients and bootstrap replicates the expected count, the pooled ratio, and the interval were computed from (`docs/ARCHITECTURE.md` "Observed-to-expected ratios"). `metrics verify` recomputes the number from the snapshot and that artifact. |
 | Eligible canonical events                   | `metric_observation_member`: one row per canonical row behind the number — `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids only, never a person id. |
 | Canonical cases, decisions, outcomes        | The member rows themselves, each with its `case_id` (a justice event's `related_case_id`) and its `source_record_id`. |
 | `source_record`                             | One retrieved artifact: `external_record_id`, `raw_sha256`, `retrieved_at`, `parser_version`, `ingest_run_id`, the artifact URI in its `metadata`. |
@@ -36,8 +37,9 @@ reconstructed is therefore never published.
 reconstructs the chain for one observation in three statements,
 whatever the observation holds:
 
-1. the observation joined to its definition, its snapshot, and its
-   source;
+1. the observation joined to its definition, its snapshot, its source,
+   and — outer-joined, so the count stays three — the outcome model an
+   adjusted observation cites;
 2. its members, each outer-joined to the canonical row its kind names,
    yielding the row's case and `source_record_id` — a member whose row
    no longer exists yields neither and is counted as unresolved;
@@ -59,7 +61,13 @@ A trace is `complete` when:
 - every member resolved to a canonical row (`unresolved_members == 0`);
 - every row's source record was found (`unresolved_records == 0`);
 - every source record carries a 64-hex sha256 digest of its stored
-  artifact.
+  artifact;
+- for an adjusted observation (Phase 4 Step 3), the cited model's artifact
+  exists under the configured snapshot directory — the path rebuilt from
+  the snapshot hash and the model's content hash, both validated, never
+  from `storage_uri` — and hashes to the content hash. The trace needs the
+  settings to look (`provenance trace` passes them); without them an
+  adjusted chain is reported incomplete rather than assumed whole.
 
 This is `check_chain`'s rule re-checked against the live tables after
 publication. `tests/golden/test_golden_provenance.py` asserts that every
@@ -80,7 +88,10 @@ Reads as the read-only role. Exit 0 when the chain is complete, 1 when
 it is not (the last line reads `complete: no` and an `INCOMPLETE:` line
 counts what is missing), 2 for a malformed or unknown id. The text form
 prints the chain top-down in the brief's order: the published metric,
-the observation, the snapshot, the eligible canonical events by kind,
+the observation (with its suppression reason, and an adjusted
+observation's expected count, expected rate, pooled ratio, and pooling
+weight), the snapshot, the outcome model of an adjusted observation with
+its artifact check (`artifact: ok`), the eligible canonical events by kind,
 the canonical cases, the source records with their raw artifacts, the
 source systems, and the verdict. The JSON form is the same chain with
 the same keys the endpoint serves, plus the operator-only fields below.
@@ -91,7 +102,9 @@ can be audited.
 
 `GET /api/v1/metrics/{observation_id}/provenance` returns
 `ObservationProvenance` (`docs/API.md` "Metrics"): the same chain for a
-*current* observation — 404 for an unknown or superseded id — in at
+*current* observation of a kind the API serves — 404 for an unknown or
+superseded id, and (the hold-out, until Phase 4 Step 5) for an adjusted
+observation's id: the first statement filters by kind — in at
 most six statements (three today). Two fields of the CLI's output are
 withheld on the public surface, the way `raw_object_path` is never
 returned: the snapshot's `storage_uri` (a path on the operator's

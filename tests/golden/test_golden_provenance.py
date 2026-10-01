@@ -5,7 +5,8 @@ Over the module's golden ingest and its committed ``metrics compute``:
 ``metrics.provenance.trace`` reconstructs the brief's chain for every
 current observation — the observation, its snapshot, every member
 resolved to a canonical row and a case, every row to a source record with
-its artifact digest, every record to its source — and reports
+its artifact digest, every record to its source, and an adjusted
+observation's outcome model with its artifact (Phase 4 Step 3) — and reports
 ``complete``; the CLI prints the same chain and exits 0 (1 for an
 incomplete chain, 2 for a malformed or unknown id); the endpoint's
 response equals the CLI's JSON on every shared field. Deleting one
@@ -37,6 +38,7 @@ from judgemetrics.metrics.compute import Member
 from judgemetrics.metrics.provenance import TraceError, render, trace
 from judgemetrics.metrics.publish import ProvenanceError, check_chain
 from judgemetrics.metrics.snapshot import open_snapshot
+from judgemetrics.services.metrics import SERVED_KINDS
 from tests.golden.conftest import GoldenFixture, GoldenMetrics
 
 pytestmark = [pytest.mark.golden, pytest.mark.integration]
@@ -54,14 +56,17 @@ def ingest_session(golden_metrics: GoldenMetrics) -> Iterator[Session]:
         engine.dispose()
 
 
-def _current_ids(session: Session) -> list[uuid.UUID]:
-    return list(
-        session.scalars(
-            select(MetricObservation.id)
-            .where(MetricObservation.superseded_at.is_(None))
-            .order_by(MetricObservation.id)
-        )
+def _current_ids(session: Session, *, served_only: bool = False) -> list[uuid.UUID]:
+    """Current observation ids; ``served_only`` keeps the kinds the API serves."""
+    stmt = (
+        select(MetricObservation.id)
+        .join(MetricDefinition, MetricDefinition.id == MetricObservation.metric_definition_id)
+        .where(MetricObservation.superseded_at.is_(None))
+        .order_by(MetricObservation.id)
     )
+    if served_only:
+        stmt = stmt.where(MetricDefinition.kind.in_(sorted(SERVED_KINDS)))
+    return list(session.scalars(stmt))
 
 
 def test_every_current_observation_traces_completely(
@@ -71,9 +76,17 @@ def test_every_current_observation_traces_completely(
     assert len(ids) > 100, "the golden compute published observations"
     source_records: set[uuid.UUID] = set()
     case_ids = set(golden_fixture.case_ids.values())
+    adjusted = 0
     for observation_id in ids:
-        traced = trace(session, observation_id)
+        # The settings locate an adjusted observation's model artifact (Phase 4 Step 3).
+        traced = trace(session, observation_id, settings=golden_metrics.settings)
         assert traced.complete, str(observation_id)
+        if traced.observation.kind == "observed_expected":
+            adjusted += 1
+            assert traced.model is not None and traced.model.artifact_ok
+            assert {group.kind for group in traced.groups} <= {"decision"}
+        else:
+            assert traced.model is None
         assert traced.statements == 3
         assert traced.unresolved_members == 0 and traced.unresolved_records == 0
         assert traced.observation.id == observation_id
@@ -117,6 +130,7 @@ def test_every_current_observation_traces_completely(
         assert list(as_dict) == [
             "observation",
             "snapshot",
+            "model",
             "members",
             "cases",
             "source_records",
@@ -133,12 +147,13 @@ def test_every_current_observation_traces_completely(
         assert "person_id" not in dumped and "public_person_key" not in dumped
     # The members of every observation come from the fixture's seven source files.
     assert len(source_records) <= 7
+    assert adjusted > 0, "the golden compute published adjusted observations"
 
 
 def test_the_cli_prints_the_chain_and_matches_the_endpoint(
     session: Session, golden_metrics: GoldenMetrics, golden_api: TestClient
 ) -> None:
-    observation_id = _current_ids(session)[0]
+    observation_id = _current_ids(session, served_only=True)[0]
     env = {
         "JUDGEMETRICS_ENV": "test",
         "JUDGEMETRICS_DATABASE_URL": golden_metrics.settings.database_url,

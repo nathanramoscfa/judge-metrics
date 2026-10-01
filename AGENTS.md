@@ -147,10 +147,10 @@ uv run judgemetrics er run [--source synthetic]   # recompute person candidates,
 uv run judgemetrics er review list [--json]       # the manual-review queue: public keys, stage, score, feature flags
 uv run judgemetrics er review decide <id> --decision matched|rejected --reviewer <label> --reason <text>
 uv run judgemetrics methodology render [--out docs/METHODOLOGY.md] [--check]   # docs/METHODOLOGY.md from the metric registry; --check exits 1 on drift
-uv run poe compute-metrics                       # judgemetrics metrics compute: snapshot → every registry metric for every judge and court → observations (ingest role)
+uv run poe compute-metrics                       # judgemetrics metrics compute: snapshot → fit the snapshot's missing outcome models → every registry metric for every judge and court → observations (ingest role)
 uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
 uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
-uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role); exit 1 when incomplete
+uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role; an adjusted observation's model artifact is checked under JUDGEMETRICS_SNAPSHOT_DIR); exit 1 when incomplete
 uv run judgemetrics models fit [--snapshot HASH] [--json]       # fit and record every expected-outcome model the latest (or named) snapshot lacks (ingest role); idempotent
 uv run judgemetrics models list|show <id or hash> [--json]      # the model catalogue and a model card (app role); never the storage URI
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
@@ -912,8 +912,79 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   invoke the CLI from a module-scoped fixture must clear `get_settings`
   first (the autouse per-test clear runs after module fixtures) and parse
   `result.stdout` (log lines go to stderr, which `result.output` mixes in).
-  `metrics compute` does not fit in this step: the `e2e` job runs `models
-  fit` and `models verify` after it.
+  `metrics compute` did not fit in Step 2 (Step 3 changed that, below).
+- Observed-to-expected ratios (Phase 4 Step 3, docs/ARCHITECTURE.md
+  "Observed-to-expected ratios", docs/DATA_MODEL.md, docs/SYNTHETIC_DATA.md
+  "Recovery"): registry `version` 2, methodology `0.3`, kind
+  `observed_expected` (unit `ratio`, `registry.OBSERVED_EXPECTED`;
+  `DESCRIPTIVE_KINDS` is the other six) with three judge metrics whose
+  required `adjustment` field names the specification target and the minimum
+  expected count (5; `suppression_threshold` 30) — the loader rejects the
+  field on any other kind, a court subject, windows over decisions, and the
+  `ratio` unit elsewhere. The computation is per source, never per subject:
+  `compute_frame(..., kinds=, models=)` (kinds default to the descriptive
+  ones; asking for the adjusted kind without models is a `ComputeError`, and
+  `compute_metric` refuses it) hands each adjusted definition to
+  `adjustment.ratios.adjusted_observations`, which builds one design per
+  target and window over every eligible event (`features.design_rows`),
+  scores it (`expected.expectations`: per judge n, O, E by `np.bincount` in
+  design order), fits the gamma shape over every judge with E > 0
+  (`pooling.fit_shape`: Σ_{k<O} log(α + k), no scipy; 200-point log grid over
+  [0.5, 1000] whose end points are the bounds themselves, then golden-section
+  in log α; judges summed in (E, O) order so relabelling changes nothing),
+  and replays the fit's bootstrap (`bootstrap.interval`: the same
+  `resample.replicates` stream per replicate, the artifact's replicate
+  coefficients, a non-converged replicate skipped with its weights still
+  drawn; linear-interpolation 2.5/97.5% quantiles). `ratios.estimate(design,
+  parameters, spec)` is that pipeline for one design — the recovery test
+  calls it. Models reach the compute as `expected.ModelParameters`, read from
+  the artifact bytes the catalogue records (`catalog.read_parameters`,
+  `snapshot_parameters`) or from an in-memory fit (`from_fitted` rounds to
+  twelve significant digits as the artifact does, so both give identical
+  floats); `engine.compute_and_publish(kinds=None)` records the snapshot row,
+  runs `catalog.fit_snapshot`, reads every model back, computes, and
+  publishes, and pipeline step 13 passes `kinds=DESCRIPTIVE_KINDS` (no fit, no
+  adjusted figure). `publish(..., kinds=)` loads, compares, and supersedes
+  only those kinds, so a judge an ingest touches keeps its adjusted rows (on
+  the older snapshot) until the next full compute — the documented exception
+  to ROADMAP §5 "Performance rules". Drafts carry `expected_count`,
+  `expected_rate`, `standardized_ratio`, `pooling_weight`,
+  `suppression_reason`, and `model_hash`; `publish` maps the hash to
+  `outcome_model_id` (refusing an unrecorded one) and `VERIFIED_COLUMNS`
+  include all six (`outcome_model_hash` is a pseudo-column read through an
+  outer join in `load_observations`). Every suppressed row of every kind
+  carries `suppression_reason` (`suppression.apply`: `below_threshold`, then
+  `expected_below_minimum`, then `model_unavailable` — E is None exactly when
+  the model is not fitted). Migration 0010 adds `outcome_model_id` (RESTRICT,
+  indexed), `pooling_weight` Numeric(9, 6), `suppression_reason` (two
+  checks: the three values, and reason ⇔ suppressed), backfills
+  `below_threshold` on the stored suppressed rows, and names every
+  constraint through `op.f()` — a plain name gets the naming convention
+  applied twice (`ck_metric_observation_ck_…`), which `alembic check` does
+  not notice because it does not compare check constraints. `metrics
+  verify` recomputes a snapshot for the kinds it holds, reports a missing
+  draft only where the subject holds that kind, and reads an adjusted
+  observation's cited model from its artifact (missing or altered: a
+  mismatch with column `outcome_model`). The provenance trace joins the model
+  in its first statement (still three) and needs `settings` to check the
+  artifact (`trace(..., settings=, kinds=)`; the CLI passes them). The public
+  hold-out is `services.metrics.SERVED_KINDS` (the six Phase 3 kinds): the
+  registry response, the subject statements (kind filter in SQL), compare
+  (422), and the provenance route (404) — Step 5 adds the kind with its
+  schema. `/api/v1/ready` adds `metrics.models` (`fitted`, `unavailable`,
+  `spec_version`, `model_version`; `repositories.coverage.snapshot_models`,
+  one statement). Golden adjusted observations are all `below_threshold`
+  (cohorts under 30; models `insufficient_events`, so E is null);
+  `test_golden_metrics.py` excludes the adjusted kind (its truth is
+  `effects.json`, `test_golden_adjusted.py`). The recovery test
+  (`tests/golden/test_golden_recovery.py`, demo world in memory, about 15 s)
+  set the specification's `recovery` tolerances (Spearman 0.9/0.7/0.9, sign
+  above 0.85, expected-count Pearson 0.95, interval coverage 0.55) with the
+  measured values in the YAML comment; the new-case margin over raw rates is
+  0.003 and the interval covers the true ratio for 60-68% of judges (the
+  pooled estimate is shrunk), both carried to Step 4. `relabel_frame` moved
+  into `tests/property/support.py`. CLI tests that invoke a command twice
+  with different environments clear `get_settings` around each call.
 
 ## End-of-session report (from the brief)
 

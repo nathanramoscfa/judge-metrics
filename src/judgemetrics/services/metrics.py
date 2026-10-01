@@ -22,6 +22,16 @@ runs ``metrics.provenance.trace`` and maps the chain onto
 ``ObservationProvenance``, answering ``None`` (a 404) for an unknown or
 superseded observation and withholding the snapshot's storage URI and any
 non-public artifact URI the way ``raw_object_path`` is never returned.
+
+The hold-out (Phase 4 Step 3): ``SERVED_KINDS`` — the six Phase 3 kinds —
+is every kind a public metrics response carries. The registry response
+lists only their definitions; the subject routes' statement filters by
+kind in SQL (bound parameters, so the statement count is unchanged); the
+compare route answers an ``observed_expected`` slug with the unknown-metric
+422; and the provenance trace starts only from an observation of a served
+kind, so an adjusted observation id is a 404. ``observed_expected`` joins
+the set in Phase 4 Step 5, with its schema, once methodology 1.0 publishes
+the validation (docs/API.md "Metrics").
 """
 
 from __future__ import annotations
@@ -79,6 +89,11 @@ from judgemetrics.schemas.metrics import (
 )
 from judgemetrics.schemas.metrics import Registry as RegistryOut
 
+# The registry kinds a public metrics response serves (the hold-out: see the module docstring).
+SERVED_KINDS: frozenset[str] = frozenset(
+    {"count", "share", "windowed_rate", "survival", "distribution", "median"}
+)
+
 
 def _float(value: Any) -> float | None:
     return None if value is None else float(value)
@@ -134,7 +149,11 @@ def registry_response(settings: Settings, registry: Registry | None = None) -> R
         attribution_notes=list(ATTRIBUTION_TEXT),
         gate_descriptions=dict(GATE_TEXT),
         changelog=[MethodologyChange(version=version, text=text) for version, text in CHANGELOG],
-        definitions=[definition_out(item, settings) for item in registry.metrics.values()],
+        definitions=[
+            definition_out(item, settings)
+            for item in registry.metrics.values()
+            if item.kind in SERVED_KINDS
+        ],
     )
 
 
@@ -199,7 +218,7 @@ def subject_metrics(
     registry = load_registry()
     grouped: dict[str, list[Observation]] = {}
     total = 0
-    for row in subject_observations(session, subject_type, subject_id):
+    for row in subject_observations(session, subject_type, subject_id, kinds=SERVED_KINDS):
         item = observation_from_row(row, settings)
         grouped.setdefault(item.slug, []).append(item)
         total += 1
@@ -228,9 +247,12 @@ def _validation_error(message: str) -> ApiError:
 def validate_compare_metric(
     registry: Registry, slug: str, window_days: int | None
 ) -> MetricDefinitionSpec:
-    """The registry entry for ``slug`` once ``window_days`` fits its kind, else a 422."""
+    """The registry entry for ``slug`` once ``window_days`` fits its kind, else a 422.
+
+    A metric of a kind the API does not serve yet is answered as unknown.
+    """
     definition = registry.metrics.get(slug)
-    if definition is None:
+    if definition is None or definition.kind not in SERVED_KINDS:
         raise _validation_error(f"metric: {slug!r} is not a registry metric")
     if "judge" not in definition.subject_types:
         raise _validation_error(f"metric: {slug!r} has no judge-level observations")
@@ -286,6 +308,7 @@ def compare(
         session,
         slug=definition.slug,
         version=definition.version,
+        kinds=SERVED_KINDS,
         window_days=window_days,
         court_id=court_id,
         jurisdiction_id=jurisdiction_id,
@@ -367,9 +390,9 @@ def compare(
 def observation_provenance(
     session: Session, settings: Settings, observation_id: uuid.UUID
 ) -> ObservationProvenance | None:
-    """The chain behind a current observation, or ``None`` for an unknown or superseded id."""
+    """The chain behind a current observation of a served kind, else ``None`` (a 404)."""
     try:
-        traced = trace(session, observation_id)
+        traced = trace(session, observation_id, kinds=SERVED_KINDS)
     except TraceError:
         return None
     if traced.observation.superseded_at is not None:

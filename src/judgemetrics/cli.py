@@ -794,12 +794,14 @@ def metrics_compute(
     ] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
 ) -> None:
-    """Export a snapshot, compute every registry metric, and publish the observations.
+    """Export a snapshot, fit its missing outcome models, compute every metric, and publish.
 
-    Runs as the ingest role in one transaction; a subject whose numbers did
-    not change is left in place, so a second run over unchanged data
-    publishes nothing. Refuses to publish, and rolls back, when an
-    observation's members are not all in the snapshot.
+    Runs as the ingest role in one transaction; the snapshot's missing
+    expected-outcome models are fitted and recorded first (as `models fit`
+    does), a subject whose numbers did not change is left in place, so a
+    second run over unchanged data fits and publishes nothing. Refuses to
+    publish, and rolls back, when an observation's members are not all in
+    the snapshot.
     """
     import json
 
@@ -838,12 +840,15 @@ def metrics_compute(
         "snapshot_reused": result.snapshot.reused,
         "subjects": len(result.computed.subjects),
         "sources_skipped": list(result.computed.sources_skipped),
+        "models_fitted": result.models_fitted,
+        "models_read": result.models_read,
         **{k: v for k, v in result.published.as_log().items() if k != "snapshot"},
     }
     if as_json:
         typer.echo(json.dumps(summary, indent=2, sort_keys=True))
         return
     typer.echo(f"snapshot {summary['snapshot']}" + (" (reused)" if result.snapshot.reused else ""))
+    typer.echo(f"models fitted={result.models_fitted} read={result.models_read}")
     typer.echo(
         f"subjects={summary['subjects']} observations={summary['observations']} "
         f"suppressed={summary['suppressed']} not_observable={summary['not_observable']} "
@@ -949,7 +954,8 @@ def provenance_trace(
     try:
         with Session(engine) as session:
             try:
-                traced = trace(session, oid)
+                # The settings locate an adjusted observation's model artifact.
+                traced = trace(session, oid, settings=settings)
             except TraceError as exc:
                 typer.echo(f"error: {exc}", err=True)
                 raise typer.Exit(EXIT_USAGE) from exc

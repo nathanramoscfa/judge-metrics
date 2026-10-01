@@ -19,7 +19,12 @@ window, dimension, eligible-count, value, distribution, version, and
 index over current observations, and ``metric_observation_member``: the
 entity ids (never a person id) that formed an observation's denominator
 and numerator — the provenance chain from a published number back to
-canonical rows.
+canonical rows. Revision 0010 (Phase 4 Step 3) fills the reserved
+``expected_count``, ``expected_rate``, and ``standardized_ratio`` for the
+``observed_expected`` kind and adds ``outcome_model_id`` (the fitted model
+an adjusted observation was computed with), ``pooling_weight``, and
+``suppression_reason`` — set on every suppressed row of every kind and on
+no other (two check constraints).
 """
 
 from __future__ import annotations
@@ -61,6 +66,12 @@ MEMBER_KINDS: tuple[str, ...] = (
     "sentence",
     "court_event",
     "justice_event",
+)
+# Why a suppressed observation is withheld (metric_observation.suppression_reason, 0010).
+SUPPRESSION_REASONS: tuple[str, ...] = (
+    "below_threshold",
+    "expected_below_minimum",
+    "model_unavailable",
 )
 
 
@@ -150,6 +161,16 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
             "subject_id",
             postgresql_where=text("superseded_at IS NULL"),
         ),
+        # 0010: a suppressed row names its reason, and only a suppressed row does.
+        CheckConstraint(
+            "suppression_reason IN ('below_threshold', 'expected_below_minimum', "
+            "'model_unavailable')",
+            name="suppression_reason",
+        ),
+        CheckConstraint(
+            "(suppression_reason IS NOT NULL) = suppressed_flag",
+            name="suppression_reason_flag",
+        ),
     )
 
     metric_definition_id: Mapped[uuid.UUID] = mapped_column(
@@ -195,6 +216,14 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
     code_version: Mapped[str] = mapped_column(Text, nullable=False)
     registry_version: Mapped[int] = mapped_column(Integer, nullable=False)
     superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Revision 0010: an observed_expected observation's model (its artifact is the
+    # coefficients the expected count and the interval were computed from), the
+    # pooling weight E / (E + alpha), and why a suppressed row is withheld.
+    outcome_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("outcome_model.id", ondelete="RESTRICT"), index=True
+    )
+    pooling_weight: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    suppression_reason: Mapped[str | None] = mapped_column(Text)
 
     definition: Mapped[MetricDefinition] = relationship(back_populates="observations")
     snapshot: Mapped[MetricSnapshot] = relationship(back_populates="observations")

@@ -2077,6 +2077,17 @@
             "title": "Methodology Version",
             "type": "string"
           },
+          "models": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelsReadiness"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The snapshot's expected-outcome models; null before any is fitted."
+          },
           "snapshot_hash": {
             "title": "Snapshot Hash",
             "type": "string"
@@ -2085,9 +2096,45 @@
         "required": [
           "snapshot_hash",
           "exported_at",
-          "methodology_version"
+          "methodology_version",
+          "models"
         ],
         "title": "MetricsReadiness",
+        "type": "object"
+      },
+      "ModelsReadiness": {
+        "description": "The latest snapshot's expected-outcome models: counts and versions, never a hash.",
+        "properties": {
+          "fitted": {
+            "description": "Models with status fitted.",
+            "minimum": 0.0,
+            "title": "Fitted",
+            "type": "integer"
+          },
+          "model_version": {
+            "description": "The model family and feature set.",
+            "title": "Model Version",
+            "type": "string"
+          },
+          "spec_version": {
+            "description": "The outcome model specification version.",
+            "title": "Spec Version",
+            "type": "integer"
+          },
+          "unavailable": {
+            "description": "Models without coefficients (too few events, or not converged).",
+            "minimum": 0.0,
+            "title": "Unavailable",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fitted",
+          "unavailable",
+          "spec_version",
+          "model_version"
+        ],
+        "title": "ModelsReadiness",
         "type": "object"
       },
       "NotReadyResponse": {

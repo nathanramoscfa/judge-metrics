@@ -4734,6 +4734,57 @@ Conversation is New per phase-boundary hygiene.
       and an unseen calendar year is
       scored at the last training
       year's level.
+    - Note from Step 3 (the
+      estimator on the demo world,
+      `tests/golden/test_golden_recovery.py`,
+      docs/SYNTHETIC_DATA.md
+      "Recovery"): Spearman of the
+      log pooled ratio with the
+      centered effect 0.934 / 0.719 /
+      0.963 (release / 365-day new
+      case / 365-day failure to
+      appear) against raw rates
+      0.689 / 0.716 / 0.871 and the
+      oracle 0.944 / 0.846 / 0.933 —
+      the new-case adjustment beats
+      the raw rates by 0.003 only;
+      expected counts track the
+      oracle's `sum(p0)` (Pearson
+      0.986-0.999); the shape is
+      44.9 / 23.0 / 14.4. The 95%
+      percentile intervals cover the
+      planted true ratio
+      `sum(p) / sum(p0)` for only
+      60-68% of the judges: the
+      interval is the bootstrap
+      distribution of the *pooled*
+      estimate, shrunk toward 1, so
+      it misses the truth of a judge
+      far from 1 (mostly strong
+      negative effects, just below
+      the lower bound), and a judge
+      alone in its court (J-0001) is
+      fitted by the court feature in
+      every replicate, giving an
+      interval a fraction of a
+      percent wide around 0.997
+      against a true 1.000 (the
+      penalty). The validation
+      report states these as found;
+      methodology 1.0 must say the
+      interval describes the pooled
+      estimate's sampling
+      variability, not a confidence
+      interval for the judge's true
+      ratio. A different interval
+      (bias-corrected, or the gamma
+      posterior's) is a methodology
+      change that bumps the
+      specification's `version`:
+      record it as an architectural
+      question in docs/ROADMAP.md for
+      the operator, never adopt it
+      silently.
 
     - `metrics compute` fits one
       expected-outcome model per
@@ -4784,15 +4835,24 @@ Conversation is New per phase-boundary hygiene.
       (`HOW_TO_READ`, `SEMANTICS`,
       `ATTRIBUTION_TEXT`,
       `GATE_TEXT`, `CHANGELOG`). Its
-      "Interval" term still says
-      adjusted statistics carry
-      their own intervals and "none
-      is published under this
-      version".
+      "Interval" term says adjusted
+      statistics carry a 95%
+      percentile interval from a
+      person-cluster bootstrap and
+      that "none is served before
+      methodology 1.0"; the estimator
+      prose (`ADJUSTMENT_TEXT`,
+      rendered only into
+      docs/METHODOLOGY.md's
+      "Observed-to-expected ratios"
+      section) is not served by the
+      API yet.
     - The `e2e` CI job seeds
       `data/synthetic/ci` (the same
       manifest as the demo seed),
-      runs `metrics compute` and
+      runs `metrics compute` (which
+      fits the thirteen models),
+      `models fit` (a no-op) and
       `models verify`, then starts
       the API and the web app.
 
@@ -5613,6 +5673,47 @@ phase-boundary hygiene.
       `services/metrics.SERVED_KINDS`
       holds them out of every public
       response.
+    - Note from Step 3 (what serving
+      the kind must undo):
+      `SERVED_KINDS` filters
+      `registry_response`, the subject
+      statements
+      (`repositories.metrics.subject_observations`
+      and `compare_page` take
+      `kinds`), `validate_compare_metric`
+      (422), and the provenance route
+      (`trace(..., kinds=)`, 404);
+      `tests/integration/test_api_adjusted.py`
+      asserts each and becomes the
+      serving tests;
+      `tests/unit/test_openapi.py`
+      asserts the string
+      `observed_expected` appears
+      nowhere in the OpenAPI document
+      and `tests/golden/test_golden_provenance.py`
+      compares the CLI with the
+      endpoint over a served
+      observation only
+      (`_current_ids(served_only=True)`)
+      — relax both. The API's
+      provenance trace of an adjusted
+      observation must pass
+      `settings` to `trace` (its
+      model's artifact is checked
+      under the snapshot directory;
+      without them the chain reads
+      incomplete), and the trace's
+      `model` block (content hash,
+      versions, target, window, seed,
+      status, `artifact_ok`) is the
+      CLI's alone today. Golden
+      adjusted observations are all
+      suppressed (`below_threshold`;
+      models `insufficient_events`),
+      so the Playwright and e2e
+      checks of a shown ratio need
+      the demo seed, where the
+      thirteen models are `fitted`.
     - `outcome_model` rows carry the
       summary diagnostics, the
       calibration bins, and the

@@ -296,12 +296,14 @@ jobs:
       - name: Seed the demo synthetic dataset (ingest role)
         run: uv run judgemetrics seed --out data/synthetic/ci
 
+      # Phase 4 Step 3: the compute fits the snapshot's expected-outcome models
+      # first (thirteen on the demo seed) and publishes the adjusted observations
+      # the API holds out until Step 5.
       - name: Compute metrics (ingest role)
         run: uv run judgemetrics metrics compute
 
-      # Phase 4 Step 2: the demo seed's expected-outcome models. In this step
-      # `metrics compute` does not fit, so these lines are the fitted path; from
-      # Step 3 the compute fits first and `models fit` finds nothing to do.
+      # The fitting compute left nothing to fit: `models fit` is the idempotency
+      # probe (it reports fitted=0) and `models verify` checks every artifact.
       - name: Fit the expected-outcome models (ingest role)
         run: uv run judgemetrics models fit
 
