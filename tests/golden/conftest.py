@@ -24,7 +24,6 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from judgemetrics.config import Settings
 from judgemetrics.db.models import EntityResolutionCandidate, Person, PersonIdentifier
 from judgemetrics.entity_resolution.config import MODEL_VERSION
 from judgemetrics.security.identifiers import KIND_SOURCE_PARTICIPANT_ID, hash_identifier
@@ -143,9 +142,13 @@ def session(migrated_database: Engine, golden_fixture: GoldenFixture) -> Iterato
 
 
 @pytest.fixture(scope="module")
-def golden_api(golden_fixture: GoldenFixture, test_settings: Settings) -> Iterator[TestClient]:
-    """The API, as the app role, over the module's golden ingest."""
-    app = make_app(test_settings)
+def golden_api(golden_metrics: GoldenMetrics) -> Iterator[TestClient]:
+    """The API, as the app role, over the module's golden ingest and its computed metrics.
+
+    Built from the compute's settings, so an adjusted observation's provenance
+    finds its model artifact under the compute's snapshot directory.
+    """
+    app = make_app(golden_metrics.settings)
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
     app.state.engine.dispose()

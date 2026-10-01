@@ -436,10 +436,33 @@ one beneath it:
   the variable, never its value.
 - **Suppression at the schema layer**: `schemas.metrics.SuppressibleFigures`
   nulls `numerator`, `denominator`, `rate`, `value`, `distribution`,
-  `lower`, and `upper` in a validator whenever `suppressed` is true, so
-  every shape that carries a number (`Observation`, `CompareRow`, the
-  traced observation) withholds it whatever the caller passed; the
-  stored row keeps its numbers for `metrics verify`.
+  `lower`, `upper`, and (Phase 4 Step 5) the adjusted figures `expected`,
+  `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, and
+  `pooling_weight` in a validator whenever `suppressed` is true, so every
+  shape that carries a number (`Observation`, `CompareRow`, the traced
+  observation) withholds it whatever the caller passed; `suppression_reason`
+  and the cited `model` (`ModelRef`) survive. The stored row keeps its
+  numbers for `metrics verify`. `services.metrics.figures` is the one
+  mapping from stored columns to those fields: an adjusted row's two bounds
+  become `ratio_lower`/`ratio_upper` (the pooled ratio's bootstrap interval,
+  unbounded above) and its `lower`/`upper` stay null, so the `[0, 1]`
+  bounds of a share never carry a ratio.
+- **The model card (Phase 4 Step 5)**: `GET /models/{model_id}`
+  (`api/routes/models.py`, `StrictQuery()` with no parameter,
+  `cache_public`) is one statement (`repositories.models.model_card_row`:
+  the `outcome_model` row with its snapshot hash and source, `storage_uri`
+  never selected, and an `EXISTS` that a current observation still cites
+  the model's snapshot — a model every observation has moved on from is a
+  404, as a superseded observation is) mapped by `services.metrics.model_card`
+  from the catalogue row alone, never the artifact: training counts and
+  range, the temporal validation and its calibration bins, the coefficient
+  table, the versions, and `methodology_url` anchored at
+  `#adjusted-statistics`. Every adjusted observation and compare row carries
+  a `ModelRef` (`url` is the API path) from an outer join to
+  `outcome_model` in its existing statement, so the budgets did not move;
+  the provenance route passes `settings` to `trace`, whose artifact check
+  (`artifact_ok`) needs the snapshot directory, and names the model with
+  its training counts in the body.
 - **Identity** (`api/identity.py`, ROADMAP.md §1.4): a request resolves
   to a rate-limit bucket; anonymous keyed by client address is the only
   bucket until Phase 9 issues API keys. The OpenAPI document declares
@@ -647,6 +670,47 @@ script, and reads exactly one variable, `NEXT_PUBLIC_API_BASE_URL`
   `<section id="<slug>">` per definition, "Suppression", "Known
   limitations" (verbatim list, `data-testid="known-limitations"`), the
   changelog, and the links; every string is a React text node.
+- **Adjusted statistics (Phase 4 Step 5).** `components/adjusted-stat.tsx`
+  (`AdjustedStat`) is the only renderer of an adjusted figure as a stat:
+  label and synthetic badge; for a published ratio the observed and
+  expected events, the pooled ratio with its 95% bootstrap interval, the
+  pooling weight as a sentence, the eligible count and the members in the
+  ratio, and the brief's interpretation (`Registry.adjustment.interpretation`);
+  for a suppressed one the reason in words (`adjustedSuppressionText`: the
+  threshold and the registry's `minimum_expected`, never literals) and no
+  figure region; always the period, the coverage, the cohort definition
+  the page passes (`adjustedCohortDefinition`: model and specification, the
+  index events it was fitted on from the model card, the source and its
+  coverage window, the specification's features, the cohort label), the
+  model link (`/models/<id>`), and the methodology version as visible text
+  (`data-testid="adjusted-stat"`, `data-slug`, `data-window`,
+  `data-suppressed`, `data-reason`). `CompareTable` has its own adjusted
+  columns (observed / expected, O/E pooled with the bounds and the method
+  in the header, pooling weight, sample size with the members in the
+  ratio) and spans a suppressed adjusted row's three figure columns with
+  its reason; its court and suppressed cells wrap so the table fits the
+  page. The judge page's `JUDGE_PANELS` gains "Risk-adjusted comparison"
+  (`id: "adjusted"`, `kind: "observed_expected"`) after the outcomes
+  panel: `panelDefinitions` collects exactly the adjusted definitions for
+  it and excludes them from every other panel (the new-case ratio shares
+  the outcomes panel's index event) and from "Other metrics"
+  (`uncoveredDefinitions`); the panel reuses the `?window=` and `?cohort=`
+  selectors, places each ratio beside the raw rate it adjusts (`ADJUSTS`,
+  compact `MetricStat`) with the cohort position over a `/metrics/compare`
+  call sorted by `ratio`, and fetches the model cards of the shown ratios
+  (at most three `/models/{id}` reads, cached 60 s). `COURT_PANELS` is
+  unchanged: the ratios are judge-only. `/compare` lists the adjusted
+  metrics, sorts them by `ratio` by default, and its notes state the
+  formula (α + O) / (α + E), the interpretation, and link the model.
+  `/models/[modelId]` (`force-dynamic`) renders the model card (status,
+  training, versions, validation summary, calibration bins and
+  coefficients as tables, a court level linked to its page) with links to
+  `/methodology#adjusted-statistics` and the model's calibration section
+  of `docs/VALIDATION.md` (`validationSectionUrl`, GitHub's heading
+  anchor); a 404 is the not-found page. `/methodology` renders the
+  `adjustment` block as `<section id="adjusted-statistics">` and describes
+  the adjusted definitions through `KIND_TEXT` (`lib/metrics.ts`) with
+  their target and minimum expected count.
 - **Court and jurisdiction pages (Phase 3 Step 5).** `/courts/[courtId]`
   fetches `/courts/{id}`, `/metrics`, and `/courts/{id}/metrics`
   together, then the jurisdiction, the judges serving on `?active_on=`,
@@ -1361,16 +1425,17 @@ the minimum expected count.
   and publishes nothing. On the demo seed the first fitting compute takes
   about 35 seconds more than the descriptive compute (thirteen fits with 500
   replicate refits each) plus about 15 seconds for the adjusted figures.
-- **The public hold-out.** `services.metrics.SERVED_KINDS` (the six Phase 3
-  kinds) is every kind a public metrics response carries until Phase 4
-  Step 5 publishes the validation: `GET /api/v1/metrics` lists only their
-  definitions, the subject routes filter by kind in their one SQL statement
-  (bound parameters), `/metrics/compare` answers an adjusted slug with the
-  unknown-metric 422, and the provenance route traces only an observation of
-  a served kind (an adjusted id is a 404). `/api/v1/ready` reports the latest
-  snapshot's models as counts and versions only. The web places every
-  definition it is served, so the hold-out is also what keeps an adjusted
-  ratio off the judge page until Step 5 gives it a schema and a renderer.
+- **The public hold-out, and its end.** `services.metrics.SERVED_KINDS` is
+  every kind a public metrics response carries; Phase 4 Step 3 held the
+  adjusted kind out of it until Step 4 published the validation (`GET
+  /api/v1/metrics` listed only the descriptive definitions, the subject
+  routes filtered by kind in their one SQL statement with bound parameters,
+  `/metrics/compare` answered an adjusted slug with the unknown-metric 422,
+  and the provenance route answered an adjusted id with 404). Phase 4 Step 5
+  serves it (every registry kind is in the set; the filters stay as the
+  place a future kind is held out) with its schema fields, the model card,
+  and the web's `AdjustedStat`. `/api/v1/ready` reports the latest
+  snapshot's models as counts and versions only.
 
 ### Validation (Phase 4 Step 4)
 

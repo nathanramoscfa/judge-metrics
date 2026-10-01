@@ -8,6 +8,9 @@ source (key, type, coverage window, observable outcomes — the synthetic
 flag is ``source.source_type = 'synthetic'``, the same rule as
 ``repositories.provenance.synthetic_flag``), and their snapshot's hash;
 ``get_subject`` is the one-statement lookup that settles a 404 first.
+Every observation is outer-joined to the ``outcome_model`` it cites (an
+adjusted ratio's model: id, content hash, model and specification versions),
+so the adjusted kind's ``ModelRef`` costs no extra statement.
 Both statements take the registry kinds the API serves (``kinds``) and
 filter by ``metric_definition.kind`` in SQL with bound parameters, so an
 observation of a held-out kind never leaves the database and the statement
@@ -22,7 +25,8 @@ subquery: the latest service record there), the observation's figures,
 its source's coverage, ``count(*) OVER ()`` for the total, and the
 cohort's reference period — the period most rows of the *whole* cohort
 share, computed with window functions in the same statement so a page
-never has to see the others. Sorting by a figure uses a column that is
+never has to see the others (``ratio``, Phase 4 Step 5, sorts by the pooled
+observed-to-expected ratio). Sorting by a figure uses a column that is
 null whenever the row is suppressed, so the order of a page can never
 leak a withheld number; nulls sort last in either direction, then the
 judge's name and id. An empty page costs one more statement that returns
@@ -51,13 +55,14 @@ from judgemetrics.db.models import (
     MetricDefinition,
     MetricObservation,
     MetricSnapshot,
+    OutcomeModel,
     Source,
 )
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.repositories.common import MAX_LIMIT
 from judgemetrics.repositories.provenance import synthetic_flag, with_source
 
-CompareSortKey = Literal["rate", "numerator", "denominator", "value", "name"]
+CompareSortKey = Literal["rate", "numerator", "denominator", "value", "ratio", "name"]
 
 
 class SubjectRow(NamedTuple):
@@ -86,6 +91,16 @@ def get_subject(session: Session, subject_type: str, subject_id: uuid.UUID) -> S
     return SubjectRow(subject_type, row[0], str(row[1]), bool(row[2]))
 
 
+def _model_columns() -> tuple[ColumnElement[Any], ...]:
+    """The cited outcome model's reference (null for a descriptive observation)."""
+    return (
+        OutcomeModel.id.label("model_id"),
+        OutcomeModel.content_hash.label("model_hash"),
+        OutcomeModel.model_version.label("model_version"),
+        OutcomeModel.spec_version.label("model_spec_version"),
+    )
+
+
 def _observation_columns() -> Select[Any]:
     return (
         select(
@@ -103,10 +118,12 @@ def _observation_columns() -> Select[Any]:
             Source.coverage_end.label("coverage_end"),
             Source.observable_outcomes.label("observable_outcomes"),
             MetricSnapshot.content_hash.label("snapshot_hash"),
+            *_model_columns(),
         )
         .join(MetricDefinition, MetricDefinition.id == MetricObservation.metric_definition_id)
         .join(Source, Source.id == MetricObservation.source_id)
         .join(MetricSnapshot, MetricSnapshot.id == MetricObservation.snapshot_id)
+        .outerjoin(OutcomeModel, OutcomeModel.id == MetricObservation.outcome_model_id)
         .where(MetricObservation.superseded_at.is_(None))
     )
 
@@ -244,14 +261,21 @@ def compare_page(
             MetricObservation.distribution,
             MetricObservation.lower_confidence_bound,
             MetricObservation.upper_confidence_bound,
+            MetricObservation.expected_count,
+            MetricObservation.expected_rate,
+            MetricObservation.standardized_ratio,
+            MetricObservation.pooling_weight,
             MetricObservation.suppressed_flag,
+            MetricObservation.suppression_reason,
             MetricDefinition.suppression_threshold,
+            *_model_columns(),
             MetricDefinition.kind.label("kind"),
             MetricDefinition.outcome.label("outcome"),
             _figure(MetricObservation.observed_rate).label("sort_rate"),
             _figure(MetricObservation.observed_count).label("sort_numerator"),
             _figure(MetricObservation.cohort_size).label("sort_denominator"),
             _figure(MetricObservation.value).label("sort_value"),
+            _figure(MetricObservation.standardized_ratio).label("sort_ratio"),
             period_rows,
         )
         .select_from(MetricObservation)
@@ -259,6 +283,7 @@ def compare_page(
         .join(Judge, Judge.id == MetricObservation.subject_id)
         .join(cohort_court, true())
         .join(Source, Source.id == MetricObservation.source_id)
+        .outerjoin(OutcomeModel, OutcomeModel.id == MetricObservation.outcome_model_id)
         .where(
             MetricObservation.superseded_at.is_(None),
             MetricObservation.subject_type == SubjectType.JUDGE,
@@ -286,6 +311,7 @@ def compare_page(
         "numerator": rows.c.sort_numerator,
         "denominator": rows.c.sort_denominator,
         "value": rows.c.sort_value,
+        "ratio": rows.c.sort_ratio,
         "name": rows.c.judge_name,
     }[sort]
     ordered = sort_column.desc().nulls_last() if descending else sort_column.asc().nulls_last()

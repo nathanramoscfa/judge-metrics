@@ -39,6 +39,8 @@ const KIND_NOUN: Record<Observation["kind"], string> = {
   survival: "Kaplan–Meier cumulative incidence",
   distribution: "distribution",
   median: "median",
+  // An adjusted ratio is rendered by AdjustedStat; the noun is here for completeness.
+  observed_expected: "observed-to-expected ratio",
 };
 
 function figureUnit(observation: Observation): string {

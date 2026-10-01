@@ -4,8 +4,9 @@
 `docs/openapi.json` must equal the rendered document (regenerate it with
 `judgemetrics openapi export` after any route change: the web client is
 generated from it). The document lists exactly the health probes and the
-eighteen v1 paths (Phase 3 Step 3 added the metrics routes and the one
-write path, `POST /corrections`), every route's strict query allow-list
+nineteen v1 paths (Phase 3 Step 3 added the metrics routes and the one
+write path, `POST /corrections`; Phase 4 Step 5 the model card), every
+route's strict query allow-list
 matches the parameters the document declares, every error response is an
 `ErrorBody`, the API-key scheme is declared optional, and no schema
 property carries a restricted name (the contract that
@@ -33,6 +34,7 @@ from judgemetrics.api.routes import (
     judges,
     jurisdictions,
     metrics,
+    models,
     search,
 )
 from judgemetrics.cli import app as cli
@@ -64,6 +66,8 @@ EXPECTED_PATHS = {
     "/api/v1/metrics/compare",
     "/api/v1/metrics/{observation_id}/provenance",
     "/api/v1/corrections",
+    # Phase 4 Step 5: the model card.
+    "/api/v1/models/{model_id}",
 }
 WRITE_PATHS = {"/api/v1/corrections"}
 # Names that belong to the restricted schema (`person_identifier`,
@@ -138,6 +142,7 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
         coverage.router,
         metrics.router,
         corrections.router,
+        models.router,
     ):
         for route in router.routes:
             assert isinstance(route, APIRoute)
@@ -155,7 +160,7 @@ def test_strict_query_allow_lists_match_the_declared_parameters() -> None:
             }
             assert strict[0].allowed == declared, path
             checked += 1
-    assert checked == 18
+    assert checked == 19
 
 
 def test_api_key_scheme_is_declared_optional() -> None:
@@ -306,13 +311,12 @@ def test_metrics_routes_declare_the_presentation_fields_and_the_compare_paramete
         "offset",
     }
     assert parameters["metric"]["required"] is True
-    assert parameters["sort"]["schema"]["enum"] == [
-        "rate",
-        "numerator",
-        "denominator",
-        "value",
-        "name",
+    # The sort defaults by kind (null: rate, or ratio for an adjusted metric).
+    (sort_enum,) = [
+        branch["enum"] for branch in parameters["sort"]["schema"]["anyOf"] if "enum" in branch
     ]
+    assert sort_enum == ["rate", "numerator", "denominator", "value", "ratio", "name"]
+    assert parameters["sort"]["schema"].get("default") is None
     assert parameters["order"]["schema"]["enum"] == ["asc", "desc"]
     registry = schemas["Registry"]["properties"]
     assert {
@@ -343,8 +347,52 @@ def test_metrics_routes_declare_the_presentation_fields_and_the_compare_paramete
         "spec_version",
         "model_version",
     }
-    # The hold-out: no served schema names the adjusted kind before Step 5.
-    assert "observed_expected" not in json.dumps(document)
+    # Phase 4 Step 5 serves the adjusted kind with its figures, model, and reason.
+    assert "observed_expected" in schemas["Observation"]["properties"]["kind"]["enum"]
+    assert "ratio" in schemas["Observation"]["properties"]["unit"]["enum"]
+    adjusted_fields = {
+        "expected",
+        "expected_rate",
+        "ratio",
+        "ratio_lower",
+        "ratio_upper",
+        "pooling_weight",
+        "model",
+        "suppression_reason",
+    }
+    for name in ("Observation", "CompareRow", "TracedObservation"):
+        assert adjusted_fields <= set(schemas[name]["required"]), name
+    assert set(schemas["ModelRef"]["properties"]) == {
+        "id",
+        "content_hash",
+        "model_version",
+        "spec_version",
+        "url",
+    }
+    assert "model" in schemas["ObservationProvenance"]["required"]
+    card = set(schemas["ModelCard"]["properties"])
+    assert {
+        "id",
+        "content_hash",
+        "snapshot_hash",
+        "source",
+        "synthetic",
+        "target",
+        "window_days",
+        "spec_version",
+        "model_version",
+        "seed",
+        "status",
+        "fitted_at",
+        "code_version",
+        "training",
+        "validation",
+        "coefficients",
+        "methodology_url",
+    } == card
+    assert "storage_uri" not in json.dumps(document)
+    model_get = document["paths"]["/api/v1/models/{model_id}"]["get"]
+    assert set(model_get["responses"]) == {"200", "404", "422"}
     coverage_source = set(schemas["CoverageSource"]["properties"])
     assert {
         "coverage_start",

@@ -273,6 +273,51 @@
         "title": "AttributionOut",
         "type": "object"
       },
+      "CalibrationBinOut": {
+        "description": "One decile of predicted probability on the temporal test set.",
+        "properties": {
+          "bin": {
+            "minimum": 0.0,
+            "title": "Bin",
+            "type": "integer"
+          },
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "mean_predicted": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Predicted"
+          },
+          "observed_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Rate"
+          }
+        },
+        "required": [
+          "bin",
+          "count",
+          "mean_predicted",
+          "observed_rate"
+        ],
+        "title": "CalibrationBinOut",
+        "type": "object"
+      },
       "CaseDetail": {
         "properties": {
           "assignments": {
@@ -580,6 +625,99 @@
         "title": "ChargeOut",
         "type": "object"
       },
+      "CoefficientOut": {
+        "description": "One design column of the published fit.",
+        "properties": {
+          "column": {
+            "description": "The design column's name (a data level by its rank label).",
+            "title": "Column",
+            "type": "string"
+          },
+          "estimate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The penalized log-odds coefficient.",
+            "title": "Estimate"
+          },
+          "feature": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for the intercept.",
+            "title": "Feature"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The level the column encodes.",
+            "title": "Level"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The feature's reference level.",
+            "title": "Reference"
+          },
+          "sd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Its standard deviation over the bootstrap replicates.",
+            "title": "Sd"
+          },
+          "sign_agreement": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of converged replicates whose sign agrees with the estimate.",
+            "title": "Sign Agreement"
+          }
+        },
+        "required": [
+          "column",
+          "feature",
+          "level",
+          "reference",
+          "estimate",
+          "sd",
+          "sign_agreement"
+        ],
+        "title": "CoefficientOut",
+        "type": "object"
+      },
       "CompareCohort": {
         "description": "What the rows are compared within.",
         "properties": {
@@ -656,6 +794,7 @@
               "numerator",
               "denominator",
               "value",
+              "ratio",
               "name"
             ],
             "title": "Sort",
@@ -823,12 +962,40 @@
             "title": "Eligible Count",
             "type": "integer"
           },
+          "expected": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model-expected count E of an adjusted ratio; null for other kinds.",
+            "title": "Expected"
+          },
+          "expected_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / n: the expected count over the members in the ratio.",
+            "title": "Expected Rate"
+          },
           "interval_method": {
             "anyOf": [
               {
                 "enum": [
                   "wilson",
-                  "greenwood"
+                  "greenwood",
+                  "bootstrap"
                 ],
                 "type": "string"
               },
@@ -849,8 +1016,19 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's lower bound.",
+            "description": "The 95% interval's lower bound of a rate; null for an adjusted ratio.",
             "title": "Lower"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The outcome model an adjusted ratio cites (kept when suppressed)."
           },
           "name": {
             "description": "The judge's canonical name.",
@@ -885,6 +1063,20 @@
             "title": "Period Start",
             "type": "string"
           },
+          "pooling_weight": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / (E + alpha): the weight the subject's own data carries in the ratio.",
+            "title": "Pooling Weight"
+          },
           "rate": {
             "anyOf": [
               {
@@ -899,6 +1091,45 @@
             "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
             "title": "Rate"
           },
+          "ratio": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.",
+            "title": "Ratio"
+          },
+          "ratio_lower": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, lower bound.",
+            "title": "Ratio Lower"
+          },
+          "ratio_upper": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, upper bound (unbounded).",
+            "title": "Ratio Upper"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -909,9 +1140,26 @@
             "type": "string"
           },
           "suppressed": {
-            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "description": "True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.",
             "title": "Suppressed",
             "type": "boolean"
+          },
+          "suppression_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below_threshold",
+                  "expected_below_minimum",
+                  "model_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.",
+            "title": "Suppression Reason"
           },
           "suppression_threshold": {
             "description": "The metric's threshold, stated so a reader knows why.",
@@ -935,7 +1183,7 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's upper bound.",
+            "description": "The 95% interval's upper bound of a rate; null for an adjusted ratio.",
             "title": "Upper"
           },
           "value": {
@@ -970,8 +1218,16 @@
           "distribution",
           "lower",
           "upper",
+          "expected",
+          "expected_rate",
+          "ratio",
+          "ratio_lower",
+          "ratio_upper",
+          "pooling_weight",
+          "model",
           "suppressed",
           "suppression_threshold",
+          "suppression_reason",
           "subject_id",
           "name",
           "court",
@@ -1551,6 +1807,28 @@
         "title": "DecisionOut",
         "type": "object"
       },
+      "DefinitionAdjustmentOut": {
+        "description": "An ``observed_expected`` metric's model target and minimum expected count.",
+        "properties": {
+          "minimum_expected": {
+            "description": "The model-expected count below which the ratio is withheld.",
+            "minimum": 0.0,
+            "title": "Minimum Expected",
+            "type": "number"
+          },
+          "target": {
+            "description": "The outcome model specification's target the ratio reads.",
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "minimum_expected"
+        ],
+        "title": "DefinitionAdjustmentOut",
+        "type": "object"
+      },
       "ErrorBody": {
         "description": "Every non-2xx response body. Never a stack trace, never SQL.",
         "properties": {
@@ -2074,6 +2352,17 @@
       "MetricDefinitionOut": {
         "description": "One registry entry: what a number means and how it is computed.",
         "properties": {
+          "adjustment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DefinitionAdjustmentOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An observed-to-expected metric's model target; null for every other kind."
+          },
           "attribution": {
             "$ref": "#/components/schemas/AttributionOut"
           },
@@ -2120,7 +2409,8 @@
               "windowed_rate",
               "survival",
               "distribution",
-              "median"
+              "median",
+              "observed_expected"
             ],
             "title": "Kind",
             "type": "string"
@@ -2175,7 +2465,8 @@
             "enum": [
               "count",
               "share",
-              "days"
+              "days",
+              "ratio"
             ],
             "title": "Unit",
             "type": "string"
@@ -2218,7 +2509,8 @@
           "suppression_threshold",
           "unit",
           "version",
-          "methodology_url"
+          "methodology_url",
+          "adjustment"
         ],
         "title": "MetricDefinitionOut",
         "type": "object"
@@ -2258,6 +2550,299 @@
           "models"
         ],
         "title": "MetricsReadiness",
+        "type": "object"
+      },
+      "ModelCard": {
+        "description": "One fitted outcome model, from the catalogue (never its storage location).",
+        "properties": {
+          "code_version": {
+            "title": "Code Version",
+            "type": "string"
+          },
+          "coefficients": {
+            "description": "In design order; empty when unfitted.",
+            "items": {
+              "$ref": "#/components/schemas/CoefficientOut"
+            },
+            "title": "Coefficients",
+            "type": "array"
+          },
+          "content_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "fitted_at": {
+            "format": "date-time",
+            "title": "Fitted At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "methodology_url": {
+            "description": "The methodology's adjusted statistics section.",
+            "title": "Methodology Url",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          },
+          "snapshot_hash": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source": {
+            "description": "Source register key.",
+            "title": "Source",
+            "type": "string"
+          },
+          "spec_version": {
+            "minimum": 1.0,
+            "title": "Spec Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "fitted",
+              "insufficient_events",
+              "not_converged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "synthetic": {
+            "description": "True when the row was derived from a source of type `synthetic` (the in-repo generator): demo data, labelled as such on every surface.",
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "training": {
+            "$ref": "#/components/schemas/TrainingOut"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/ModelValidationOut"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for the release target.",
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "id",
+          "content_hash",
+          "snapshot_hash",
+          "source",
+          "synthetic",
+          "target",
+          "window_days",
+          "spec_version",
+          "model_version",
+          "seed",
+          "status",
+          "fitted_at",
+          "code_version",
+          "training",
+          "validation",
+          "coefficients",
+          "methodology_url"
+        ],
+        "title": "ModelCard",
+        "type": "object"
+      },
+      "ModelRef": {
+        "description": "The fitted outcome model an adjusted figure was computed with.",
+        "properties": {
+          "content_hash": {
+            "description": "The sha256 of the model's canonical artifact: its identity.",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "spec_version": {
+            "description": "The outcome model specification version.",
+            "minimum": 1.0,
+            "title": "Spec Version",
+            "type": "integer"
+          },
+          "url": {
+            "description": "The model card: `GET /api/v1/models/{id}`.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "content_hash",
+          "model_version",
+          "spec_version",
+          "url"
+        ],
+        "title": "ModelRef",
+        "type": "object"
+      },
+      "ModelValidationOut": {
+        "description": "The temporal-split diagnostics: fitted before the cutoff, scored after it.",
+        "properties": {
+          "auc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auc"
+          },
+          "base_rate_train": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Rate Train"
+          },
+          "bins": {
+            "description": "Ten calibration bins; empty when unfitted.",
+            "items": {
+              "$ref": "#/components/schemas/CalibrationBinOut"
+            },
+            "title": "Bins",
+            "type": "array"
+          },
+          "brier": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Brier score on the test set.",
+            "title": "Brier"
+          },
+          "brier_skill": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1 - Brier / the base rate's Brier.",
+            "title": "Brier Skill"
+          },
+          "calibration_in_the_large": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration In The Large"
+          },
+          "calibration_slope": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibration Slope"
+          },
+          "split_cutoff": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Index events at or after it are the test set; null without a split.",
+            "title": "Split Cutoff"
+          },
+          "test_events": {
+            "minimum": 0.0,
+            "title": "Test Events",
+            "type": "integer"
+          },
+          "test_index_events": {
+            "minimum": 0.0,
+            "title": "Test Index Events",
+            "type": "integer"
+          },
+          "train_events": {
+            "minimum": 0.0,
+            "title": "Train Events",
+            "type": "integer"
+          },
+          "train_index_events": {
+            "minimum": 0.0,
+            "title": "Train Index Events",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "split_cutoff",
+          "train_index_events",
+          "train_events",
+          "test_index_events",
+          "test_events",
+          "base_rate_train",
+          "brier",
+          "brier_skill",
+          "auc",
+          "calibration_in_the_large",
+          "calibration_slope",
+          "bins"
+        ],
+        "title": "ModelValidationOut",
         "type": "object"
       },
       "ModelsReadiness": {
@@ -2371,6 +2956,33 @@
             "title": "Eligible Count",
             "type": "integer"
           },
+          "expected": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model-expected count E of an adjusted ratio; null for other kinds.",
+            "title": "Expected"
+          },
+          "expected_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / n: the expected count over the members in the ratio.",
+            "title": "Expected Rate"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -2381,7 +2993,8 @@
               {
                 "enum": [
                   "wilson",
-                  "greenwood"
+                  "greenwood",
+                  "bootstrap"
                 ],
                 "type": "string"
               },
@@ -2389,7 +3002,7 @@
                 "type": "null"
               }
             ],
-            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates.",
+            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates, bootstrap for an adjusted ratio.",
             "title": "Interval Method"
           },
           "kind": {
@@ -2399,7 +3012,8 @@
               "windowed_rate",
               "survival",
               "distribution",
-              "median"
+              "median",
+              "observed_expected"
             ],
             "title": "Kind",
             "type": "string"
@@ -2415,7 +3029,7 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's lower bound.",
+            "description": "The 95% interval's lower bound of a rate; null for an adjusted ratio.",
             "title": "Lower"
           },
           "methodology_url": {
@@ -2426,6 +3040,17 @@
           "methodology_version": {
             "title": "Methodology Version",
             "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The outcome model an adjusted ratio cites (kept when suppressed)."
           },
           "name": {
             "description": "The metric's name from the registry.",
@@ -2456,6 +3081,20 @@
             "title": "Period Start",
             "type": "string"
           },
+          "pooling_weight": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / (E + alpha): the weight the subject's own data carries in the ratio.",
+            "title": "Pooling Weight"
+          },
           "rate": {
             "anyOf": [
               {
@@ -2469,6 +3108,45 @@
             ],
             "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
             "title": "Rate"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.",
+            "title": "Ratio"
+          },
+          "ratio_lower": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, lower bound.",
+            "title": "Ratio Lower"
+          },
+          "ratio_upper": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, upper bound (unbounded).",
+            "title": "Ratio Upper"
           },
           "slug": {
             "title": "Slug",
@@ -2501,9 +3179,26 @@
             "type": "string"
           },
           "suppressed": {
-            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "description": "True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.",
             "title": "Suppressed",
             "type": "boolean"
+          },
+          "suppression_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below_threshold",
+                  "expected_below_minimum",
+                  "model_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.",
+            "title": "Suppression Reason"
           },
           "suppression_threshold": {
             "description": "The metric's threshold, stated so a reader knows why.",
@@ -2520,7 +3215,8 @@
             "enum": [
               "count",
               "share",
-              "days"
+              "days",
+              "ratio"
             ],
             "title": "Unit",
             "type": "string"
@@ -2536,7 +3232,7 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's upper bound.",
+            "description": "The 95% interval's upper bound of a rate; null for an adjusted ratio.",
             "title": "Upper"
           },
           "value": {
@@ -2577,8 +3273,16 @@
           "distribution",
           "lower",
           "upper",
+          "expected",
+          "expected_rate",
+          "ratio",
+          "ratio_lower",
+          "ratio_upper",
+          "pooling_weight",
+          "model",
           "suppressed",
           "suppression_threshold",
+          "suppression_reason",
           "id",
           "slug",
           "name",
@@ -2651,7 +3355,7 @@
         "description": "The brief's chain, top-down: observation → snapshot → members → cases → records → sources.",
         "properties": {
           "complete": {
-            "description": "True when every member resolved to a canonical row and every row to a source record with its artifact digest.",
+            "description": "True when every member resolved to a canonical row and every row to a source record with its artifact digest (and, adjusted, the model's artifact holds).",
             "title": "Complete",
             "type": "boolean"
           },
@@ -2662,6 +3366,17 @@
             },
             "title": "Members",
             "type": "array"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProvenanceModel"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fitted model of an adjusted observation; null for a descriptive one."
           },
           "observation": {
             "$ref": "#/components/schemas/TracedObservation"
@@ -2689,6 +3404,7 @@
         "required": [
           "observation",
           "snapshot",
+          "model",
           "members",
           "source_records",
           "sources",
@@ -3005,6 +3721,85 @@
           "synthetic"
         ],
         "title": "Provenance",
+        "type": "object"
+      },
+      "ProvenanceModel": {
+        "description": "The outcome model in an adjusted observation's chain, with its artifact check.",
+        "properties": {
+          "artifact_ok": {
+            "description": "The artifact exists under the snapshot and hashes to the content hash.",
+            "title": "Artifact Ok",
+            "type": "boolean"
+          },
+          "content_hash": {
+            "description": "The sha256 of the model's canonical artifact: its identity.",
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "spec_version": {
+            "description": "The outcome model specification version.",
+            "minimum": 1.0,
+            "title": "Spec Version",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "fitted",
+              "insufficient_events",
+              "not_converged"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "training": {
+            "$ref": "#/components/schemas/TrainingOut"
+          },
+          "url": {
+            "description": "The model card: `GET /api/v1/models/{id}`.",
+            "title": "Url",
+            "type": "string"
+          },
+          "window_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Days"
+          }
+        },
+        "required": [
+          "id",
+          "content_hash",
+          "model_version",
+          "spec_version",
+          "url",
+          "target",
+          "window_days",
+          "status",
+          "training",
+          "artifact_ok"
+        ],
+        "title": "ProvenanceModel",
         "type": "object"
       },
       "ReadyResponse": {
@@ -3821,6 +4616,33 @@
             "title": "Eligible Count",
             "type": "integer"
           },
+          "expected": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The model-expected count E of an adjusted ratio; null for other kinds.",
+            "title": "Expected"
+          },
+          "expected_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / n: the expected count over the members in the ratio.",
+            "title": "Expected Rate"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -3831,7 +4653,8 @@
               {
                 "enum": [
                   "wilson",
-                  "greenwood"
+                  "greenwood",
+                  "bootstrap"
                 ],
                 "type": "string"
               },
@@ -3839,7 +4662,7 @@
                 "type": "null"
               }
             ],
-            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates.",
+            "description": "wilson for shares and fixed-window rates, greenwood for survival estimates, bootstrap for an adjusted ratio.",
             "title": "Interval Method"
           },
           "kind": {
@@ -3849,7 +4672,8 @@
               "windowed_rate",
               "survival",
               "distribution",
-              "median"
+              "median",
+              "observed_expected"
             ],
             "title": "Kind",
             "type": "string"
@@ -3865,7 +4689,7 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's lower bound.",
+            "description": "The 95% interval's lower bound of a rate; null for an adjusted ratio.",
             "title": "Lower"
           },
           "methodology_url": {
@@ -3876,6 +4700,17 @@
           "methodology_version": {
             "title": "Methodology Version",
             "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The outcome model an adjusted ratio cites (kept when suppressed)."
           },
           "name": {
             "description": "The metric's name from the registry.",
@@ -3906,6 +4741,20 @@
             "title": "Period Start",
             "type": "string"
           },
+          "pooling_weight": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "E / (E + alpha): the weight the subject's own data carries in the ratio.",
+            "title": "Pooling Weight"
+          },
           "rate": {
             "anyOf": [
               {
@@ -3919,6 +4768,45 @@
             ],
             "description": "numerator / denominator for a share or fixed-window rate; 1 - S(w) for a survival estimate; six decimals; null for counts, distributions, and medians.",
             "title": "Rate"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled observed-to-expected ratio (alpha + O) / (alpha + E), partially pooled toward 1; null for other kinds.",
+            "title": "Ratio"
+          },
+          "ratio_lower": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, lower bound.",
+            "title": "Ratio Lower"
+          },
+          "ratio_upper": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The pooled ratio's 95% bootstrap interval, upper bound (unbounded).",
+            "title": "Ratio Upper"
           },
           "registry_version": {
             "title": "Registry Version",
@@ -3968,9 +4856,26 @@
             "title": "Superseded At"
           },
           "suppressed": {
-            "description": "True when the denominator is below the metric's suppression threshold: the numerator, denominator, rate, value, distribution, and interval are withheld.",
+            "description": "True when the number is withheld (a denominator below the metric's threshold; for an adjusted ratio also too few expected events or no fitted model): every figure is withheld.",
             "title": "Suppressed",
             "type": "boolean"
+          },
+          "suppression_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below_threshold",
+                  "expected_below_minimum",
+                  "model_unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why a suppressed row is withheld: below_threshold, expected_below_minimum, or model_unavailable; null when the row is published.",
+            "title": "Suppression Reason"
           },
           "suppression_threshold": {
             "description": "The metric's threshold, stated so a reader knows why.",
@@ -3987,7 +4892,8 @@
             "enum": [
               "count",
               "share",
-              "days"
+              "days",
+              "ratio"
             ],
             "title": "Unit",
             "type": "string"
@@ -4003,7 +4909,7 @@
                 "type": "null"
               }
             ],
-            "description": "The 95% interval's upper bound.",
+            "description": "The 95% interval's upper bound of a rate; null for an adjusted ratio.",
             "title": "Upper"
           },
           "value": {
@@ -4044,8 +4950,16 @@
           "distribution",
           "lower",
           "upper",
+          "expected",
+          "expected_rate",
+          "ratio",
+          "ratio_lower",
+          "ratio_upper",
+          "pooling_weight",
+          "model",
           "suppressed",
           "suppression_threshold",
+          "suppression_reason",
           "id",
           "slug",
           "name",
@@ -4073,6 +4987,57 @@
         ],
         "title": "TracedObservation",
         "type": "object"
+      },
+      "TrainingOut": {
+        "description": "What a model was fitted on: the index events, their outcomes, and their time range.",
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest index time; null without rows.",
+            "title": "End"
+          },
+          "events": {
+            "description": "Of those, the events of the target outcome.",
+            "minimum": 0.0,
+            "title": "Events",
+            "type": "integer"
+          },
+          "index_events": {
+            "description": "Index events (design rows) the fit is over.",
+            "minimum": 0.0,
+            "title": "Index Events",
+            "type": "integer"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The earliest index time; null without rows.",
+            "title": "Start"
+          }
+        },
+        "required": [
+          "index_events",
+          "events",
+          "start",
+          "end"
+        ],
+        "title": "TrainingOut",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4085,7 +5050,7 @@
     }
   },
   "info": {
-    "description": "Versioned access to JudgeMetrics' canonical data and published metrics: judges, courts, jurisdictions, cases with their timelines, source coverage, search, the versioned metric registry, every current metric observation of a judge or court with its numerator, denominator, date range, coverage, sample size, interval, suppression, and methodology link, a compare table per metric and cohort, and the provenance chain from any observation back to the raw source artifacts — each with the provenance of the raw source artifacts behind it and a `synthetic` flag on every row derived from the in-repo demo dataset. The one write path, `POST /corrections`, accepts a data correction request whose contact is encrypted at rest. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), persons appear only as pseudonymous public keys and never in a metrics response, and every error is an `ErrorBody`. See docs/API.md.",
+    "description": "Versioned access to JudgeMetrics' canonical data and published metrics: judges, courts, jurisdictions, cases with their timelines, source coverage, search, the versioned metric registry, every current metric observation of a judge or court with its numerator, denominator, date range, coverage, sample size, interval, suppression, and methodology link (observed-to-expected ratios with their expected count, pooled ratio, bootstrap interval, pooling weight, and model), a compare table per metric and cohort, the model card of every expected-outcome model, and the provenance chain from any observation back to the raw source artifacts — each with the provenance of the raw source artifacts behind it and a `synthetic` flag on every row derived from the in-repo demo dataset. The one write path, `POST /corrections`, accepts a data correction request whose contact is encrypted at rest. Lists are paginated (`limit` ≤ 100), filters are validated strictly (unknown parameters are 422), persons appear only as pseudonymous public keys and never in a metrics response, and every error is an `ErrorBody`. See docs/API.md.",
     "title": "JudgeMetrics API",
     "version": "0.1.0"
   },
@@ -5244,22 +6209,29 @@
             }
           },
           {
-            "description": "Sort key; a suppressed row sorts as if its figure were null.",
+            "description": "Sort key; a suppressed row sorts as if its figure were null. Defaults to ratio (the pooled observed-to-expected ratio) for an adjusted metric and to rate otherwise.",
             "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
-              "default": "rate",
-              "description": "Sort key; a suppressed row sorts as if its figure were null.",
-              "enum": [
-                "rate",
-                "numerator",
-                "denominator",
-                "value",
-                "name"
+              "anyOf": [
+                {
+                  "enum": [
+                    "rate",
+                    "numerator",
+                    "denominator",
+                    "value",
+                    "ratio",
+                    "name"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
-              "title": "Sort",
-              "type": "string"
+              "description": "Sort key; a suppressed row sorts as if its figure were null. Defaults to ratio (the pooled observed-to-expected ratio) for an adjusted metric and to rate otherwise.",
+              "title": "Sort"
             }
           },
           {
@@ -5394,6 +6366,59 @@
         "summary": "The provenance chain of a current observation, from its number to the raw artifacts",
         "tags": [
           "metrics"
+        ]
+      }
+    },
+    "/api/v1/models/{model_id}": {
+      "get": {
+        "operationId": "get_model_api_v1_models__model_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "The resource does not exist."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "A parameter is invalid, or a query parameter is not one the route declares."
+          }
+        },
+        "summary": "The model card of an expected-outcome model an adjusted observation cites",
+        "tags": [
+          "models"
         ]
       }
     },

@@ -118,9 +118,15 @@ def get_compare(
         date | None, Query(description="Only observations whose period ends on this date.")
     ] = None,
     sort: Annotated[
-        Literal["rate", "numerator", "denominator", "value", "name"],
-        Query(description="Sort key; a suppressed row sorts as if its figure were null."),
-    ] = "rate",
+        Literal["rate", "numerator", "denominator", "value", "ratio", "name"] | None,
+        Query(
+            description=(
+                "Sort key; a suppressed row sorts as if its figure were null. Defaults to "
+                "ratio (the pooled observed-to-expected ratio) for an adjusted metric and to "
+                "rate otherwise."
+            )
+        ),
+    ] = None,
     order: Annotated[Literal["asc", "desc"], Query(description="Sort direction.")] = "desc",
 ) -> ComparePage:
     if (court_id is None) == (jurisdiction_id is None):

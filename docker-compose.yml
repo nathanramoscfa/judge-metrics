@@ -145,6 +145,11 @@ services:
       JUDGEMETRICS_DATABASE_URL: postgresql+psycopg://judgemetrics_app:${JUDGEMETRICS_APP_DB_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
       JUDGEMETRICS_ADMIN_DATABASE_URL: postgresql+psycopg://judgemetrics_admin:${JUDGEMETRICS_ADMIN_DB_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB in .env}
       JUDGEMETRICS_S3_ENDPOINT_URL: http://minio:9000
+      # The provenance route checks an adjusted observation's model artifact
+      # under the snapshot directory `metrics compute` wrote on the host.
+      JUDGEMETRICS_SNAPSHOT_DIR: /app/data/snapshots
+    volumes:
+      - ./data/snapshots:/app/data/snapshots:ro
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

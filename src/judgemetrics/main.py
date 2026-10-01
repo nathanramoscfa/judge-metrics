@@ -40,6 +40,7 @@ from judgemetrics.api.routes import (
     judges,
     jurisdictions,
     metrics,
+    models,
     search,
 )
 from judgemetrics.config import Settings, get_settings
@@ -54,7 +55,9 @@ API_DESCRIPTION = (
     "courts, jurisdictions, cases with their timelines, source coverage, search, the "
     "versioned metric registry, every current metric observation of a judge or court with "
     "its numerator, denominator, date range, coverage, sample size, interval, suppression, "
-    "and methodology link, a compare table per metric and cohort, and the provenance chain "
+    "and methodology link (observed-to-expected ratios with their expected count, pooled "
+    "ratio, bootstrap interval, pooling weight, and model), a compare table per metric and "
+    "cohort, the model card of every expected-outcome model, and the provenance chain "
     "from any observation back to the raw source artifacts — each with the provenance of "
     "the raw source artifacts behind it and a `synthetic` flag on every row derived from "
     "the in-repo demo dataset. The one write path, `POST /corrections`, accepts a data "
@@ -156,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(search.router, prefix=API_PREFIX)
     app.include_router(coverage.router, prefix=API_PREFIX)
     app.include_router(metrics.router, prefix=API_PREFIX)
+    app.include_router(models.router, prefix=API_PREFIX)
     app.include_router(corrections.router, prefix=API_PREFIX)
     app.openapi = lambda: _openapi(app)  # type: ignore[method-assign]
     return app

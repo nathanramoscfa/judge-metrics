@@ -269,8 +269,9 @@ attribution of the descriptive metric it adjusts (`pretrial_release_share`,
 and the field `adjustment` (`target`: the outcome model specification's
 target it reads; `minimum_expected: 5`), which the loader requires for the
 kind and rejects on every other. An adjusted entry is judge-only and has
-no dimension and no `counted` conditions. The API serves none of the three
-before Phase 4 Step 5 (docs/API.md "Metrics").
+no dimension and no `counted` conditions. The API serves the three since
+Phase 4 Step 5, with their `adjustment` on the definition (docs/API.md
+"Metrics").
 
 ### Outcome model specification
 

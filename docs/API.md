@@ -46,7 +46,8 @@ served live at `/api/v1/openapi.json`, with Swagger UI at `/api/v1/docs`.
 | GET    | `/judges/{judge_id}/metrics`           | `SubjectMetrics`: every current observation of the judge, by metric slug |
 | GET    | `/courts/{court_id}/metrics`           | `SubjectMetrics`: every current observation of the court, by metric slug |
 | GET    | `/metrics/compare`                     | `ComparePage`: one metric and window for the judges of a court or jurisdiction, sorted and paginated |
-| GET    | `/metrics/{observation_id}/provenance` | `ObservationProvenance`: the chain from the number to the raw artifacts (`docs/PROVENANCE.md`) |
+| GET    | `/metrics/{observation_id}/provenance` | `ObservationProvenance`: the chain from the number to the raw artifacts (`docs/PROVENANCE.md`), and the model of an adjusted number |
+| GET    | `/models/{model_id}`                   | `ModelCard`: an expected-outcome model an adjusted number cites — training, validation, coefficients, versions |
 | POST   | `/corrections`                         | `CorrectionAccepted` (202): a data-correction request, stored with an encrypted contact (rate limited) |
 
 Identifiers are UUIDs. The API exposes public UUIDs, public judge data
@@ -62,8 +63,9 @@ another by entity resolution is never returned (every person join
 filters `merged_into_person_id IS NULL`). No metrics route returns a
 person at all: observations carry subject ids and entity ids only
 (`tests/golden/test_public_contract.py` walks every metrics route for a
-person key, a `person_id`, or a hash other than the artifact and
-snapshot digests). A unit test over the committed OpenAPI document
+person key, a `person_id`, or a hash other than the artifact, snapshot,
+and model digests, and walks every model card). A unit test over the
+committed OpenAPI document
 asserts that no schema property is named `value_hash`,
 `encrypted_value`, `date_of_birth`, `full_name`, `person_identifier`,
 `raw_object_path`, or `requester_contact`.
@@ -289,24 +291,33 @@ as fields, so no client can show a number without its context:
 
 | Field                                   | Meaning                                                                                                   |
 |-----------------------------------------|-----------------------------------------------------------------------------------------------------------|
-| `id`, `slug`, `name`, `kind`, `unit`, `version` | The observation and its definition (`GET /metrics`); `kind` is `count`, `share`, `windowed_rate`, `survival`, `distribution`, or `median` |
+| `id`, `slug`, `name`, `kind`, `unit`, `version` | The observation and its definition (`GET /metrics`); `kind` is `count`, `share`, `windowed_rate`, `survival`, `distribution`, `median`, or `observed_expected` (unit `ratio`) |
 | `subject_type`, `subject_id`, `source`, `synthetic` | Whose number, from which source register key; `synthetic` when the source is the in-repo generator |
 | `numerator`                             | `observed_count`: the rows or members meeting the condition                                              |
 | `denominator`                           | `cohort_size`: what the numerator is divided by (the followed members of a fixed-window rate, the whole cohort of a survival estimate, the attributed rows of a share, the values of a median, the population of a count) |
 | `eligible_count`                        | Sample size: the whole cohort before any follow-up restriction                                           |
 | `period_start`, `period_end`            | Date range: the source's coverage window the number is computed over                                     |
 | `window_days`, `dimension_value`        | The follow-up window of a windowed metric; the group of a dimensioned one                                |
-| `rate`, `value`, `distribution`         | The figure: `numerator / denominator` or `1 - S(w)` (six decimals); a median in days; a distribution's whole map |
-| `lower`, `upper`, `interval_method`     | The 95% interval and how it was computed: `wilson` for shares and fixed-window rates, `greenwood` for Kaplan-Meier estimates, null otherwise |
-| `suppressed`, `suppression_threshold`   | Whether the denominator fell below the metric's threshold, and the threshold                             |
+| `rate`, `value`, `distribution`         | The figure: `numerator / denominator` or `1 - S(w)` (six decimals); a median in days; a distribution's whole map; for an adjusted ratio, `rate` is the observed rate O / n |
+| `lower`, `upper`, `interval_method`     | The 95% interval of a rate and how it was computed: `wilson` for shares and fixed-window rates, `greenwood` for Kaplan-Meier estimates, `bootstrap` for an adjusted ratio (whose `lower`/`upper` are null: its interval is `ratio_lower`/`ratio_upper`), null otherwise |
+| `expected`, `expected_rate`             | Adjusted only: the model-expected count E (the sum of predicted probabilities) and E / n                 |
+| `ratio`, `ratio_lower`, `ratio_upper`   | Adjusted only: the pooled ratio (α + O) / (α + E) and its 95% bootstrap interval (unbounded above)       |
+| `pooling_weight`                        | Adjusted only: E / (E + α), the weight the judge's own data carries                                      |
+| `model`                                 | Adjusted only: `ModelRef` — `id`, `content_hash`, `model_version`, `spec_version`, `url` (`/api/v1/models/{id}`) |
+| `suppressed`, `suppression_threshold`, `suppression_reason` | Whether the number is withheld, the metric's threshold, and why: `below_threshold`, `expected_below_minimum`, or `model_unavailable` (null when published) |
 | `coverage`                              | `coverage_start`, `coverage_end`, and `observable` (whether the source documents the metric's outcome)   |
 | `methodology_version`, `methodology_url` | The methodology the number follows and the page anchored at the metric (`<JUDGEMETRICS_METHODOLOGY_URL>#<slug>`, default `/methodology#<slug>`) |
 | `snapshot_hash`, `computed_at`          | The hashed export the number was computed from (`judgemetrics metrics verify` reproduces it) and when   |
 
+Every adjusted field is null for a descriptive kind; a client tells the
+kinds apart by `kind` alone.
+
 **Suppression.** When `suppressed` is true the API withholds the number:
 `numerator`, `denominator`, `rate`, `value`, `distribution`, `lower`,
-and `upper` are null, whatever the stored row holds, and only
-`eligible_count` and `suppression_threshold` say why. The stripping is
+`upper`, and the adjusted figures (`expected`, `expected_rate`, `ratio`,
+`ratio_lower`, `ratio_upper`, `pooling_weight`) are null, whatever the
+stored row holds, and only `eligible_count`, `suppression_threshold`,
+`suppression_reason`, and (adjusted) `model` say why. The stripping is
 done by the response schema itself (`schemas/metrics.py`), so no route
 can leak a withheld figure; the `methodology` page states the rule and
 the rationale (`GET /metrics` → `suppression`).
@@ -324,7 +335,9 @@ text}`, oldest first) — which are the same constants
 one `MetricDefinitionOut` per metric in registry order (slug, name,
 kind, subject types, description, numerator, denominator, eligibility,
 the structured attribution rule, index event, outcome, windows,
-dimension, threshold, unit, version, `methodology_url`). It needs no
+dimension, threshold, unit, version, `methodology_url`, and — for an
+`observed_expected` metric only — `adjustment`: the model `target` and the
+`minimum_expected` count below which the ratio is withheld). It needs no
 database and is cacheable.
 
 **The `adjustment` block (methodology 1.0, Phase 4 Step 4).** The adjusted
@@ -366,13 +379,14 @@ judge today) is `total: 0` with an empty map.
 | `window`          | days              | Required for, and one of, a windowed metric's windows; forbidden otherwise (422)     |
 | `court_id` / `jurisdiction_id` | UUID | Exactly one: the judges with a service record at the court, or at a court of the jurisdiction (the linkage `/judges?court_id=` uses); unknown is a 404 |
 | `period_start`, `period_end` | ISO dates | Only observations of exactly that source period; `period_end` earlier than `period_start` is a 422 |
-| `sort`            | `rate` (default), `numerator`, `denominator`, `value`, `name` | The figure to order by; a suppressed row sorts as if its figure were null, so the order never reveals a withheld number; nulls last |
+| `sort`            | `rate`, `numerator`, `denominator`, `value`, `ratio`, `name` | The figure to order by — by default `ratio` (the pooled ratio) for an adjusted metric and `rate` otherwise; a suppressed row sorts as if its figure were null, so the order never reveals a withheld number; nulls last |
 | `order`           | `desc` (default), `asc` | Direction; ties break by name and id                                             |
 | `limit`, `offset` | as every list     |                                                                                       |
 
 The response is a page of `CompareRow`s (`subject_id`, `name`, the
 judge's `court` within the cohort, `synthetic`, `observation_id`,
 `source`, the period, window, and dimension, the figures and interval
+— the adjusted ones too, with the `model` and the `suppression_reason` —
 under the same suppression rule, `eligible_count`, and
 `coverage_warning`) plus `cohort` (the metric and version compared, the
 cohort's court or jurisdiction and name, the reference period, the sort)
@@ -385,22 +399,18 @@ observation under an older, not yet recomputed version is not compared.
 One page is one statement (`count(*) OVER ()`); an empty page costs one
 more that also settles whether the cohort exists.
 
-**The hold-out (Phase 4 Step 3).** Registry version 2 defines a seventh
+**Adjusted metrics (Phase 4 Step 5).** Registry version 2 defines a seventh
 kind, `observed_expected` — three judge-level observed-to-expected ratios
 with partial pooling and bootstrap intervals (`docs/METHODOLOGY.md`
-"Adjusted statistics") — which `metrics compute` computes and
-stores but no public response serves until Phase 4 Step 5, after
-methodology 1.0 publishes the estimator's validation (Phase 4 Step 4,
-`docs/VALIDATION.md`): an
-adjusted ratio must not reach a reader before the evidence that it
-recovers what it claims to, and the response schemas (`MetricKind`,
-`unit`) and the web's renderer do not know the kind yet. The served kinds
-are `services.metrics.SERVED_KINDS`: `GET /metrics` lists only their
-definitions; the subject routes filter by kind inside their one statement;
-`/metrics/compare` answers an adjusted slug with the same 422 as an unknown
-metric; and the provenance route answers an adjusted observation's id with
-404. `tests/integration/test_api_adjusted.py` asserts each. Step 5 adds the
-kind to the set with its schema.
+"Adjusted statistics", validated in `docs/VALIDATION.md`). Phase 4 Step 3
+held them out of every public response until methodology 1.0 published
+that validation; since Step 5 the API serves them like any other kind
+(`services.metrics.SERVED_KINDS` holds every registry kind): `GET
+/metrics` lists their definitions with their `adjustment`; a judge's
+`/metrics` carries them (a court never does: the ratios are judge-only);
+`/metrics/compare` sorts them by `ratio` by default; and the provenance
+route traces them. Every adjusted observation names its model (`model`),
+suppressed or not.
 
 `GET /metrics/{observation_id}/provenance` is the chain
 (`docs/PROVENANCE.md`): the observation (the public shape above plus
@@ -410,7 +420,36 @@ kind with counts and the cases they belong to, the distinct source
 records with their sha256 digests, retrieval times, parser versions,
 runs, and public artifact URLs (an artifact read from the operator's
 filesystem shows `artifact_uri: null`), the source systems, and
-`complete`. A superseded or unknown observation is a 404.
+`complete`. A superseded or unknown observation is a 404. For an adjusted
+observation the body also carries `model` (null otherwise): the
+`ModelRef` plus `target`, `window_days`, `status`, `training`
+(`index_events`, `events`, `start`, `end`), and `artifact_ok` — whether
+the model's artifact exists under the API's snapshot directory
+(`JUDGEMETRICS_SNAPSHOT_DIR`) and hashes to its content hash, which
+`complete` requires. An API that cannot see the snapshot directory
+answers the chain with `complete: false`, never a 404.
+
+## Models
+
+`GET /models/{model_id}` returns the `ModelCard` of one expected-outcome
+model, from the `outcome_model` catalogue row alone (no artifact is read):
+`id`, `content_hash`, `snapshot_hash`, `source`, `synthetic`, `target`,
+`window_days`, `spec_version`, `model_version`, `seed`, `status`
+(`fitted`, `insufficient_events`, `not_converged`), `fitted_at`,
+`code_version`, `training` (`index_events`, `events`, `start`, `end`: the
+published fit is over both sides of the temporal split), `validation`
+(`split_cutoff`, the train and test index events and outcomes,
+`base_rate_train`, `brier`, `brier_skill`, `auc`,
+`calibration_in_the_large`, `calibration_slope`, and the ten calibration
+`bins` — empty for an unfitted model), `coefficients` (per design column
+in design order: `column`, `feature`, `level`, `reference`, `estimate`,
+the bootstrap `sd`, and `sign_agreement`; a court or jurisdiction level is
+its UUID; empty when unfitted), and `methodology_url`
+(`<JUDGEMETRICS_METHODOLOGY_URL>#adjusted-statistics`). It never carries
+the artifact's `storage_uri`. A malformed id is a 422; an unknown id, or a
+model whose snapshot no current observation cites any more (history, like
+a superseded observation; `judgemetrics models show` still prints it), is
+a 404. The route takes no query parameter.
 
 ## Corrections
 
@@ -461,7 +500,7 @@ List and detail responses (`/judges`, `/courts`, `/jurisdictions`,
 `/cases` and their details, `/judges/{id}/cases`, `/coverage`, and the
 metrics reads: `/metrics`, `/judges/{id}/metrics`,
 `/courts/{id}/metrics`, `/metrics/compare`,
-`/metrics/{id}/provenance`) carry `Cache-Control: public, max-age=60`.
+`/metrics/{id}/provenance`, `/models/{id}`) carry `Cache-Control: public, max-age=60`.
 Error responses, `/search`, and `POST /corrections` (`no-store`) are
 not cached.
 
@@ -531,9 +570,10 @@ statements at the cursor (`tests/integration/test_query_counts.py`):
 | case detail, case timeline     | ≤ 8        | one statement per case-level table — the case with its court and flag, parties with persons, assignments with judges, charges, events with judges, decisions with pretrial releases, judges, and persons, sentences with judges — plus the provenance rows: a constant, whatever the case holds; the timeline is assembled from the same load |
 | coverage                       | ≤ 3        | one statement over `source` with correlated counts, one for the latest runs, one for the latest snapshots |
 | registry                       | 0          | `GET /metrics` reads the registry file only                          |
-| subject metrics                | ≤ 2        | the subject with its synthetic flag, then its current observations joined to their definition, source, and snapshot |
-| compare                        | ≤ 2        | the page with its window count, the cohort's reference period, and the sort columns; an empty page costs one more that also settles whether the cohort exists |
-| observation provenance         | ≤ 6        | three today: the observation with its definition, snapshot, and source; the members resolved to their rows; the distinct source records with their sources |
+| subject metrics                | ≤ 2        | the subject with its synthetic flag, then its current observations joined to their definition, source, snapshot, and (outer) cited model |
+| compare                        | ≤ 2        | the page with its window count, the cohort's reference period, and the sort columns (an adjusted page sorted by `ratio` too); an empty page costs one more that also settles whether the cohort exists |
+| observation provenance         | ≤ 6        | three today: the observation with its definition, snapshot, source, and (outer) model; the members resolved to their rows; the distinct source records with their sources |
+| model card                     | 1          | the model with its snapshot hash and source, while a current observation cites its snapshot; `storage_uri` is never selected |
 | correction                     | ≤ 2        | the target lookup and the `INSERT` — with no `RETURNING`             |
 
 The person joins select only `public_person_key`; no statement of any

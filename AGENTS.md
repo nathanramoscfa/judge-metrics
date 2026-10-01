@@ -156,6 +156,7 @@ uv run judgemetrics models list|show <id or hash> [--json]      # the model cata
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
 uv run judgemetrics validation report [--out docs/VALIDATION.md] [--check] [--truth DIR]   # the model validation from the latest snapshot (ingest role); --check exits 1 with a diff, 2 without a snapshot or model
 uv run judgemetrics validation recovery --truth DIR [--json]   # the planted-effect recovery of the published figures; exit 1 below a tolerance, 2 for a truth no source ingested
+# GET /api/v1/models/{id}: the model card an adjusted observation cites (docs/API.md "Models")
 uv run poe bootstrap                             # up → migrate → ingest-fjc → seed → compute-metrics: the one-command startup (idempotent; `make bootstrap` runs `uv sync` first)
 uv run judgemetrics seed --out data/synthetic/ci  # the seed into another directory (the CI e2e job)
 ```
@@ -1032,6 +1033,43 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   demo world, Spearman 0.9). The new-case models' poor temporal transport
   is a generator artifact (next filing within the remaining corpus span:
   docs/SYNTHETIC_DATA.md "Temporal transport"), reported, not tuned.
+- Serving the adjusted kind (Phase 4 Step 5, docs/API.md "Metrics" and
+  "Models", docs/ARCHITECTURE.md "Public API v1" and "Web tier"):
+  `SERVED_KINDS` is every registry kind (the SQL kind filters stay as the
+  place a future kind is held out). Every `Observation`, `CompareRow`, and
+  traced observation carries the required, nullable `expected`,
+  `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, `pooling_weight`,
+  `model` (`ModelRef`, `url` = `/api/v1/models/{id}`), and
+  `suppression_reason`; `SUPPRESSED_FIELDS` gained the six figures (the
+  reason and the model survive suppression), and `services.metrics.figures`
+  is the one stored-column mapping — an adjusted row's bounds become
+  `ratio_lower`/`ratio_upper` while `lower`/`upper` (a share's `[0, 1]`)
+  stay null. The model reference rides an outer join to `outcome_model` in
+  the subject, compare, and trace statements (budgets unchanged).
+  `MetricDefinitionOut.adjustment` (`target`, `minimum_expected`) is set
+  for the adjusted kind only. `/metrics/compare`'s `sort` is `None` by
+  default and resolves to `ratio` for the adjusted kind, `rate` otherwise
+  (`services.metrics.default_sort`; the OpenAPI parameter is now an
+  `anyOf`). `GET /models/{model_id}` is one statement from the catalogue
+  row (never `storage_uri`, never the artifact) and a 404 once no current
+  observation cites the model's snapshot. The provenance route passes
+  `settings` to `trace`, so the API checks the model artifact under its own
+  `JUDGEMETRICS_SNAPSHOT_DIR`: an API that cannot read the compute's
+  snapshot directory answers an adjusted chain `complete: false`, so the
+  Compose `api` service mounts `./data/snapshots` read-only at
+  `/app/data/snapshots` (asserted by the hygiene test). `tests/integration/conftest.make_app`
+  carries `snapshot_dir`, and `golden_api` is built from
+  `golden_metrics.settings` (it now depends on the compute). Twenty-one
+  OpenAPI paths, nineteen StrictQuery routes; the public contract allows
+  the models' content hashes and walks every model card. Web:
+  `AdjustedStat` is the only adjusted renderer (web/AGENTS.md), the judge
+  page's adjusted panel is `JUDGE_PANELS`' `kind` entry, `KIND_TEXT` moved
+  to `lib/metrics.ts` (a page module may export only Next's route
+  conventions), `CompareTable`'s court and suppressed cells wrap
+  (`whitespace-normal`) so a seven-column table fits the page, and
+  `web/tests/e2e/adjusted.spec.ts` needs the demo seed's fitted models (CI's
+  `e2e` job seeds it). `uv run poe dev-web` cannot spawn `pnpm` on Windows
+  (uv finds no `pnpm.exe`); run `pnpm dev` in `web/` there.
 
 ## End-of-session report (from the brief)
 
