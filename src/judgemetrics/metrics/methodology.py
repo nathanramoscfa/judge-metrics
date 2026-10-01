@@ -16,9 +16,20 @@ from __future__ import annotations
 import difflib
 import textwrap
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from judgemetrics.config import REPO_ROOT
+from judgemetrics.metrics.adjustment.spec import (
+    DECISION_AT,
+    EXCLUDE,
+    FILED_AT,
+    INDEX_AT,
+    UNSEEN_LATEST,
+    FeatureSpec,
+    OutcomeModelSpec,
+    load_spec,
+)
 from judgemetrics.metrics.registry import (
     WINDOWS_DAYS,
     MetricDefinitionSpec,
@@ -93,10 +104,12 @@ HOW_TO_READ: tuple[tuple[str, str], ...] = (
     (
         "Interval",
         "a 95% Wilson score interval for every share and fixed-window rate, "
-        "a Greenwood interval for every Kaplan-Meier estimate. Adjusted "
-        "statistics (observed-to-expected ratios) carry a 95% percentile "
-        "interval from a person-cluster bootstrap and their methodology "
-        "version; none is served before methodology 1.0.",
+        "a Greenwood interval for every Kaplan-Meier estimate. An adjusted "
+        "statistic (an observed-to-expected ratio) carries a 95% percentile "
+        "interval from a person-cluster bootstrap with the model refitted "
+        "per replicate, and its methodology version: the interval describes "
+        "the sampling variability of the pooled estimate, not a confidence "
+        "interval for the judge's true ratio (Adjusted statistics).",
     ),
     (
         "Suppression",
@@ -235,55 +248,281 @@ CHANGELOG: tuple[tuple[str, str], ...] = (
         "are defined and computed for three judge metrics; they are not served "
         "until the validation that methodology 1.0 publishes.",
     ),
+    (
+        "1.0",
+        "The expected-outcome model, observed-to-expected ratios with partial "
+        "pooling and bootstrap intervals, and their validation (docs/VALIDATION.md) "
+        "are published; the known limitations are unchanged.",
+    ),
 )
 
-# The estimator behind every observed_expected metric (docs/METHODOLOGY.md only:
-# the API serves none of these metrics, nor this text, before methodology 1.0).
-ADJUSTMENT_TEXT: tuple[tuple[str, str], ...] = (
+# The brief's <risk_adjustment><interpretation>, verbatim.
+INTERPRETATION = (
+    "An O/E ratio above 1 means observed outcomes exceeded the model's expected "
+    "count for the defined cohort. A ratio below 1 means observed outcomes were "
+    "below the model's expected count. It must not be described as proof that the "
+    "judge caused the difference."
+)
+
+# The adjusted statistics (methodology 1.0): rendered into docs/METHODOLOGY.md and
+# served by GET /metrics as `adjustment`, both through `adjustment_prose`.
+ADJUSTMENT_INTRO = (
+    "The adjusted metrics compare what a judge's cohort shows with what a versioned "
+    "model expects for defendants with similar observable case characteristics under "
+    "the source's average practice. Every element below is rendered from the outcome "
+    "model specification (data/reference/outcome_model.yaml) and the metric registry; "
+    "the model's validation is docs/VALIDATION.md."
+)
+KNOWN_AT_TEXT: dict[str, str] = {
+    FILED_AT: (
+        "the index case's filing (00:00 UTC of its filing date), which precedes every "
+        "index event of the case: only rows strictly before it are read"
+    ),
+    DECISION_AT: (
+        "the pretrial decision: only the index case's charges filed strictly before it are read"
+    ),
+    INDEX_AT: "the index event itself (its calendar year)",
+}
+EXPECTED_COUNT_TEXT = (
+    "For every eligible index event i the model gives a predicted probability p_i of "
+    "the outcome from the published coefficients. A judge's expected count E is the sum "
+    "of p_i over the judge's members in the ratio (the brief's Expected_j = SUM(p_i)); "
+    "the observed count O is the number of those members with the outcome; n is their "
+    "number. O / n is the observed rate, E / n the expected rate, and O / E the "
+    "unpooled ratio. A member whose features are missing under an exclude rule is "
+    "outside the ratio and counted in the eligible count."
+)
+POOLING_TEXT = (
+    "A judge's O / E is noisy when E is small, so it is shrunk toward 1 by an "
+    "empirical-Bayes gamma-Poisson model: O | theta ~ Poisson(theta E), theta ~ "
+    "Gamma(alpha, alpha), mean 1 and variance 1 / alpha. The shape alpha is fitted by "
+    "maximum marginal (negative-binomial) likelihood over every judge of the source "
+    "with E > 0, suppressed or not, on {grid} points log-spaced over [{low:g}, "
+    "{high:g}] refined by golden-section search; a maximum at the upper bound means no "
+    "between-judge variation is detectable and every ratio is pulled almost all the "
+    "way to 1. The published ratio is the posterior mean (alpha + O) / (alpha + E); "
+    "the pooling weight E / (E + alpha) is the share of it that is the judge's own "
+    "O / E, the rest being the prior mean, 1."
+)
+INTERVAL_TEXT = (
+    "A person-cluster bootstrap with the model refitted: {replicates} replicates, each "
+    "drawing the source's persons with replacement from the model's seeded stream "
+    "(seed {seed}) and refitting the model on the redrawn index events; per replicate "
+    "every member is re-predicted from that replicate's coefficients, each judge's "
+    "weighted O and E are recomputed, alpha is refitted, and the pooled ratio is "
+    "recomputed. The interval is the {lower:g}th and {upper:g}th percentiles (linear "
+    "interpolation) over the converged replicates; a replicate whose refit did not "
+    "converge is skipped. The replicate coefficients are stored with the model, so a "
+    "recompute reproduces the interval exactly. The interval describes the sampling "
+    "variability of the pooled estimate, which is shrunk toward 1: it is not a "
+    "confidence interval for the judge's true ratio, and it covers the true ratio of a "
+    "judge far from 1 less often than its nominal level (docs/VALIDATION.md)."
+)
+CONTROLS_TEXT: tuple[tuple[str, str], ...] = (
     (
-        "Expected counts",
-        "The outcome model (data/reference/outcome_model.yaml) is fitted once per "
-        "source, target, and window over every eligible index event of the "
-        "source, so every judge is scored by the same model; the judge is never "
-        "one of its inputs. A judge's expected count E is the sum, over the "
-        "judge's members in the ratio, of the predicted probability of the "
-        "outcome from the published coefficients; the observed count O is the "
-        "number of those members with the outcome; n is their number. O / n "
-        "is the observed rate and E / n the expected rate.",
+        "Temporal",
+        "The calendar year of the index event is a feature, so each member's "
+        "expected outcome is the source's practice in the same year: a judge is "
+        "compared with contemporaneous cohorts. A year the model has not seen is "
+        "scored at the latest year it has; the temporal split in docs/VALIDATION.md "
+        "measures what that costs when outcomes trend across years.",
     ),
     (
-        "Partial pooling",
-        "A judge's ratio O / E is noisy when E is small, so it is shrunk toward "
-        "1 by an empirical-Bayes gamma-Poisson model: O | theta ~ Poisson(theta "
-        "E), theta ~ Gamma(alpha, alpha). The shape alpha is fitted by maximum "
-        "marginal (negative-binomial) likelihood over every judge with E > 0, "
-        "suppressed or not, on a log-spaced grid refined by golden-section "
-        "search within the specification's bounds; a maximum at the upper bound "
-        "means no between-judge variation is detectable and every ratio is "
-        "pulled almost all the way to 1. The published ratio is the posterior "
-        "mean (alpha + O) / (alpha + E), and the pooling weight E / (E + alpha) "
-        "is the share of it that is the judge's own O / E.",
-    ),
-    (
-        "Bootstrap interval",
-        "The interval is the 2.5th and 97.5th percentiles (linear interpolation) "
-        "of the pooled ratio over the person-cluster bootstrap replicates the "
-        "model was refitted on: each replicate redraws persons with replacement "
-        "from the model's seeded stream, re-predicts every member from that "
-        "replicate's coefficients, recomputes each judge's weighted O and E, "
-        "refits alpha, and recomputes the pooled ratio. A replicate whose refit "
-        "did not converge is skipped. The replicate coefficients are stored in "
-        "the model's artifact, so a recompute reproduces the interval exactly.",
-    ),
-    (
-        "Suppression",
-        "An adjusted ratio is withheld below a cohort of 30 (below_threshold), "
-        "below an expected count of 5 (expected_below_minimum), and when the "
-        "model is not fitted (model_unavailable: too few events per design "
-        "column, or a fit that did not converge). The stored row keeps every "
-        "figure it has so a recompute can reproduce it.",
+        "Jurisdiction",
+        "The court of filing and its jurisdiction are features, so a member's "
+        "expected outcome is the practice of the court the case was filed in. Judges "
+        "are compared only within their source's model, never across sources, whose "
+        "legal regimes, procedures, and recording differ.",
     ),
 )
+LIMITATIONS_TEXT: tuple[str, ...] = (
+    "Unobserved confounding and selection on unobservables: the model adjusts only for "
+    "the recorded characteristics it lists. A judge whose docket differs in risk the "
+    "records do not show carries that difference in the ratio, whatever the judge's "
+    "decisions (the synthetic generator's latent propensity is such a risk, by "
+    "construction).",
+    "Model misspecification: the model is a main-effects logistic regression. An "
+    "interaction, a nonlinearity, or a trend it does not represent moves into the "
+    "ratio; the temporal split shows that the models do not transport equally well "
+    "(docs/VALIDATION.md).",
+    "Restricted attributes excluded by policy: the model never reads a restricted "
+    "attribute or a protected characteristic, so a planted or real difference by such "
+    "an attribute remains in the residual. The subgroup calibration shows it: on the "
+    "synthetic source the age band's planted effect appears in the subgroup ratios in "
+    "the planted direction, so a judge whose docket skews young or old carries that "
+    "difference in the ratio, while the negative control is calibrated "
+    "(docs/VALIDATION.md).",
+    "Intervals conditional on the specification: the bootstrap refits the same "
+    "features, penalty, and functional form, so the uncertainty of those choices is "
+    "not in the interval.",
+)
+VALIDATION_TEXT = (
+    "docs/VALIDATION.md reports, per target and window, the temporal-split "
+    "calibration, Brier score, ROC AUC, calibration in the large and slope, feature "
+    "stability, missing-data sensitivity, the bootstrap stability of the judge-level "
+    "estimates, subgroup calibration in aggregate, and, for a synthetic source, the "
+    "recovery of the planted effects. It is generated by `judgemetrics validation "
+    "report` and checked in CI."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class FeatureText:
+    """One model feature as the methodology states it."""
+
+    name: str
+    description: str
+    levels: str
+    known_at: str
+    missing: str
+    leakage: str
+
+
+@dataclass(frozen=True, slots=True)
+class AdjustmentProse:
+    """The "Adjusted statistics" prose, from the specification and the registry."""
+
+    specification_version: int
+    model_version: str
+    intro: str
+    interpretation: str
+    model: str
+    targets: tuple[tuple[str, str], ...]
+    features: tuple[FeatureText, ...]
+    exclusions: tuple[tuple[str, str], ...]
+    expected_count: str
+    pooling: str
+    interval: str
+    thresholds: tuple[tuple[str, str], ...]
+    controls: tuple[tuple[str, str], ...]
+    limitations: tuple[str, ...]
+    validation: str
+
+
+def _feature_levels(feature: FeatureSpec) -> str:
+    if feature.data_levels:
+        unseen = (
+            "the latest seen level" if feature.unseen == UNSEEN_LATEST else "the reference level"
+        )
+        return (
+            "the source's own levels, ordered by their number of index events (the "
+            f"busiest is the reference); a level unseen in a fit is scored at {unseen}"
+        )
+    return ", ".join(
+        f"{level} (reference)" if level == feature.reference else level
+        for level in feature.fixed_levels
+        if level != feature.missing_level
+    )
+
+
+def _scientific(value: float) -> str:
+    """``1e-08`` as ``1e-8``."""
+    mantissa, _, exponent = f"{value:.0e}".partition("e")
+    return f"{mantissa}e{int(exponent)}"
+
+
+def _feature_missing(feature: FeatureSpec) -> str:
+    if feature.missing == EXCLUDE:
+        return "an index event without a value is excluded from the model"
+    return f"an index event without a value takes the level {feature.missing_level}"
+
+
+def adjustment_prose(
+    spec: OutcomeModelSpec | None = None, registry: Registry | None = None
+) -> AdjustmentProse:
+    """The adjusted-statistics prose ``docs/METHODOLOGY.md`` and ``GET /metrics`` share."""
+    spec = spec or load_spec()
+    registry = registry or load_registry()
+    model = spec.model
+    cohort = min(
+        (metric.suppression_threshold for metric in registry.of_kind("observed_expected")),
+        default=spec.thresholds.minimum_cohort,
+    )
+    tail = (1.0 - spec.bootstrap.level) / 2.0 * 100.0
+    return AdjustmentProse(
+        specification_version=spec.version,
+        model_version=spec.model_version,
+        intro=ADJUSTMENT_INTRO,
+        interpretation=INTERPRETATION,
+        model=(
+            f"A regularized logistic regression ({model.penalty.upper()} penalty, lambda "
+            f"{model.lam}, the intercept unpenalized), fitted by Newton-Raphson (at most "
+            f"{model.max_iterations} iterations, gradient tolerance "
+            f"{_scientific(model.tolerance)}): one model per source, target, and window "
+            "over every eligible index event of the source, so every judge of the source "
+            "is scored by the same model. The judge is never a term of the model. "
+            f"Specification version {spec.version}, model version {spec.model_version}."
+        ),
+        targets=tuple(
+            (
+                target.name,
+                target.description
+                + (
+                    ""
+                    if target.windows_days is None
+                    else " Windows: "
+                    + ", ".join(str(window) for window in target.windows_days)
+                    + " days."
+                ),
+            )
+            for target in spec.targets
+        ),
+        features=tuple(
+            FeatureText(
+                name=feature.name,
+                description=feature.description
+                + (
+                    ""
+                    if feature.lookback_days is None
+                    else f" The lookback is {feature.lookback_days} days."
+                ),
+                levels=_feature_levels(feature),
+                known_at=KNOWN_AT_TEXT[feature.known_at],
+                missing=_feature_missing(feature),
+                leakage=feature.leakage,
+            )
+            for feature in spec.features
+        ),
+        exclusions=tuple((entry.name, entry.reason) for entry in spec.excluded),
+        expected_count=EXPECTED_COUNT_TEXT,
+        pooling=POOLING_TEXT.format(
+            grid=spec.pooling.shape_grid,
+            low=spec.pooling.shape_bounds[0],
+            high=spec.pooling.shape_bounds[1],
+        ),
+        interval=INTERVAL_TEXT.format(
+            replicates=spec.bootstrap.replicates,
+            seed=spec.seed,
+            lower=tail,
+            upper=100.0 - tail,
+        ),
+        thresholds=(
+            (
+                "Events per column",
+                "A model is fitted only when the fewer of its outcomes and non-outcomes "
+                f"number at least {spec.thresholds.minimum_events_per_column} per design "
+                "column (the intercept included); otherwise its ratios are withheld as "
+                "model_unavailable, because a logistic fit with fewer events per column "
+                "is unstable and overfits.",
+            ),
+            (
+                "Cohort",
+                f"A ratio is withheld below {cohort} members in the ratio "
+                "(below_threshold): a ratio of two small counts is unstable well above "
+                "the ten members a share needs, since its numerator and its denominator "
+                "both move by chance.",
+            ),
+            (
+                "Expected count",
+                "A ratio is withheld below an expected count of "
+                f"{spec.thresholds.minimum_expected:g} (expected_below_minimum): below it "
+                "the ratio is a function of a handful of predicted events.",
+            ),
+        ),
+        controls=CONTROLS_TEXT,
+        limitations=LIMITATIONS_TEXT,
+        validation=VALIDATION_TEXT,
+    )
 
 
 def _fill(text: str, *, initial: str = "", subsequent: str = "") -> str:
@@ -356,7 +595,7 @@ def _metric_section(metric: MetricDefinitionSpec) -> list[str]:
                 f"Adjustment: outcome model target `{metric.adjustment.target}` "
                 "(data/reference/outcome_model.yaml); the pooled ratio, its "
                 "pooling weight, and its bootstrap interval are defined under "
-                "Observed-to-expected ratios."
+                "Adjusted statistics."
             )
         )
         lines.append(
@@ -379,6 +618,36 @@ def _metric_section(metric: MetricDefinitionSpec) -> list[str]:
         )
     )
     lines.append("")
+    return lines
+
+
+def _adjustment_lines(prose: AdjustmentProse) -> list[str]:
+    lines = ["## Adjusted statistics", "", _fill(prose.intro), ""]
+    lines.extend([_fill(f"**Interpretation.** {prose.interpretation}"), ""])
+    lines.extend(["### The model", "", _fill(prose.model), ""])
+    lines.extend(["### Targets", ""])
+    lines.extend(_bullet(f"`{name}`: {text}") for name, text in prose.targets)
+    lines.extend(["", "### Features", ""])
+    for feature in prose.features:
+        lines.append(
+            _bullet(
+                f"`{feature.name}`: {feature.description} Levels: {feature.levels}. "
+                f"Known at: {feature.known_at}. Missing: {feature.missing}. Leakage: "
+                f"{feature.leakage}"
+            )
+        )
+    lines.extend(["", "### Exclusions", ""])
+    lines.extend(_bullet(f"`{name}`: {reason}") for name, reason in prose.exclusions)
+    lines.extend(["", "### Expected counts", "", _fill(prose.expected_count), ""])
+    lines.extend(["### Partial pooling", "", _fill(prose.pooling), ""])
+    lines.extend(["### Interval", "", _fill(prose.interval), ""])
+    lines.extend(["### Thresholds", ""])
+    lines.extend(_bullet(f"**{term}**: {text}") for term, text in prose.thresholds)
+    lines.extend(["", "### Temporal and jurisdiction controls", ""])
+    lines.extend(_bullet(f"**{term}**: {text}") for term, text in prose.controls)
+    lines.extend(["", "### Limitations of adjustment", ""])
+    lines.extend(_numbered(index, text) for index, text in enumerate(prose.limitations, 1))
+    lines.extend(["", "### Validation", "", _fill(prose.validation), ""])
     return lines
 
 
@@ -417,22 +686,7 @@ def render_methodology(registry: Registry | None = None) -> str:
         lines.append(_fill(paragraph))
         lines.append("")
     if registry.of_kind("observed_expected"):
-        lines.extend(["## Observed-to-expected ratios", ""])
-        lines.append(
-            _fill(
-                "The adjusted metrics compare what a judge's cohort shows with what "
-                "a versioned model expects for defendants with similar observable "
-                "case characteristics under the source's average practice. They are "
-                "defined and computed here but not served by the API until "
-                "methodology 1.0 publishes their validation. A ratio above 1 means "
-                "more outcomes than expected, below 1 fewer: an association with "
-                "the judge's decisions, never a causal effect."
-            )
-        )
-        lines.append("")
-        for term, text in ADJUSTMENT_TEXT:
-            lines.append(_fill(f"**{term}.** {text}"))
-            lines.append("")
+        lines.extend(_adjustment_lines(adjustment_prose(registry=registry)))
     lines.extend(["## Metrics", ""])
     lines.append(
         _fill(

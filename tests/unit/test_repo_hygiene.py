@@ -339,6 +339,7 @@ def test_ci_web_and_e2e_jobs() -> None:
         "uv run judgemetrics metrics compute",
         "uv run judgemetrics models fit",
         "uv run judgemetrics models verify",
+        "uv run judgemetrics validation report --check --truth data/synthetic/ci",
         "uv run judgemetrics serve",
         "pnpm exec playwright install --with-deps chromium",
         "pnpm e2e",
@@ -346,7 +347,8 @@ def test_ci_web_and_e2e_jobs() -> None:
         assert command in e2e_runs, command
     assert "tests/fixtures/golden" not in e2e_runs
     # The seed and the compute follow the FJC ingest and precede the API; the
-    # expected-outcome models (Phase 4 Step 2) are fitted and verified after the compute.
+    # expected-outcome models (Phase 4 Step 2) are fitted and verified after the compute,
+    # and the validation report (Phase 4 Step 4) is checked after the models.
     order = [
         e2e_runs.index(c)
         for c in (
@@ -355,6 +357,7 @@ def test_ci_web_and_e2e_jobs() -> None:
             "metrics compute",
             "models fit",
             "models verify",
+            "validation report --check",
             "judgemetrics serve",
         )
     ]

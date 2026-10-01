@@ -21,7 +21,12 @@ raw artifacts and exits 1 when it is incomplete; as the read-only role),
 and ``models`` (Phase 4: ``fit`` fits and records every expected-outcome
 model the latest or the named snapshot lacks and ``verify`` checks every
 artifact against its row, refitting with ``--refit``, both as the ingest
-role; ``list`` and ``show`` read the catalogue as the read-only role).
+role; ``list`` and ``show`` read the catalogue as the read-only role), and
+``validation`` (Phase 4 Step 4: ``report`` renders docs/VALIDATION.md from
+the latest snapshot's models, ``--check`` exits 1 with a diff when the file
+differs; ``recovery`` prints the planted-effect recovery of the published
+figures and exits 1 below a tolerance; both as the ingest role, because the
+report's subgroup calibration reads the restricted schema).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -64,6 +69,9 @@ provenance_app = typer.Typer(
 models_app = typer.Typer(
     help="The expected-outcome models (risk adjustment): fit, list, show, verify."
 )
+validation_app = typer.Typer(
+    help="The validation of the expected-outcome models (docs/VALIDATION.md)."
+)
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
@@ -74,6 +82,7 @@ app.add_typer(methodology_app, name="methodology")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(provenance_app, name="provenance")
 app.add_typer(models_app, name="models")
+app.add_typer(validation_app, name="validation")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -1242,6 +1251,165 @@ def models_verify(
         if len(lines) > VERIFY_REPORT_LINES:
             typer.echo(f"... {len(lines) - VERIFY_REPORT_LINES} more", err=True)
     if not result.ok:
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+# --- validation: the model validation report -------------------------------------------
+
+
+@validation_app.command("report")
+def validation_report(
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Where to write (a relative path is under the repository root).",
+            dir_okay=False,
+        ),
+    ] = Path("docs") / "VALIDATION.md",
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Compare with the file instead of writing; exit 1 on a diff."),
+    ] = False,
+    truth: Annotated[
+        Path | None,
+        typer.Option(
+            "--truth",
+            help="The synthetic dataset directory holding manifest.json and truth/ "
+            "(default: JUDGEMETRICS_SYNTHETIC_DIR, skipped when it does not exist).",
+            file_okay=False,
+        ),
+    ] = None,
+) -> None:
+    """Render docs/VALIDATION.md from the latest snapshot's expected-outcome models.
+
+    Runs as the ingest role (the subgroup calibration reads the restricted
+    schema in aggregate). Exits 1 with a unified diff when --check finds the
+    file differs, 2 when no snapshot or model can be read or the truth
+    directory is unreadable or describes another dataset.
+    """
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.methodology import resolve_output
+    from judgemetrics.metrics.snapshot import SnapshotError
+    from judgemetrics.validation.fairness import FairnessError
+    from judgemetrics.validation.report import (
+        ReportError,
+        build_report,
+        check_report,
+        render_report,
+        write_report,
+    )
+
+    settings = get_settings()
+    configure_logging(settings)
+    if truth is not None and not truth.is_dir():
+        typer.echo("error: --truth is not a directory", err=True)
+        raise typer.Exit(EXIT_USAGE)
+    truth_dir = truth if truth is not None else settings.synthetic_dir
+    target = resolve_output(out)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                report = build_report(session, settings, truth_dir=truth_dir)
+            except (ReportError, FairnessError, SnapshotError) as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            finally:
+                session.rollback()
+    finally:
+        engine.dispose()
+    rendered = render_report(report)
+    if check:
+        diff = check_report(target, rendered)
+        if diff:
+            typer.echo(f"{target} differs from the validation render:", err=True)
+            for line in diff[:METHODOLOGY_DIFF_LINES]:
+                typer.echo(line, err=True)
+            if len(diff) > METHODOLOGY_DIFF_LINES:
+                typer.echo(f"... {len(diff) - METHODOLOGY_DIFF_LINES} more lines", err=True)
+            raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+        typer.echo(f"{target} is up to date")
+        return
+    write_report(target, rendered)
+    typer.echo(f"wrote {target}")
+
+
+@validation_app.command("recovery")
+def validation_recovery(
+    truth: Annotated[
+        Path,
+        typer.Option(
+            "--truth",
+            help="The synthetic dataset directory holding manifest.json and truth/.",
+            file_okay=False,
+        ),
+    ],
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """The planted-effect recovery of the latest snapshot's published adjusted figures.
+
+    Exits 1 when a figure is below the specification's recovery tolerance,
+    2 when no snapshot is recorded or the truth directory is unreadable or
+    describes no ingested synthetic source.
+    """
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.adjustment.catalog import CatalogError
+    from judgemetrics.metrics.adjustment.spec import load_spec
+    from judgemetrics.metrics.registry import load_registry
+    from judgemetrics.validation.recovery import TruthError, read_truth, recovery_for_truth
+
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                results = recovery_for_truth(
+                    session, read_truth(truth), spec=load_spec(), registry=load_registry()
+                )
+            except (TruthError, CatalogError) as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            finally:
+                session.rollback()
+    finally:
+        engine.dispose()
+    passed = all(result.passed for result in results)
+    if as_json:
+        typer.echo(
+            json.dumps(
+                {"passed": passed, "fits": [result.as_dict() for result in results]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        for r in results:
+            window = "-" if r.window_days is None else r.window_days
+
+            def num(value: float | None) -> str:
+                return "-" if value is None else f"{value:.3f}"
+
+            typer.echo(
+                f"{r.target}	{window}	judges={r.judges}	"
+                f"spearman={num(r.spearman)} (min {r.spearman_minimum:g})	"
+                f"raw={num(r.raw_spearman)}	sign={r.sign_agreed}/{r.sign_checked}	"
+                f"expected_r={num(r.expected_correlation)} (min {r.expected_minimum:g})	"
+                f"coverage={num(r.coverage)} (min {r.coverage_minimum:g})	"
+                + ("met" if r.passed else "NOT MET")
+            )
+    if not passed:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 

@@ -310,6 +310,13 @@ jobs:
       - name: Verify the expected-outcome model artifacts
         run: uv run judgemetrics models verify
 
+      # Phase 4 Step 4: docs/VALIDATION.md is the demo seed's report, rendered
+      # locally; data/synthetic/ci carries the same manifest, so this render must
+      # equal it byte for byte. A difference is an order-invariance bug to fix,
+      # never a reason to drop the check.
+      - name: Check the validation report (ingest role)
+        run: uv run judgemetrics validation report --check --truth data/synthetic/ci
+
       - name: Start the API in the background
         run: |
           nohup uv run judgemetrics serve --host 127.0.0.1 --port 8000 > api.log 2>&1 &

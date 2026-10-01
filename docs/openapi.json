@@ -17,6 +17,164 @@
         "title": "ActorType",
         "type": "string"
       },
+      "AdjustmentFeatureOut": {
+        "description": "One feature of the expected-outcome model, as the methodology states it.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "known_at": {
+            "description": "The instant before which every value is read.",
+            "title": "Known At",
+            "type": "string"
+          },
+          "leakage": {
+            "description": "Why the feature cannot carry the outcome.",
+            "title": "Leakage",
+            "type": "string"
+          },
+          "levels": {
+            "description": "The levels in design order, the reference marked.",
+            "title": "Levels",
+            "type": "string"
+          },
+          "missing": {
+            "description": "What happens to an index event without a value.",
+            "title": "Missing",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "levels",
+          "known_at",
+          "missing",
+          "leakage"
+        ],
+        "title": "AdjustmentFeatureOut",
+        "type": "object"
+      },
+      "AdjustmentOut": {
+        "description": "The adjusted statistics' methodology (methodology 1.0), from the model specification.\n\nThe same text ``docs/METHODOLOGY.md`` renders under \"Adjusted statistics\".",
+        "properties": {
+          "controls": {
+            "description": "The temporal and jurisdiction controls.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "Controls",
+            "type": "array"
+          },
+          "exclusions": {
+            "description": "What the model never reads, each with its reason.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "expected_count": {
+            "title": "Expected Count",
+            "type": "string"
+          },
+          "features": {
+            "description": "In specification order.",
+            "items": {
+              "$ref": "#/components/schemas/AdjustmentFeatureOut"
+            },
+            "title": "Features",
+            "type": "array"
+          },
+          "interpretation": {
+            "description": "The brief's reading of an O/E ratio, verbatim.",
+            "title": "Interpretation",
+            "type": "string"
+          },
+          "interval": {
+            "description": "The bootstrap interval and what it describes.",
+            "title": "Interval",
+            "type": "string"
+          },
+          "intro": {
+            "title": "Intro",
+            "type": "string"
+          },
+          "limitations": {
+            "description": "The limitations of adjustment.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "model": {
+            "description": "The model, its penalty, and what it is fitted over.",
+            "title": "Model",
+            "type": "string"
+          },
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "pooling": {
+            "description": "The gamma-Poisson partial pooling: formula and weight.",
+            "title": "Pooling",
+            "type": "string"
+          },
+          "specification_version": {
+            "description": "The outcome model specification.",
+            "minimum": 1.0,
+            "title": "Specification Version",
+            "type": "integer"
+          },
+          "targets": {
+            "description": "The modelled outcomes, by target name.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "thresholds": {
+            "description": "Each threshold and its reason.",
+            "items": {
+              "$ref": "#/components/schemas/MethodologyTerm"
+            },
+            "title": "Thresholds",
+            "type": "array"
+          },
+          "validation": {
+            "description": "Where the model's validation is published.",
+            "title": "Validation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "specification_version",
+          "model_version",
+          "intro",
+          "interpretation",
+          "model",
+          "targets",
+          "features",
+          "exclusions",
+          "expected_count",
+          "pooling",
+          "interval",
+          "thresholds",
+          "controls",
+          "limitations",
+          "validation"
+        ],
+        "title": "AdjustmentOut",
+        "type": "object"
+      },
       "AssignmentOut": {
         "properties": {
           "assignment_type": {
@@ -2893,8 +3051,12 @@
         "type": "object"
       },
       "Registry": {
-        "description": "The versioned metric registry the methodology page is rendered from.\n\nThe prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,\n``changelog``) are the same constants ``docs/METHODOLOGY.md`` is rendered\nfrom, so the web page and the committed document never diverge.",
+        "description": "The versioned metric registry the methodology page is rendered from.\n\nThe prose sections (``how_to_read``, ``semantics``, ``attribution_notes``,\n``changelog``, ``adjustment``) are the same constants ``docs/METHODOLOGY.md``\nis rendered from, so the web page and the committed document never diverge.",
         "properties": {
+          "adjustment": {
+            "$ref": "#/components/schemas/AdjustmentOut",
+            "description": "The adjusted statistics' methodology: the model, its features, the pooling, the interval, the thresholds, and the limitations of adjustment."
+          },
           "attribution_notes": {
             "description": "How rows are tied to a judge, and what is never attributed.",
             "items": {
@@ -2989,6 +3151,7 @@
           "attribution_notes",
           "gate_descriptions",
           "changelog",
+          "adjustment",
           "definitions"
         ],
         "title": "Registry",

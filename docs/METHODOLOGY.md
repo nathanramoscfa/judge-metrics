@@ -4,7 +4,7 @@
      registry and re-render. -->
 # Methodology
 
-Registry version 2; methodology version 0.3; 36 metrics.
+Registry version 2; methodology version 1.0; 36 metrics.
 
 This document is rendered from the versioned metric registry
 (`data/reference/metric_registry.yaml`), the contract every published number is
@@ -31,10 +31,12 @@ composite, ideological, partisan, or best-or-worst judge score.
   published even when the number itself is suppressed; the denominator is
   withheld with the number.
 - **Interval**: a 95% Wilson score interval for every share and fixed-window
-  rate, a Greenwood interval for every Kaplan-Meier estimate. Adjusted
-  statistics (observed-to-expected ratios) carry a 95% percentile interval from
-  a person-cluster bootstrap and their methodology version; none is served
-  before methodology 1.0.
+  rate, a Greenwood interval for every Kaplan-Meier estimate. An adjusted
+  statistic (an observed-to-expected ratio) carries a 95% percentile interval
+  from a person-cluster bootstrap with the model refitted per replicate, and its
+  methodology version: the interval describes the sampling variability of the
+  pooled estimate, not a confidence interval for the judge's true ratio
+  (Adjusted statistics).
 - **Suppression**: a number whose denominator is below the metric's suppression
   threshold is withheld and marked suppressed — the numerator, denominator,
   value, distribution, and interval leave the API as null and the threshold is
@@ -119,48 +121,247 @@ and unknown_actor_pretrial_count report them. A prosecutor's dismissal is not a
 judicial dismissal: the judicial dismissal rate counts only charges dismissed
 with the judge as the disposing actor.
 
-## Observed-to-expected ratios
+## Adjusted statistics
 
 The adjusted metrics compare what a judge's cohort shows with what a versioned
 model expects for defendants with similar observable case characteristics under
-the source's average practice. They are defined and computed here but not served
-by the API until methodology 1.0 publishes their validation. A ratio above 1
-means more outcomes than expected, below 1 fewer: an association with the
-judge's decisions, never a causal effect.
+the source's average practice. Every element below is rendered from the outcome
+model specification (data/reference/outcome_model.yaml) and the metric registry;
+the model's validation is docs/VALIDATION.md.
 
-**Expected counts.** The outcome model (data/reference/outcome_model.yaml) is
-fitted once per source, target, and window over every eligible index event of
-the source, so every judge is scored by the same model; the judge is never one
-of its inputs. A judge's expected count E is the sum, over the judge's members
-in the ratio, of the predicted probability of the outcome from the published
-coefficients; the observed count O is the number of those members with the
-outcome; n is their number. O / n is the observed rate and E / n the expected
-rate.
+**Interpretation.** An O/E ratio above 1 means observed outcomes exceeded the
+model's expected count for the defined cohort. A ratio below 1 means observed
+outcomes were below the model's expected count. It must not be described as
+proof that the judge caused the difference.
 
-**Partial pooling.** A judge's ratio O / E is noisy when E is small, so it is
-shrunk toward 1 by an empirical-Bayes gamma-Poisson model: O | theta ~
-Poisson(theta E), theta ~ Gamma(alpha, alpha). The shape alpha is fitted by
-maximum marginal (negative-binomial) likelihood over every judge with E > 0,
-suppressed or not, on a log-spaced grid refined by golden-section search within
-the specification's bounds; a maximum at the upper bound means no between-judge
+### The model
+
+A regularized logistic regression (L2 penalty, lambda 1.0, the intercept
+unpenalized), fitted by Newton-Raphson (at most 50 iterations, gradient
+tolerance 1e-8): one model per source, target, and window over every eligible
+index event of the source, so every judge of the source is scored by the same
+model. The judge is never a term of the model. Specification version 1, model
+version expected-logit-v1.
+
+### Targets
+
+- `pretrial_release`: Whether a judge's discretionary pretrial decision released
+  the defendant.
+- `new_case`: Whether a released defendant has a new case filed within the
+  window, among the pretrial-release cohort members followed for that window.
+  Windows: 30, 90, 180, 365, 730, 1095 days.
+- `failure_to_appear`: Whether a released defendant has a documented failure to
+  appear within the window, among the pretrial-release cohort members followed
+  for that window. Windows: 30, 90, 180, 365, 730, 1095 days.
+
+### Features
+
+- `lead_severity`: The most severe charge of the index case against the person,
+  by the vocabulary's severity order. Levels: misdemeanor_b (reference),
+  misdemeanor_a, felony_3, felony_2, felony_1. Known at: the pretrial decision:
+  only the index case's charges filed strictly before it are read. Missing: an
+  index event without a value is excluded from the model. Leakage: Read from the
+  index case's charges filed strictly before the pretrial decision, which the
+  judge has in front of them; a later charge, a disposition, or a sentence is
+  never read.
+- `lead_category`: The offense category of that lead charge; charges tied on
+  severity are ordered by the source's own charge id. Levels: public_order
+  (reference), traffic, drug, property, financial, weapon, person. Known at: the
+  pretrial decision: only the index case's charges filed strictly before it are
+  read. Missing: an index event without a value is excluded from the model.
+  Leakage: The category of the charges filed strictly before the pretrial
+  decision; the tie-break reads the source's charge id, never an outcome.
+- `charge_count`: The number of charges of the index case against the person: 1,
+  2, 3 or more. Levels: 1 (reference), 2, 3+. Known at: the pretrial decision:
+  only the index case's charges filed strictly before it are read. Missing: an
+  index event without a value is excluded from the model. Leakage: Counts the
+  charges filed strictly before the pretrial decision; a charge added later in
+  the case is not counted.
+- `prior_cases`: The person's other cases filed strictly before the index case's
+  filing: 0, 1, 2, 3 or more. Levels: 0 (reference), 1, 2, 3+. Known at: the
+  index case's filing (00:00 UTC of its filing date), which precedes every index
+  event of the case: only rows strictly before it are read. Missing: an index
+  event without a value takes the level unrecorded. Leakage: Only cases filed on
+  an earlier date count; the index case's filing precedes every index event of
+  the case. The level is unrecorded when the index case carries no filing date.
+- `prior_convictions`: The person's other cases with a conviction disposed
+  strictly before the index case's filing: 0, 1, 2 or more. Levels: 0
+  (reference), 1, 2+. Known at: the index case's filing (00:00 UTC of its filing
+  date), which precedes every index event of the case: only rows strictly before
+  it are read. Missing: an index event without a value takes the level
+  unrecorded. Leakage: A conviction counts only when its disposition time is
+  strictly before the filing, and only charges filed before it are read.
+- `prior_failures_to_appear`: The person's documented failures to appear
+  strictly before the index case's filing: 0, 1 or more. Dropped for a source
+  that cannot document failures to appear (a zero there would mean "unobserved",
+  not "none"). Levels: 0 (reference), 1+. Known at: the index case's filing
+  (00:00 UTC of its filing date), which precedes every index event of the case:
+  only rows strictly before it are read. Missing: an index event without a value
+  takes the level unrecorded. Leakage: Only events strictly before the filing
+  are read; a failure to appear in the index case itself happens after its
+  filing and is never counted.
+- `pending_case`: Another case of the person filed strictly before the index
+  case's filing and not disposed by it: a charge pending at that instant, or
+  none of its charges disposed before it. Levels: false (reference), true. Known
+  at: the index case's filing (00:00 UTC of its filing date), which precedes
+  every index event of the case: only rows strictly before it are read. Missing:
+  an index event without a value takes the level unrecorded. Leakage: Evaluated
+  as of the filing: a charge disposed at or after it counts as pending then, a
+  charge filed at or after it is not read, and a charge whose disposition is
+  unrecorded is ignored.
+- `history_truncated`: The index case was filed within lookback_days of the
+  source's coverage start, so the person's earlier history may lie outside the
+  data and the prior counts may be undercounted. The lookback is 1095 days.
+  Levels: false (reference), true. Known at: the index case's filing (00:00 UTC
+  of its filing date), which precedes every index event of the case: only rows
+  strictly before it are read. Missing: an index event without a value takes the
+  level unrecorded. Leakage: Compares the filing with the coverage start, both
+  known before any decision in the case.
+- `court`: The court the index case is filed in; levels are ordered by the
+  number of index events and then by the court's earliest source charge key, and
+  labelled by that rank (the reference is the busiest court). Levels: the
+  source's own levels, ordered by their number of index events (the busiest is
+  the reference); a level unseen in a fit is scored at the reference level.
+  Known at: the index case's filing (00:00 UTC of its filing date), which
+  precedes every index event of the case: only rows strictly before it are read.
+  Missing: an index event without a value is excluded from the model. Leakage:
+  The court of filing is fixed when the case is filed.
+- `jurisdiction`: The jurisdiction of that court, ordered and labelled like the
+  court; with one jurisdiction in the source it is the reference alone and adds
+  no column. Levels: the source's own levels, ordered by their number of index
+  events (the busiest is the reference); a level unseen in a fit is scored at
+  the reference level. Known at: the index case's filing (00:00 UTC of its
+  filing date), which precedes every index event of the case: only rows strictly
+  before it are read. Missing: an index event without a value takes the level
+  unrecorded. Leakage: The jurisdiction of the court of filing is fixed when the
+  case is filed.
+- `calendar_year`: The calendar year of the index event (the decision for the
+  release target, the release for the windowed targets): the brief's calendar
+  period control. Levels are ordered by the number of index events and then by
+  year; the reference is the busiest year. Levels: the source's own levels,
+  ordered by their number of index events (the busiest is the reference); a
+  level unseen in a fit is scored at the latest seen level. Known at: the index
+  event itself (its calendar year). Missing: an index event without a value is
+  excluded from the model. Leakage: The year of the index event itself; it
+  carries no information about the outcome after it.
+
+### Exclusions
+
+- `restricted_attributes`: Every restricted attribute the vocabulary lists stays
+  in the restricted schema and is never a model feature by default: the brief
+  requires a documented methodological purpose, legal review, fairness analysis,
+  and publication rationale first. The validation uses the synthetic ones only
+  for the aggregate subgroup calibration (docs/VALIDATION.md).
+- `judge`: The judge is the subject of comparison: the expected count is what
+  the cohort would show under the source's average practice, so the judge cannot
+  be one of its inputs.
+- `release_terms`: Release or detention, the release type, the conditions, and
+  the bond are the judge's own decision: the outcome of the release target and a
+  mediator of every later outcome, so adjusting for them would remove the very
+  difference being measured. Conditions and bond amounts are not in the analytic
+  frame at all.
+- `after_the_index`: Anything at or after the index time - the index case's
+  dispositions, sentences, and later events - is excluded by every feature's
+  known-at rule; earlier cases' dispositions enter only through the prior
+  counts, read strictly before the filing.
+- `propensity`: The synthetic world's latent propensity is unobservable by
+  construction: no source records it, and the model must not be able to see what
+  a real source could not.
+
+### Expected counts
+
+For every eligible index event i the model gives a predicted probability p_i of
+the outcome from the published coefficients. A judge's expected count E is the
+sum of p_i over the judge's members in the ratio (the brief's Expected_j =
+SUM(p_i)); the observed count O is the number of those members with the outcome;
+n is their number. O / n is the observed rate, E / n the expected rate, and O /
+E the unpooled ratio. A member whose features are missing under an exclude rule
+is outside the ratio and counted in the eligible count.
+
+### Partial pooling
+
+A judge's O / E is noisy when E is small, so it is shrunk toward 1 by an
+empirical-Bayes gamma-Poisson model: O | theta ~ Poisson(theta E), theta ~
+Gamma(alpha, alpha), mean 1 and variance 1 / alpha. The shape alpha is fitted by
+maximum marginal (negative-binomial) likelihood over every judge of the source
+with E > 0, suppressed or not, on 200 points log-spaced over [0.5, 1000] refined
+by golden-section search; a maximum at the upper bound means no between-judge
 variation is detectable and every ratio is pulled almost all the way to 1. The
-published ratio is the posterior mean (alpha + O) / (alpha + E), and the pooling
-weight E / (E + alpha) is the share of it that is the judge's own O / E.
+published ratio is the posterior mean (alpha + O) / (alpha + E); the pooling
+weight E / (E + alpha) is the share of it that is the judge's own O / E, the
+rest being the prior mean, 1.
 
-**Bootstrap interval.** The interval is the 2.5th and 97.5th percentiles (linear
-interpolation) of the pooled ratio over the person-cluster bootstrap replicates
-the model was refitted on: each replicate redraws persons with replacement from
-the model's seeded stream, re-predicts every member from that replicate's
-coefficients, recomputes each judge's weighted O and E, refits alpha, and
-recomputes the pooled ratio. A replicate whose refit did not converge is
-skipped. The replicate coefficients are stored in the model's artifact, so a
-recompute reproduces the interval exactly.
+### Interval
 
-**Suppression.** An adjusted ratio is withheld below a cohort of 30
-(below_threshold), below an expected count of 5 (expected_below_minimum), and
-when the model is not fitted (model_unavailable: too few events per design
-column, or a fit that did not converge). The stored row keeps every figure it
-has so a recompute can reproduce it.
+A person-cluster bootstrap with the model refitted: 500 replicates, each drawing
+the source's persons with replacement from the model's seeded stream (seed
+20260930) and refitting the model on the redrawn index events; per replicate
+every member is re-predicted from that replicate's coefficients, each judge's
+weighted O and E are recomputed, alpha is refitted, and the pooled ratio is
+recomputed. The interval is the 2.5th and 97.5th percentiles (linear
+interpolation) over the converged replicates; a replicate whose refit did not
+converge is skipped. The replicate coefficients are stored with the model, so a
+recompute reproduces the interval exactly. The interval describes the sampling
+variability of the pooled estimate, which is shrunk toward 1: it is not a
+confidence interval for the judge's true ratio, and it covers the true ratio of
+a judge far from 1 less often than its nominal level (docs/VALIDATION.md).
+
+### Thresholds
+
+- **Events per column**: A model is fitted only when the fewer of its outcomes
+  and non-outcomes number at least 5 per design column (the intercept included);
+  otherwise its ratios are withheld as model_unavailable, because a logistic fit
+  with fewer events per column is unstable and overfits.
+- **Cohort**: A ratio is withheld below 30 members in the ratio
+  (below_threshold): a ratio of two small counts is unstable well above the ten
+  members a share needs, since its numerator and its denominator both move by
+  chance.
+- **Expected count**: A ratio is withheld below an expected count of 5
+  (expected_below_minimum): below it the ratio is a function of a handful of
+  predicted events.
+
+### Temporal and jurisdiction controls
+
+- **Temporal**: The calendar year of the index event is a feature, so each
+  member's expected outcome is the source's practice in the same year: a judge
+  is compared with contemporaneous cohorts. A year the model has not seen is
+  scored at the latest year it has; the temporal split in docs/VALIDATION.md
+  measures what that costs when outcomes trend across years.
+- **Jurisdiction**: The court of filing and its jurisdiction are features, so a
+  member's expected outcome is the practice of the court the case was filed in.
+  Judges are compared only within their source's model, never across sources,
+  whose legal regimes, procedures, and recording differ.
+
+### Limitations of adjustment
+
+1. Unobserved confounding and selection on unobservables: the model adjusts only
+   for the recorded characteristics it lists. A judge whose docket differs in
+   risk the records do not show carries that difference in the ratio, whatever
+   the judge's decisions (the synthetic generator's latent propensity is such a
+   risk, by construction).
+2. Model misspecification: the model is a main-effects logistic regression. An
+   interaction, a nonlinearity, or a trend it does not represent moves into the
+   ratio; the temporal split shows that the models do not transport equally well
+   (docs/VALIDATION.md).
+3. Restricted attributes excluded by policy: the model never reads a restricted
+   attribute or a protected characteristic, so a planted or real difference by
+   such an attribute remains in the residual. The subgroup calibration shows it:
+   on the synthetic source the age band's planted effect appears in the subgroup
+   ratios in the planted direction, so a judge whose docket skews young or old
+   carries that difference in the ratio, while the negative control is
+   calibrated (docs/VALIDATION.md).
+4. Intervals conditional on the specification: the bootstrap refits the same
+   features, penalty, and functional form, so the uncertainty of those choices
+   is not in the interval.
+
+### Validation
+
+docs/VALIDATION.md reports, per target and window, the temporal-split
+calibration, Brier score, ROC AUC, calibration in the large and slope, feature
+stability, missing-data sensitivity, the bootstrap stability of the judge-level
+estimates, subgroup calibration in aggregate, and, for a synthetic source, the
+recovery of the planted effects. It is generated by `judgemetrics validation
+report` and checked in CI.
 
 ## Metrics
 
@@ -827,7 +1028,7 @@ rule states how a row is tied to the subject.
   discretionary; gate: the deciding judge (the decision's judge is the subject).
 - Adjustment: outcome model target `pretrial_release`
   (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
-  its bootstrap interval are defined under Observed-to-expected ratios.
+  its bootstrap interval are defined under Adjusted statistics.
 - Suppression threshold: 30 (suppressed below this cohort), and suppressed below
   an expected count of 5 or without a fitted model.
 
@@ -856,7 +1057,7 @@ rule states how a row is tied to the subject.
   730, 1095 days.
 - Adjustment: outcome model target `new_case`
   (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
-  its bootstrap interval are defined under Observed-to-expected ratios.
+  its bootstrap interval are defined under Adjusted statistics.
 - Suppression threshold: 30 (suppressed below this cohort), and suppressed below
   an expected count of 5 or without a fitted model.
 
@@ -887,7 +1088,7 @@ rule states how a row is tied to the subject.
   180, 365, 730, 1095 days.
 - Adjustment: outcome model target `failure_to_appear`
   (data/reference/outcome_model.yaml); the pooled ratio, its pooling weight, and
-  its bootstrap interval are defined under Observed-to-expected ratios.
+  its bootstrap interval are defined under Adjusted statistics.
 - Suppression threshold: 30 (suppressed below this cohort), and suppressed below
   an expected count of 5 or without a fitted model.
 
@@ -948,3 +1149,6 @@ presentation:
 - 0.3 - Observed-to-expected ratios with partial pooling and bootstrap intervals
   are defined and computed for three judge metrics; they are not served until
   the validation that methodology 1.0 publishes.
+- 1.0 - The expected-outcome model, observed-to-expected ratios with partial
+  pooling and bootstrap intervals, and their validation (docs/VALIDATION.md) are
+  published; the known limitations are unchanged.

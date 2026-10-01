@@ -2,7 +2,7 @@
 """The versioned metric registry: it loads, it validates, and its text is the contract.
 
 The committed ``data/reference/metric_registry.yaml`` (version 2,
-methodology 0.3) loads through ``load_registry``; a tampered copy with an
+methodology 1.0) loads through ``load_registry``; a tampered copy with an
 unlisted actor, outcome, or window — or an adjusted entry without its
 ``adjustment``, over a court, or with windows over decisions — fails with
 ``RegistryError`` naming the slug and the field; each observed-to-expected
@@ -140,7 +140,7 @@ def test_the_committed_registry_loads_and_carries_the_required_slugs() -> None:
         "# data/reference/metric_registry.yaml\n"
     )
     assert registry.version == 2
-    assert registry.methodology_version == "0.3"
+    assert registry.methodology_version == "1.0"
     assert REQUIRED_SLUGS | ADJUSTED_SLUGS <= set(registry.metrics)
     assert {metric.kind for metric in registry.metrics.values()} == set(KINDS)
     assert registry.suppression.default_threshold == 10
@@ -281,7 +281,7 @@ def test_definition_rows_carry_the_published_fields_only() -> None:
         "assignment_gate": "deciding_judge",
     }
     assert row["windows_days"] == list(WINDOWS_DAYS)
-    assert row["registry_version"] == 2 and row["methodology_version"] == "0.3"
+    assert row["registry_version"] == 2 and row["methodology_version"] == "1.0"
     assert "population" not in row and "counted" not in row and "truth_note" not in row
     assert set(row) == {"slug", "version", *registry_module.SUBSTANTIVE_COLUMNS}
     adjusted = registry["new_case_observed_expected"].as_row(

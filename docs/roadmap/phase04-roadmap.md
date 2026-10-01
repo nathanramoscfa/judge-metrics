@@ -5726,6 +5726,45 @@ phase-boundary hygiene.
       `docs/VALIDATION.md` is
       committed and checked in the
       `e2e` job.
+    - Note from Step 4 (what Step 5
+      builds on): the `adjustment`
+      block (`schemas.metrics.AdjustmentOut`:
+      `specification_version`,
+      `model_version`, `intro`,
+      `interpretation`, `model`,
+      `targets`, `features` with
+      `levels`/`known_at`/`missing`/`leakage`,
+      `exclusions`, `expected_count`,
+      `pooling`, `interval`,
+      `thresholds`, `controls`,
+      `limitations`, `validation`)
+      comes from
+      `metrics/methodology.adjustment_prose`;
+      the web methodology page does
+      not render it yet, and
+      `web/tests/unit/fixtures/observations.ts`
+      `REGISTRY.adjustment` is a
+      minimal fixture. Every shown
+      adjusted interval needs the
+      interval statement (the pooled
+      estimate's sampling
+      variability, not a confidence
+      interval for the judge's true
+      ratio) and the brief's
+      interpretation
+      (`methodology.INTERPRETATION`).
+      Served text must name no
+      restricted attribute name or
+      value and no feature source
+      column (`charges.person_id`
+      trips the public contract's
+      person marker). Any change that
+      alters a model or a published
+      figure needs `uv run poe
+      compute-metrics` and `uv run
+      judgemetrics validation report`
+      before the commit, or the `e2e`
+      check fails.
     - The API conventions: routes →
       services → repositories →
       schemas; `StrictQuery` per
@@ -6752,9 +6791,15 @@ Conversation is New per phase-boundary hygiene.
     30. `src/judgemetrics/validation/`
         has `__init__`, `report`,
         `fairness`, `sensitivity`,
-        `stability`, `recovery`.
+        `stability`, `recovery` (and
+        Step 4's `inputs` and
+        `statistics`).
     31. Under `src/judgemetrics/`,
-        `party_attribute`, a
+        `party_attribute`, the ORM
+        class `PartyAttribute` (the
+        name `fairness.py` reads
+        through; Step 4 added it to the
+        test's patterns), a
         schema-qualified
         `restricted.<name>`, or
         `schema="restricted"`

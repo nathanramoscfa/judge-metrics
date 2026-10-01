@@ -33,6 +33,7 @@ from judgemetrics.metrics.methodology import (
     GATE_TEXT,
     HOW_TO_READ,
     SEMANTICS,
+    adjustment_prose,
 )
 from judgemetrics.metrics.registry import load_registry
 from judgemetrics.schemas.metrics import SUPPRESSED_FIELDS
@@ -101,6 +102,7 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
         "attribution_notes",
         "gate_descriptions",
         "changelog",
+        "adjustment",
         "definitions",
     }
     assert body["registry_version"] == REGISTRY.version
@@ -117,6 +119,42 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
     assert len(body["known_limitations"]) == 8
     assert body["known_limitations"][0] == BRIEF_WARNING_ONE
     assert body["suppression"]["default_threshold"] == 10
+    # Methodology 1.0: the adjusted statistics' prose is the renderer's own text.
+    prose = adjustment_prose()
+    adjustment = body["adjustment"]
+    assert set(adjustment) == {
+        "specification_version",
+        "model_version",
+        "intro",
+        "interpretation",
+        "model",
+        "targets",
+        "features",
+        "exclusions",
+        "expected_count",
+        "pooling",
+        "interval",
+        "thresholds",
+        "controls",
+        "limitations",
+        "validation",
+    }
+    assert body["methodology_version"] == "1.0"
+    assert adjustment["interpretation"] == prose.interpretation
+    assert adjustment["model"] == prose.model
+    assert adjustment["pooling"] == prose.pooling
+    assert adjustment["interval"] == prose.interval
+    assert adjustment["limitations"] == list(prose.limitations)
+    assert [item["name"] for item in adjustment["features"]] == [f.name for f in prose.features]
+    assert [item["leakage"] for item in adjustment["features"]] == [
+        f.leakage for f in prose.features
+    ]
+    assert [item["term"] for item in adjustment["exclusions"]] == [
+        name for name, _ in prose.exclusions
+    ]
+    assert [item["term"] for item in adjustment["thresholds"]] == [
+        term for term, _ in prose.thresholds
+    ]
     # Every definition of a served kind, in registry order (the adjusted ones are held out).
     assert [item["slug"] for item in body["definitions"]] == [
         slug for slug, metric in REGISTRY.metrics.items() if metric.kind in SERVED_KINDS

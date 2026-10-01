@@ -346,6 +346,57 @@ Three findings, recorded where they act:
   judge's true ratio; Step 4's validation report and methodology 1.0 must
   say so.
 
+**On the database path** (Phase 4 Step 4). `judgemetrics validation
+recovery --truth data/synthetic/20260916` reads the figures `metrics
+compute` published for the seeded demo database — after ingest, entity
+resolution, and the snapshot — and finds exactly the in-memory values of
+the table above (Spearman 0.934 / 0.719 / 0.963, expected-count Pearson
+0.999 / 0.995 / 0.986, coverage 0.60 / 0.63 / 0.68, every sign agreeing):
+entity resolution merges the split persons, so the persons the database
+models are the world's. `docs/VALIDATION.md` "Recovery of the planted
+effects" prints them beside the tolerances.
+
+### Temporal transport
+
+The temporal split (`docs/VALIDATION.md` "Summary") scores the last quarter
+of the index events with a model fitted on the first three quarters. The
+release model transports (test AUC 0.81, observed over expected 1.005,
+slope 1.19); the failure-to-appear models moderately (AUC 0.54-0.68); the
+new-case models do not (AUC 0.49-0.55, observed over expected up to 1.69 at
+180 days, slopes from -0.04 to 0.60). Phase 4 Step 2 recorded a hypothesis
+to test: the generator allocates each person's case count up front, so late
+index events have fewer later cases left. Step 4 tested it on the demo
+world's 365-day new-case design (per calendar year of the release):
+
+| Year | Index events | With a later case | Median days to it | Within 365 days, of those | Observed rate |
+|------|--------------|-------------------|-------------------|---------------------------|---------------|
+| 2016 | 279          | 0.416             | 688               | 0.422                     | 0.179         |
+| 2018 | 347          | 0.447             | 336               | 0.516                     | 0.233         |
+| 2020 | 363          | 0.441             | 254               | 0.581                     | 0.256         |
+| 2022 | 437          | 0.368             | 107               | 0.832                     | 0.307         |
+
+The hypothesis holds only weakly and in the other direction from the one
+that matters: the share of index events with any later case falls a little
+(0.44 to 0.37), but the gap to that case shrinks from 688 to 107 days,
+because the next filing is placed within the person's remaining corpus span
+(`earliest day + int(U ** k × (span + 1))`), so late in the corpus it lands
+soon. The 365-day new-case rate therefore rises with calendar time (0.18 to
+0.31). The published fit carries the calendar year and absorbs the trend
+(its mean prediction matches the observed rate within every year, the
+report's "Temporal transport" tables); the temporal split cannot, because a
+test year unseen in training is scored at the last training year's level,
+which lies below the trend — hence observed over expected above 1 and a low
+slope. The up-front allocation shows instead in the coefficients: a person
+with three prior cases (the most a person can have before a fourth) has
+`prior_cases=3+` at -1.56 in the 365-day new-case model, every replicate
+agreeing in sign. Both are properties of the generator, not of the
+estimator; the specification is not tuned to them (any change would bump
+its `version`), and a real source's trend is what Phase 6's real-data
+validation measures.
+
+The failure-to-appear rates show no such trend (0.29-0.35 a year), which is
+why those models transport better.
+
 ## Restricted controls
 
 - **`age_band`** — the positive control. The age at filing moves both
@@ -356,6 +407,31 @@ Three findings, recorded where they act:
   — the negative control, an abstract attribute drawn per person on the
   `attributes` stream after the persons and read by no draw, so its
   subgroup calibration must show nothing.
+
+**How they read in the report** (`docs/VALIDATION.md` "Subgroup
+calibration", the demo seed; `tests/unit/test_subgroup_calibration.py`
+asserts the same on the world built in memory, where the figures are
+identical). Every cell has at least 30 index events and 5 expected events,
+so none is withheld on the demo seed (on the golden fixture every cell is).
+
+- The positive control shows the planted direction for both outcomes: at 365
+  days the failure-to-appear O/E runs from 1.29 (18-24, interval
+  1.10-1.45) to 0.74 (55+, 0.59-0.89), the new-case O/E from 1.17 to 0.84,
+  and the ratios over the five known bands rank like the planted effects
+  with Spearman 0.9 for both. The order is not strict: 45-54 sits slightly
+  above 35-44 in both outcomes (0.98 against 0.95, and 1.01 against 0.94),
+  within each other's intervals. Propensity is drawn independently of age,
+  so this is sampling noise, and it repeats across the two outcomes and the
+  nested windows because they share their persons. The test therefore
+  asserts the direction at the extremes and a rank correlation of at least
+  0.8, not a strict order. The `unknown` band (a withheld date of birth)
+  has no planted level of its own; its new-case ratios sit near 0.75 with
+  intervals that reach 1.
+- The negative control is calibrated: every `synthetic_group` cell of every
+  model lies in the specification's `negative_control_band` [0.8, 1.25] —
+  0.88 (`group_c`, 30-day new case, interval 0.74-1.04) is the farthest
+  from 1 — and so does every age cell of the release model, which no age
+  effect enters.
 
 Both are restricted: the connector publishes them only into
 `restricted.party_attribute` (`docs/DATA_MODEL.md` "The restricted
@@ -773,3 +849,9 @@ counts it lists changed, and record the bump in `docs/ROADMAP.md`.
 - Synthetic judges never link to FJC judges, and the synthetic world is
   one state-level jurisdiction; there is no federal court and no scale
   beyond `demo`.
+- A person's next filing is placed within the remaining corpus span, so
+  the new-case rate rises toward the corpus end (0.18 to 0.31 at 365 days,
+  "Temporal transport"): a model fitted on early years under-predicts later
+  ones. The calendar-year feature absorbs it in the published fit; the
+  temporal split's diagnostics show it. No real source is expected to share
+  the artifact.

@@ -258,9 +258,13 @@ keyed `(case_party_id, attribute)` and cascading with its party
   snapshot reads it: the snapshot checks every table it exports against
   the schema (`refuse_restricted`, by `RESTRICTED_SCHEMA`, never by table
   name), and no module under `metrics/` names a restricted attribute
-  (unit test and `verify_phase03.py` check 9, recursively). The aggregate
-  fairness analysis of Phase 4 Step 4, as the ingest role, is the only
-  planned reader.
+  (unit test and `verify_phase03.py` check 9, recursively). The one reader
+  is the aggregate subgroup calibration (Phase 4 Step 4,
+  `validation/fairness.py`, "Validation" under "Risk adjustment"), on the
+  ingest role's session only; `tests/unit/test_restricted_readers.py` fails
+  when any other module under `src/judgemetrics/` names the table
+  (`party_attribute`, `PartyAttribute`, `restricted.<name>`, or
+  `schema="restricted"`) outside the ORM model and Step 1's write path.
 - **Logs.** `age_band`, `synthetic_group`, and `attribute_value` are on
   the scrubber's denylist (never a bare `age`, which would redact
   `stage=` and `message=`).
@@ -1367,3 +1371,78 @@ the minimum expected count.
   snapshot's models as counts and versions only. The web places every
   definition it is served, so the hold-out is also what keeps an adjusted
   ratio off the judge page until Step 5 gives it a schema and a renderer.
+
+### Validation (Phase 4 Step 4)
+
+`judgemetrics.validation` assembles the brief's `model_validation` tests
+from the latest snapshot's models and renders them into
+`docs/VALIDATION.md` (`judgemetrics validation report [--out] [--check]
+[--truth DIR]`, as the ingest role; exit 1 with a unified diff on drift, 2
+when no snapshot or model can be read or the truth directory is unreadable
+or describes no ingested source):
+
+```
+   validation report (ingest role)
+          │ resolve_snapshot (latest) → open_snapshot
+          ├─ inputs.load_inputs ─▶ per source (register-name order): the frame, and per
+          │                        model (specification order) its catalogue row, its
+          │                        parameters from the artifact, and its design rebuilt
+          │                        with features.design_rows (in memory only)
+          ├─ report.model_summary ─▶ the row's temporal-split diagnostics and bins, the
+          │                          observed rate and mean prediction per calendar year,
+          │                          the coefficients' bootstrap stability (rank labels)
+          ├─ sensitivity ─▶ complete-case refit vs the published fit (pooled ratios)
+          ├─ stability   ─▶ bootstrap.interval replayed: widths, share excluding 1,
+          │                 rank-interval widths (distributions over judges)
+          ├─ fairness    ─▶ ONE parameterized statement: decision → case_party →
+          │                 the restricted attributes; aggregate cells only
+          └─ recovery    ─▶ the published observations against truth/effects.json
+          ▼
+   render_report ─▶ docs/VALIDATION.md (80 columns, fixed orders, no id, hash, or path)
+```
+
+- **Order invariance.** The report names no UUID, hash, code version, run
+  timestamp, judge, or local path, and every list has an order the data
+  fixes (specification, vocabulary, and calendar order); the statistics over
+  judges are rank correlations with ties averaged, medians, quartiles, and
+  shares, which do not depend on the order the judges come in (their
+  canonical ids). The rows of a source are the snapshot frame's, so a
+  database that also holds a live FJC ingest renders the same document as
+  CI's. The committed document is the demo seed's; the `e2e` CI job
+  re-renders it from `data/synthetic/ci`, whose manifest is byte-identical,
+  with `--check`.
+- **The restricted read** (`validation/fairness.py`). `require_ingest_role`
+  compares `current_user` with the user of the configured ingest URL and
+  refuses any other session before a statement runs (the app role would fail
+  with `InsufficientPrivilege` anyway). `attribute_statement` is one `SELECT`
+  over `decision`, `case_party` (the defendant party of the decision's case
+  and person), and the attribute table, grouped by decision and attribute,
+  with the decision ids bound as one array (`= ANY(:member_ids)`) and the
+  attribute names as bound values; a decision whose party carries two values
+  of one attribute (two merged participants of one case) has none for it.
+  The values live in one dictionary inside `subgroup_calibration`, which is
+  cleared before it returns; the pure `calibration_cells` aggregates per
+  vocabulary value O, E (from the published coefficients), O / E, and the
+  percentile interval over the stored replicates (per replicate
+  `sum w y / sum w p_r`, the fit's own cluster weights), and withholds a cell
+  below `minimum_cohort` index events or `minimum_expected` expected events,
+  or without a fitted model, with its reason and no figure. The log line
+  carries counts only.
+- **Sensitivity and stability.** The complete-case refit
+  (`diagnostics.refit_complete_cases`) and the published fit both score
+  every design row, so each judge's cohort is unchanged and only the model
+  differs; the comparison runs over the judges whose ratio would be
+  published (the ratios' suppression rule). The bootstrap stability replays
+  `bootstrap.interval` (the computation the published bounds come from) and
+  ranks the judges within each replicate with ties averaged.
+- **Recovery on the database path.** `recovery.read_truth` reads
+  `manifest.json` and `truth/effects.json` with `json.loads` from paths that
+  must resolve inside the directory given; `truth_matches` requires the
+  manifest's sha256 among the source's retrieved artifacts, so a truth is
+  never compared with another dataset. `published_figures` reads the current
+  adjusted observations of the snapshot with each judge's
+  `synthetic_judge_code` in one statement; `evaluate` applies the
+  specification's `recovery` tolerances. `judgemetrics validation recovery
+  --truth DIR [--json]` prints the figures and exits 1 below a tolerance.
+- **Cost.** On the demo seed the report takes about 17 seconds (the frame,
+  thirteen designs, the replayed bootstraps, the complete-case refits).
