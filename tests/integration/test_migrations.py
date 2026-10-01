@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0008): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0009): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -93,8 +93,8 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     snapshot = _snapshot(migrated_database)
     assert set(CANONICAL_TABLES) <= set(snapshot.tables)
     # The brief's twenty-three, audit_log (0004), metric_snapshot and
-    # metric_observation_member (0005).
-    assert len(CANONICAL_TABLES) == 26
+    # metric_observation_member (0005), outcome_model (0009).
+    assert len(CANONICAL_TABLES) == 27
     assert EXPECTED_ENUMS <= set(snapshot.enums)
     assert "pg_trgm" in snapshot.extensions
     indexes = snapshot.indexes
@@ -166,14 +166,19 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "uq_person_public_person_key" in uniques["person"]
     assert "uq_metric_snapshot_content_hash" in uniques["metric_snapshot"]
     assert "ix_ingest_run_metrics_snapshot_id" in indexes["ingest_run"]
-    # Revision 0008: the restricted schema and its one table; the twenty-six stay public.
+    # Revision 0009: the fitted expected-outcome models.
+    assert "uq_outcome_model_key" in indexes["outcome_model"]
+    assert "ix_outcome_model_snapshot_id" in indexes["outcome_model"]
+    assert "ix_outcome_model_source_id" in indexes["outcome_model"]
+    assert "uq_outcome_model_content_hash" in uniques["outcome_model"]
+    # Revision 0008: the restricted schema and its one table; the public tables stay public.
     assert set(snapshot.restricted) == set(RESTRICTED_SCHEMA_TABLES) == {"party_attribute"}
     assert set(snapshot.restricted["party_attribute"]) == {
         "uq_party_attribute_case_party_attribute",
         "ix_party_attribute_source_record_id",
     }
     assert not set(RESTRICTED_SCHEMA_TABLES) & set(snapshot.tables)
-    assert current_revision(migrated_database) == head_revision() == "0008"
+    assert current_revision(migrated_database) == head_revision() == "0009"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -257,6 +262,88 @@ def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -
             )
         ).scalar()
         assert default is not None and "[]" in default
+
+
+def test_revision_0009_outcome_model_columns_key_and_grants(migrated_database: Engine) -> None:
+    """The model catalogue: its columns, its NULLS NOT DISTINCT key, its checks, its grants."""
+    with migrated_database.connect() as connection:
+        columns = {
+            column: (data_type, nullable == "YES")
+            for column, data_type, nullable in connection.execute(
+                text(
+                    "SELECT column_name, data_type, is_nullable FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'outcome_model'"
+                )
+            )
+        }
+        assert columns["content_hash"] == ("character", False)
+        assert columns["snapshot_id"] == ("uuid", False)
+        assert columns["source_id"] == ("uuid", False)
+        assert columns["window_days"] == ("integer", True)
+        assert columns["seed"] == ("bigint", False)
+        assert columns["status"] == ("text", False)
+        for count in ("n_train", "events_train", "n_test", "events_test"):
+            assert columns[count] == ("integer", False), count
+        for stamp in ("train_start", "train_end", "split_cutoff"):
+            assert columns[stamp] == ("timestamp with time zone", True), stamp
+        assert columns["diagnostics"] == ("jsonb", True)
+        assert columns["coefficients"] == ("jsonb", True)
+        assert columns["storage_uri"] == ("text", False)
+        assert columns["fitted_at"] == ("timestamp with time zone", False)
+        # No person-level column of any kind.
+        assert not any(
+            word in column for column in columns for word in ("person", "case", "decision")
+        )
+        key = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_outcome_model_key'")
+        ).scalar()
+        assert key is not None and "UNIQUE" in key and "NULLS NOT DISTINCT" in key
+        for column in ("snapshot_id", "source_id", "spec_version", "target", "window_days", "seed"):
+            assert column in key, column
+        checks = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE contype = 'c' AND conrelid = 'outcome_model'::regclass"
+                )
+            )
+        }
+        assert "insufficient_events" in checks["ck_outcome_model_status"]
+        rules = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT constraint_name, delete_rule FROM information_schema.referential_constraints "
+                    "WHERE constraint_name LIKE 'fk_outcome_model_%'"
+                )
+            )
+        }
+        assert rules == {
+            "fk_outcome_model_snapshot_id_metric_snapshot": "RESTRICT",
+            "fk_outcome_model_source_id_source": "RESTRICT",
+        }
+        roles = set(
+            connection.scalars(
+                text(
+                    "SELECT rolname FROM pg_roles WHERE rolname IN "
+                    "('judgemetrics_app', 'judgemetrics_ingest')"
+                )
+            )
+        )
+        if len(roles) < 2:
+            pytest.skip("the application roles do not exist on this database")
+        granted: dict[str, set[str]] = {}
+        for grantee, privilege in connection.execute(
+            text(
+                "SELECT grantee, privilege_type FROM information_schema.role_table_grants "
+                "WHERE table_schema = 'public' AND table_name = 'outcome_model' "
+                "AND grantee IN ('judgemetrics_app', 'judgemetrics_ingest')"
+            )
+        ):
+            granted.setdefault(grantee, set()).add(privilege)
+    assert granted["judgemetrics_app"] == {"SELECT"}
+    assert {"SELECT", "INSERT", "UPDATE", "DELETE"} <= granted["judgemetrics_ingest"]
 
 
 def test_revision_0004_columns_check_and_trigger(migrated_database: Engine) -> None:
@@ -375,12 +462,18 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # 0008 first: the restricted schema goes, the ordinal party keys stay.
+    # 0009 first: outcome_model goes and nothing else.
+    downgrade(url, "0008")
+    assert current_revision(migrated_database) == "0008"
+    without_models = _snapshot(migrated_database)
+    assert without_models.tables == sorted(set(before.tables) - {"outcome_model"})
+    assert without_models.restricted == before.restricted
+    # 0008 next: the restricted schema goes, the ordinal party keys stay.
     downgrade(url, "0007")
     assert current_revision(migrated_database) == "0007"
     without_restricted = _snapshot(migrated_database)
     assert without_restricted.restricted == {}
-    assert without_restricted.tables == before.tables
+    assert without_restricted.tables == without_models.tables
     # Through 0004 and 0003 next: each downgrade must leave exactly the prior shape.
     downgrade(url, "0003")
     assert current_revision(migrated_database) == "0003"

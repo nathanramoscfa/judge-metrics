@@ -24,7 +24,9 @@ by trigger and therefore stay; they carry ids and counts only. Metric
 observations of the source (Phase 3 Step 2: their members cascade) are
 purged before the source row, and snapshot rows nothing references any
 more go with them, so the golden metrics suite can commit observations
-and the module teardown still empties the source.
+and the module teardown still empties the source. The source's fitted
+expected-outcome models (Phase 4: ``outcome_model``) are purged after its
+observations and before the snapshots they reference.
 
 ``golden_metrics`` (Phase 3) runs ``metrics compute`` over the module's
 golden ingest through the Python API — ``compute_and_publish`` as the
@@ -67,6 +69,7 @@ from judgemetrics.db.models import (
     JusticeEvent,
     MetricObservation,
     MetricSnapshot,
+    OutcomeModel,
     Person,
     PersonIdentifier,
     PretrialRelease,
@@ -197,12 +200,15 @@ def purge_source(session: Session, name: str) -> None:
     # Metrics first: observations (members cascade) reference the source and
     # runs reference snapshots; a snapshot nothing cites any more is dropped.
     session.execute(delete(MetricObservation).where(MetricObservation.source_id == source_id))
+    # Phase 4: the source's fitted models reference its snapshots (RESTRICT).
+    session.execute(delete(OutcomeModel).where(OutcomeModel.source_id == source_id))
     session.execute(
         update(IngestRun).where(IngestRun.source_id == source_id).values(metrics_snapshot_id=None)
     )
     session.execute(
         delete(MetricSnapshot).where(
             ~MetricSnapshot.id.in_(select(MetricObservation.snapshot_id)),
+            ~MetricSnapshot.id.in_(select(OutcomeModel.snapshot_id)),
             ~MetricSnapshot.id.in_(
                 select(IngestRun.metrics_snapshot_id).where(
                     IngestRun.metrics_snapshot_id.is_not(None)

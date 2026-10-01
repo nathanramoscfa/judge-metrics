@@ -299,6 +299,15 @@ jobs:
       - name: Compute metrics (ingest role)
         run: uv run judgemetrics metrics compute
 
+      # Phase 4 Step 2: the demo seed's expected-outcome models. In this step
+      # `metrics compute` does not fit, so these lines are the fitted path; from
+      # Step 3 the compute fits first and `models fit` finds nothing to do.
+      - name: Fit the expected-outcome models (ingest role)
+        run: uv run judgemetrics models fit
+
+      - name: Verify the expected-outcome model artifacts
+        run: uv run judgemetrics models verify
+
       - name: Start the API in the background
         run: |
           nohup uv run judgemetrics serve --host 127.0.0.1 --port 8000 > api.log 2>&1 &
@@ -369,11 +378,12 @@ jobs:
       - name: Build the API image
         run: docker build -f infra/docker/api.Dockerfile --build-arg "GIT_SHA=$GITHUB_SHA" -t judgemetrics-api:ci .
 
-      - name: Smoke the API image (non-root, no .env, CLI answers)
+      - name: Smoke the API image (non-root, no .env, CLI answers, NumPy solver imports)
         run: |
           test "$(docker run --rm judgemetrics-api:ci id -u)" = "10001"
           docker run --rm judgemetrics-api:ci sh -c '! test -e /app/.env'
           docker run --rm judgemetrics-api:ci judgemetrics --version
+          docker run --rm judgemetrics-api:ci python -c "import judgemetrics.metrics.adjustment.logistic"
 
       - name: Vulnerability scan of the API image (fail on HIGH or CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

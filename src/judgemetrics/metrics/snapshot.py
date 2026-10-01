@@ -38,6 +38,7 @@ DuckDB extension is installed or loaded — the bundled Parquet reader is
 part of the wheel). ``Snapshot.frame(source_id)`` runs parameterized
 queries against those views and builds the Step 1 ``Frame`` for one
 source: the cases of the source's records and their child rows, the
+courts of those cases with their jurisdictions (Phase 4 Step 2), the
 resolved persons those rows name (merge chains followed), the stored
 justice events of those persons for the any-case outcomes
 (``failure_to_appear``, ``release_violation``, ``revocation``,
@@ -934,6 +935,12 @@ class Snapshot:
         )
         persons = pl.DataFrame({"id": person_ids}, schema={"id": STRING})
         justice_events = self._justice_events(person_ids)
+        courts = self._table(
+            "courts",
+            "SELECT co.id, co.jurisdiction_id FROM courts co "
+            "WHERE co.id IN (SELECT court_id FROM cases WHERE source_id = ?) ORDER BY co.id",
+            [source_id],
+        )
         return Frame(
             cases=cases,
             assignments=assignments,
@@ -943,6 +950,7 @@ class Snapshot:
             events=events,
             justice_events=justice_events,
             persons=persons,
+            courts=courts,
             coverage_start=source.coverage_start,
             coverage_end=source.coverage_end,
             observable_outcomes=source.observable_outcomes,

@@ -2129,9 +2129,9 @@ is New per phase-boundary hygiene.
 
 ---
 
-## Step 2 — Feature Specification, Leakage Review, and the Baseline Model
+## Step 2 — Feature Specification, Leakage Review, and the Baseline Model ✅
 
-**Status:** Not started
+**Status:** Complete — PR #39 (2026-09-30)
 
 > **Goal:** Land the expected-outcome model as a versioned, inspectable contract
 > and a deterministic fit. `data/reference/outcome_model.yaml` (specification
@@ -3636,6 +3636,64 @@ phase-boundary hygiene.
       the raw-versus-adjusted margin
       on the new-case target to be
       about 0.1 at best.
+    - Note from Step 2 (the model
+      as landed): `design_rows(frame,
+      spec, spec.target(name),
+      window)` takes the
+      `TargetSpec`; `fit_frame(frame,
+      spec, *, seed, source,
+      only=None)` returns
+      `FittedModel`s whose `design`
+      holds, in memory only, per row
+      `member_ids` (the decision
+      ids), `judge_ids` (the judge
+      the published gate attributed
+      the row to), `clusters`, and
+      `index_at` (UTC microseconds);
+      `model.predict()` is p_i for
+      those rows, and
+      `replicate_coefficients` has
+      one entry per replicate
+      (`None` where a refit did not
+      converge). The stream name is
+      `resample.replicate_stream(target,
+      window)`. `fit_models(snapshot,
+      spec, *, seed, code_version,
+      write, only)` renders and
+      writes; `catalog.fit_snapshot`
+      fits only the models a
+      snapshot lacks and records
+      them, so the compute's fitting
+      should go through it rather
+      than refit. The
+      events-per-column gate counts
+      the limiting class (the fewer
+      of outcomes and non-outcomes)
+      against every column, the
+      intercept included: every
+      golden model is
+      `insufficient_events` (the
+      release design has 19 limiting
+      events against 115 needed) and
+      every demo model is `fitted`
+      (thirteen, about 30 s with 500
+      replicates), so golden
+      adjusted observations can only
+      carry the
+      `insufficient_events`
+      suppression reason and the
+      recovery test needs the demo
+      world. Out of time the demo
+      release model is calibrated
+      (AUC 0.81, observed over
+      expected 1.005, slope 1.19)
+      but the new-case models are
+      weak (AUC 0.49-0.55, slope
+      0.1-0.6; in-sample AUC
+      0.61-0.64); the recovery test
+      compares in-sample expected
+      counts, so expect its new-case
+      margin to stay modest.
     - `data/reference/outcome_model.yaml`
       (version 1,
       `expected-logit-v1`) defines
@@ -4648,6 +4706,34 @@ Conversation is New per phase-boundary hygiene.
 
     Current state (as of Phase 4
     Step 3):
+
+    - Note from Step 2 (the
+      temporal-split diagnostics as
+      first fitted on the demo seed):
+      the release model transports
+      (test AUC 0.81, observed over
+      expected 1.005, slope 1.19),
+      the failure-to-appear models
+      moderately (AUC 0.54-0.68),
+      and the new-case models do not
+      (AUC 0.49-0.55, slopes 0.1-0.6,
+      observed over expected up to
+      1.7 at 180 days, against an
+      in-sample AUC of 0.61-0.64).
+      Report them as found and never
+      tune the specification to
+      improve them (any change bumps
+      its `version`). Examine and
+      state the cause; a hypothesis
+      to test, not a finding: the
+      generator allocates each
+      person's case count (one to
+      four) up front, so late index
+      events have fewer later cases
+      left whatever their features,
+      and an unseen calendar year is
+      scored at the last training
+      year's level.
 
     - `metrics compute` fits one
       expected-outcome model per
@@ -7246,7 +7332,7 @@ workflow above maps directly to the corresponding row below.
 | Step | Scope                                          | Model    | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | -------- | ----------- | -------------- | -------- | ---- | ----------- |
 | 1    | Planted effects, restricted schema             | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #37 |
-| 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 2    | Feature specification, baseline model          | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #39 |
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Not started |

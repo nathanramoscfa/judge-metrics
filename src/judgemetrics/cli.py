@@ -15,9 +15,13 @@ the committed file differs), and ``metrics`` (``compute`` exports a
 snapshot, computes every registry metric for every subject — or the
 ``--subject`` ones — and publishes the observations; ``verify``
 recomputes every current observation from its snapshot and exits 1 on
-any mismatch; both as the ingest role), and ``provenance`` (``trace
+any mismatch; both as the ingest role), ``provenance`` (``trace
 <observation id>`` prints the chain from a published number back to the
-raw artifacts and exits 1 when it is incomplete; as the read-only role).
+raw artifacts and exits 1 when it is incomplete; as the read-only role),
+and ``models`` (Phase 4: ``fit`` fits and records every expected-outcome
+model the latest or the named snapshot lacks and ``verify`` checks every
+artifact against its row, refitting with ``--refit``, both as the ingest
+role; ``list`` and ``show`` read the catalogue as the read-only role).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -29,7 +33,7 @@ from __future__ import annotations
 import uuid
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -57,6 +61,9 @@ metrics_app = typer.Typer(help="The metrics engine: compute and verify observati
 provenance_app = typer.Typer(
     help="The provenance chain from a published number back to the raw artifacts."
 )
+models_app = typer.Typer(
+    help="The expected-outcome models (risk adjustment): fit, list, show, verify."
+)
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
@@ -66,6 +73,7 @@ app.add_typer(er_app, name="er")
 app.add_typer(methodology_app, name="methodology")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(provenance_app, name="provenance")
+app.add_typer(models_app, name="models")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -954,6 +962,280 @@ def provenance_trace(
         for line in render(traced):
             typer.echo(line)
     if not traced.complete:
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+# --- models: the expected-outcome models (Phase 4) -------------------------------------------
+
+
+def _validated_snapshot(snapshot: str | None) -> str | None:
+    """``--snapshot`` validated as a content hash before any connection is opened (exit 2)."""
+    from judgemetrics.metrics.snapshot import SnapshotError, validate_content_hash
+
+    if snapshot is None:
+        return None
+    try:
+        return validate_content_hash(snapshot)
+    except SnapshotError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+
+
+@models_app.command("fit")
+def models_fit(
+    snapshot: Annotated[
+        str | None,
+        typer.Option("--snapshot", help="The snapshot hash (default: the latest snapshot)."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Fit and record every model of the specification the snapshot lacks (ingest role).
+
+    Writes each model's artifact once under the snapshot directory and one
+    outcome_model row per source, target, and window; a second run fits
+    nothing. Exits 1 when the snapshot cannot be read or a model cannot be
+    recorded, 2 for a malformed or unknown snapshot.
+    """
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.adjustment.artifacts import ArtifactError
+    from judgemetrics.metrics.adjustment.catalog import CatalogError, fit_snapshot
+    from judgemetrics.metrics.adjustment.fit import FitError
+    from judgemetrics.metrics.adjustment.spec import SpecError
+    from judgemetrics.metrics.snapshot import SnapshotError
+
+    wanted = _validated_snapshot(snapshot)
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                summary = fit_snapshot(session, settings, snapshot_hash=wanted)
+            except CatalogError as exc:
+                session.rollback()
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE if wanted else EXIT_RUN_NOT_SUCCEEDED) from exc
+            except (SpecError, SnapshotError, FitError, ArtifactError) as exc:
+                session.rollback()
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc
+            session.commit()
+    finally:
+        engine.dispose()
+    payload = summary.as_dict()
+    if as_json:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(f"snapshot {summary.snapshot}")
+    typer.echo(
+        f"fitted={payload['fitted']} existing={payload['existing']} "
+        + " ".join(f"{status}={count}" for status, count in payload["statuses"].items())
+    )
+    for model in payload["models"]:
+        window = "-" if model["window_days"] is None else model["window_days"]
+        typer.echo(
+            f"{model['source']}\t{model['target']}\t{window}\t{model['status']}\t"
+            f"rows={model['rows']}\tevents={model['events']}"
+        )
+
+
+@models_app.command("list")
+def models_list(
+    snapshot: Annotated[
+        str | None,
+        typer.Option("--snapshot", help="The snapshot hash (default: the latest snapshot)."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of a table.")] = False,
+) -> None:
+    """List the models of the latest or the named snapshot with their status (read-only role)."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.metrics.adjustment.catalog import CatalogError, list_models
+
+    wanted = _validated_snapshot(snapshot)
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                content_hash, rows = list_models(session, snapshot_hash=wanted)
+            except CatalogError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.rollback()
+    finally:
+        engine.dispose()
+    if as_json:
+        payload = {"snapshot": content_hash, "models": [row.as_dict() for row in rows]}
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(f"snapshot {content_hash}")
+    if not rows:
+        typer.echo("no models: run `judgemetrics models fit`")
+        return
+    typer.echo("id\tsource\ttarget\twindow\tstatus\tn_train\tevents_train\tn_test\tevents_test")
+    for row in rows:
+        window = "-" if row.window_days is None else str(row.window_days)
+        typer.echo(
+            f"{row.id}\t{row.source}\t{row.target}\t{window}\t{row.status}\t"
+            f"{row.n_train}\t{row.events_train}\t{row.n_test}\t{row.events_test}"
+        )
+
+
+def render_model_card(card: dict[str, Any]) -> list[str]:
+    """The text lines of ``models show``: header, counts, diagnostics, coefficients."""
+    window = "-" if card.get("window_days") is None else card["window_days"]
+    lines = [
+        f"model {card['id']} ({card['content_hash']})",
+        f"target {card['target']} window {window} status {card['status']}",
+        f"source {card['source']} snapshot {card['snapshot']}",
+        f"specification {card['spec_version']} {card['model_version']} seed {card['seed']} "
+        f"code {card['code_version']}",
+        f"training {card['train_start']} .. {card['train_end']} cutoff {card['split_cutoff']}",
+        f"train rows={card['n_train']} events={card['events_train']} "
+        f"test rows={card['n_test']} events={card['events_test']}",
+    ]
+    diagnostics = card.get("diagnostics")
+    if isinstance(diagnostics, dict):
+        summary = " ".join(
+            f"{name}={diagnostics[name]}"
+            for name in (
+                "status",
+                "brier",
+                "brier_skill",
+                "auc",
+                "calibration_in_the_large",
+                "calibration_slope",
+            )
+            if name in diagnostics
+        )
+        lines.append(f"diagnostics {summary}")
+        for item in diagnostics.get("bins") or []:
+            lines.append(
+                f"  bin {item['bin']}: n={item['count']} predicted={item['mean_predicted']} "
+                f"observed={item['observed_rate']}"
+            )
+    coefficients = card.get("coefficients")
+    if isinstance(coefficients, list):
+        lines.append("column\tlevel\testimate\tsd\tsign_agreement")
+        for item in coefficients:
+            lines.append(
+                f"{item['column']}\t{item['level']}\t{item['estimate']}\t{item['sd']}\t"
+                f"{item['sign_agreement']}"
+            )
+    else:
+        lines.append("no coefficients")
+    return lines
+
+
+@models_app.command("show")
+def models_show(
+    identifier: Annotated[str, typer.Argument(help="A model id (UUID) or its content hash.")],
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Print a model card: columns and coefficients, counts, diagnostics (read-only role)."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.metrics.adjustment.catalog import (
+        CatalogError,
+        model_card,
+        parse_model_identifier,
+    )
+
+    try:
+        parsed = parse_model_identifier(identifier)
+    except CatalogError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    settings = get_settings()
+    engine = make_engine(settings.database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                card = model_card(session, parsed)
+            except CatalogError as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.rollback()
+    finally:
+        engine.dispose()
+    if as_json:
+        typer.echo(json.dumps(card, indent=2, sort_keys=True))
+        return
+    for line in render_model_card(card):
+        typer.echo(line)
+
+
+@models_app.command("verify")
+def models_verify(
+    snapshot: Annotated[
+        str | None, typer.Option("--snapshot", help="Only the models of this snapshot hash.")
+    ] = None,
+    refit: Annotated[
+        bool, typer.Option("--refit", help="Refit every model and compare the artifact bytes.")
+    ] = False,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Check every artifact against its row (and reproduce it with --refit); exit 1 on a mismatch."""
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.adjustment.artifacts import ArtifactError
+    from judgemetrics.metrics.adjustment.catalog import verify_models
+    from judgemetrics.metrics.adjustment.fit import FitError
+    from judgemetrics.metrics.adjustment.spec import SpecError
+    from judgemetrics.metrics.snapshot import SnapshotError
+
+    wanted = _validated_snapshot(snapshot)
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                result = verify_models(session, settings, snapshot_hash=wanted, refit=refit)
+            except (SnapshotError, SpecError, FitError, ArtifactError) as exc:
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_USAGE) from exc
+            session.rollback()
+    finally:
+        engine.dispose()
+    if as_json:
+        typer.echo(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+    else:
+        typer.echo(
+            f"models={result.models} verified={result.verified} refitted={result.refitted} "
+            f"problems={len(result.problems)}"
+        )
+        lines = [
+            f"mismatch: model {problem.model_id} {problem.target}"
+            + ("" if problem.window_days is None else f"@{problem.window_days}")
+            + f" field={problem.field}: {problem.detail}"
+            for problem in result.problems
+        ]
+        for line in lines[:VERIFY_REPORT_LINES]:
+            typer.echo(line, err=True)
+        if len(lines) > VERIFY_REPORT_LINES:
+            typer.echo(f"... {len(lines) - VERIFY_REPORT_LINES} more", err=True)
+    if not result.ok:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 

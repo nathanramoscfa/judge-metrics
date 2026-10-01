@@ -1,0 +1,307 @@
+# data/reference/outcome_model.yaml
+# The expected-outcome model specification (Phase 4): the versioned contract
+# every risk-adjusted figure is computed against. Loaded once per process by
+# judgemetrics.metrics.adjustment.spec with yaml.safe_load and validated on
+# load: every field is required or optional by name and an unknown field is
+# rejected; every feature names a builder the code implements, with the
+# kind, the frame columns it reads, and the known-at instant the builder
+# states; every fixed level is checked against the case vocabulary; no
+# feature may name a restricted attribute (the vocabulary's
+# restricted_attribute values), an excluded variable, or an excluded column.
+# docs/ARCHITECTURE.md "Risk adjustment" describes the builder, the solver,
+# and the artifacts; Step 4 renders this file into the methodology.
+#
+# Versioning: `version` is bumped whenever a value changes in a way that
+# alters a fitted model or a published figure - a target, a feature, a
+# level order or reference, a band, a missing rule, the penalty, the solver
+# limits, the temporal split, the seed, the bootstrap, the pooling, or a
+# threshold. A `recovery` tolerance alters neither (it is what the synthetic
+# recovery test asserts, not what is computed) and does not bump it.
+# `model_version` names the model family and its feature set; it changes
+# with a new functional form, not with a tuned value.
+#
+# Terms: an *index event* is one row of a model - a pretrial decision for
+# the release target, a pretrial-release cohort member followed for the
+# window for the windowed targets. *Events* are its outcomes (y = 1); the
+# events-per-column rule counts the limiting class, the fewer of outcomes
+# and non-outcomes, against the design width (every column, the intercept
+# included). The *index case* is the case of the index event; its *filing*
+# is 00:00 UTC of the filing date, the instant the analytic frame's
+# cases.filed_at carries.
+version: 1
+model_version: expected-logit-v1
+
+targets:
+  - name: pretrial_release
+    description: >-
+      Whether a judge's discretionary pretrial decision released the
+      defendant.
+    population: pretrial_decisions
+    index: decision
+    outcome: released
+    windows_days: null
+  - name: new_case
+    description: >-
+      Whether a released defendant has a new case filed within the window,
+      among the pretrial-release cohort members followed for that window.
+    population: new_case_rate
+    index: release
+    outcome: new_case
+    windows_days: [30, 90, 180, 365, 730, 1095]
+  - name: failure_to_appear
+    description: >-
+      Whether a released defendant has a documented failure to appear within
+      the window, among the pretrial-release cohort members followed for that
+      window.
+    population: failure_to_appear_rate
+    index: release
+    outcome: failure_to_appear
+    windows_days: [30, 90, 180, 365, 730, 1095]
+
+features:
+  - name: lead_severity
+    description: >-
+      The most severe charge of the index case against the person, by the
+      vocabulary's severity order.
+    source: [charges.filed_at, charges.severity]
+    kind: categorical
+    vocabulary: severity
+    levels: [misdemeanor_b, misdemeanor_a, felony_3, felony_2, felony_1]
+    reference: misdemeanor_b
+    known_at: decision_at
+    missing: exclude
+    leakage: >-
+      Read from the index case's charges filed strictly before the pretrial
+      decision, which the judge has in front of them; a later charge, a
+      disposition, or a sentence is never read.
+  - name: lead_category
+    description: >-
+      The offense category of that lead charge; charges tied on severity are
+      ordered by the source's own charge id.
+    source: [charges.filed_at, charges.offense_category, charges.severity, charges.source_row_id]
+    kind: categorical
+    vocabulary: offense_category
+    levels: [public_order, traffic, drug, property, financial, weapon, person]
+    reference: public_order
+    known_at: decision_at
+    missing: exclude
+    leakage: >-
+      The category of the charges filed strictly before the pretrial
+      decision; the tie-break reads the source's charge id, never an outcome.
+  - name: charge_count
+    description: >-
+      The number of charges of the index case against the person: 1, 2, 3 or
+      more.
+    source: [charges.filed_at, charges.id]
+    kind: banded_count
+    bands: [1, 2, 3]
+    reference: '1'
+    known_at: decision_at
+    missing: exclude
+    leakage: >-
+      Counts the charges filed strictly before the pretrial decision; a
+      charge added later in the case is not counted.
+  - name: prior_cases
+    description: >-
+      The person's other cases filed strictly before the index case's filing:
+      0, 1, 2, 3 or more.
+    source: [cases.filed_at, charges.case_id, charges.person_id]
+    kind: banded_count
+    bands: [0, 1, 2, 3]
+    reference: '0'
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    leakage: >-
+      Only cases filed on an earlier date count; the index case's filing
+      precedes every index event of the case. The level is unrecorded when
+      the index case carries no filing date.
+  - name: prior_convictions
+    description: >-
+      The person's other cases with a conviction disposed strictly before the
+      index case's filing: 0, 1, 2 or more.
+    source: [cases.filed_at, charges.disposed_at, charges.disposition, charges.filed_at]
+    kind: banded_count
+    bands: [0, 1, 2]
+    reference: '0'
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    leakage: >-
+      A conviction counts only when its disposition time is strictly before
+      the filing, and only charges filed before it are read.
+  - name: prior_failures_to_appear
+    description: >-
+      The person's documented failures to appear strictly before the index
+      case's filing: 0, 1 or more. Dropped for a source that cannot document
+      failures to appear (a zero there would mean "unobserved", not "none").
+    source: [justice_events.event_at, justice_events.event_type]
+    kind: banded_count
+    bands: [0, 1]
+    reference: '0'
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    requires_outcome: failure_to_appear
+    leakage: >-
+      Only events strictly before the filing are read; a failure to appear in
+      the index case itself happens after its filing and is never counted.
+  - name: pending_case
+    description: >-
+      Another case of the person filed strictly before the index case's
+      filing and not disposed by it: a charge pending at that instant, or none
+      of its charges disposed before it.
+    source: [cases.filed_at, charges.disposed_at, charges.disposition, charges.filed_at]
+    kind: binary
+    reference: 'false'
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    leakage: >-
+      Evaluated as of the filing: a charge disposed at or after it counts as
+      pending then, a charge filed at or after it is not read, and a charge
+      whose disposition is unrecorded is ignored.
+  - name: history_truncated
+    description: >-
+      The index case was filed within lookback_days of the source's coverage
+      start, so the person's earlier history may lie outside the data and the
+      prior counts may be undercounted.
+    source: [cases.filed_at]
+    kind: binary
+    reference: 'false'
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    lookback_days: 1095
+    leakage: >-
+      Compares the filing with the coverage start, both known before any
+      decision in the case.
+  - name: court
+    description: >-
+      The court the index case is filed in; levels are ordered by the number
+      of index events and then by the court's earliest source charge key, and
+      labelled by that rank (the reference is the busiest court).
+    source: [cases.court_id]
+    kind: categorical
+    levels: data
+    reference: most_frequent
+    unseen: reference
+    known_at: filed_at
+    missing: exclude
+    leakage: >-
+      The court of filing is fixed when the case is filed.
+  - name: jurisdiction
+    description: >-
+      The jurisdiction of that court, ordered and labelled like the court;
+      with one jurisdiction in the source it is the reference alone and adds
+      no column.
+    source: [courts.jurisdiction_id]
+    kind: categorical
+    levels: data
+    reference: most_frequent
+    unseen: reference
+    known_at: filed_at
+    missing: level
+    missing_level: unrecorded
+    leakage: >-
+      The jurisdiction of the court of filing is fixed when the case is filed.
+  - name: calendar_year
+    description: >-
+      The calendar year of the index event (the decision for the release
+      target, the release for the windowed targets): the brief's calendar
+      period control. Levels are ordered by the number of index events and
+      then by year; the reference is the busiest year.
+    source: [decisions.decision_at, decisions.release_at]
+    kind: categorical
+    levels: data
+    reference: most_frequent
+    unseen: latest
+    known_at: index_at
+    missing: exclude
+    leakage: >-
+      The year of the index event itself; it carries no information about
+      the outcome after it.
+
+excluded:
+  - name: restricted_attributes
+    from_vocabulary: restricted_attribute
+    reason: >-
+      Every restricted attribute the vocabulary lists stays in the restricted
+      schema and is never a model feature by default: the brief requires a
+      documented methodological purpose, legal review, fairness analysis, and
+      publication rationale first. Step 4 uses the synthetic ones only for
+      the aggregate subgroup calibration.
+  - name: judge
+    columns: [assignments.judge_id, decisions.judge_id, events.judge_id, sentences.judge_id]
+    reason: >-
+      The judge is the subject of comparison: the expected count is what the
+      cohort would show under the source's average practice, so the judge
+      cannot be one of its inputs.
+  - name: release_terms
+    columns: [decisions.detained_flag, decisions.release_type]
+    reason: >-
+      Release or detention, the release type, the conditions, and the bond
+      are the judge's own decision: the outcome of the release target and a
+      mediator of every later outcome, so adjusting for them would remove the
+      very difference being measured. Conditions and bond amounts are not in
+      the analytic frame at all.
+  - name: after_the_index
+    reason: >-
+      Anything at or after the index time - the index case's dispositions,
+      sentences, and later events - is excluded by every feature's known-at
+      rule; earlier cases' dispositions enter only through the prior counts,
+      read strictly before the filing.
+  - name: propensity
+    reason: >-
+      The synthetic world's latent propensity is unobservable by
+      construction: no source records it, and the model must not be able to
+      see what a real source could not.
+
+model:
+  family: logistic
+  penalty: l2
+  lambda: 1.0
+  penalize_intercept: false
+  max_iterations: 50
+  tolerance: 1.0e-8
+  step_halvings: 30
+
+temporal_split:
+  test_quantile: 0.75
+  quantile_method: nearest_rank
+
+seed: 20260930
+
+bootstrap:
+  replicates: 500
+  cluster: person
+  interval: percentile
+  level: 0.95
+
+pooling:
+  family: gamma_poisson
+  shape_bounds: [0.5, 1000.0]
+  shape_grid: 200
+
+thresholds:
+  minimum_events_per_column: 5
+  minimum_cohort: 30
+  minimum_expected: 5
+
+recovery:
+  fits:
+    - target: pretrial_release
+      window_days: null
+    - target: new_case
+      window_days: 365
+    - target: failure_to_appear
+      window_days: 365
+  minimum_followed_cohort: 30
+  spearman_minimum:
+    pretrial_release: 0.9
+    new_case: 0.8
+    failure_to_appear: 0.8
+  sign_agreement_above: 0.5
+  expected_correlation_minimum: 0.9
+  interval_coverage_minimum: 0.8
+  negative_control_band: [0.8, 1.25]

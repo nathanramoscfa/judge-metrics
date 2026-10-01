@@ -276,6 +276,8 @@ def test_ci_has_required_jobs_and_aggregate_gate() -> None:
         f"{s.get('uses', '')} {s.get('run', '')}" for s in jobs["container"]["steps"]
     )
     assert "docker build -f infra/docker/api.Dockerfile" in container_steps
+    # Phase 4 Step 2: NumPy, the one numeric dependency, imports inside the API image.
+    assert 'python -c "import judgemetrics.metrics.adjustment.logistic"' in container_steps
     assert "docker build -f infra/docker/web.Dockerfile" in container_steps
     scans = [s for s in jobs["container"]["steps"] if "trivy-action" in s.get("uses", "")]
     assert {scan["with"]["image-ref"] for scan in scans} == {
@@ -335,16 +337,26 @@ def test_ci_web_and_e2e_jobs() -> None:
         "uv run judgemetrics ingest run fjc --from-fixture tests/fixtures/fjc",
         "uv run judgemetrics seed --out data/synthetic/ci",
         "uv run judgemetrics metrics compute",
+        "uv run judgemetrics models fit",
+        "uv run judgemetrics models verify",
         "uv run judgemetrics serve",
         "pnpm exec playwright install --with-deps chromium",
         "pnpm e2e",
     ):
         assert command in e2e_runs, command
     assert "tests/fixtures/golden" not in e2e_runs
-    # The seed and the compute follow the FJC ingest and precede the API.
+    # The seed and the compute follow the FJC ingest and precede the API; the
+    # expected-outcome models (Phase 4 Step 2) are fitted and verified after the compute.
     order = [
         e2e_runs.index(c)
-        for c in ("ingest run fjc", "judgemetrics seed", "metrics compute", "judgemetrics serve")
+        for c in (
+            "ingest run fjc",
+            "judgemetrics seed",
+            "metrics compute",
+            "models fit",
+            "models verify",
+            "judgemetrics serve",
+        )
     ]
     assert order == sorted(order)
 

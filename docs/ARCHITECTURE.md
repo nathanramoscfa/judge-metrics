@@ -857,7 +857,9 @@ verification, and pipeline step 13 on top of them.
   every id column shares one dtype per frame (`String` for the synthetic
   world's ids and for UUIDs rendered as text; Polars has no UUID type),
   and the functions only compare, join, group, and sort ids. `persons.id`
-  is the resolved person after merges and the frame's only person column.
+  is the resolved person after merges and the frame's only person column;
+  `courts` (id, jurisdiction) carries the courts of the frame's cases
+  (Phase 4 Step 2: the model's court and jurisdiction features).
   Loaders: `tests/property/support.frame_from_world` builds one from an
   in-memory synthetic world (true person ids), and Step 2's
   `snapshot.py` from a Parquet snapshot of one source's rows.
@@ -1078,3 +1080,171 @@ verification, and pipeline step 13 on top of them.
   and `tests/golden/test_golden_metrics.py` proves the database path
   equals it on the golden fixture (`tests/golden/truth_map.py` is the
   one table both read).
+
+## Risk adjustment
+
+Phase 4 compares observed outcomes with what a versioned model expects for
+defendants with similar observable case characteristics (the brief's
+`<risk_adjustment>`). Step 2 lands the model itself:
+`src/judgemetrics/metrics/adjustment/` reads the specification, builds the
+design from the analytic frame, fits it, and records every fitted model as a
+canonical artifact and a catalogue row. Step 3 turns its predictions into
+expected counts, ratios, pooled estimates, and intervals.
+
+```
+   data/reference/outcome_model.yaml  (version 1, expected-logit-v1)
+   targets · features (known_at, missing, leakage) · excluded · model ·
+   temporal_split · seed · bootstrap · pooling · thresholds · recovery
+          │ spec.load_spec (yaml.safe_load; every feature checked against
+          ▼               its builder's contract and the vocabulary)
+   Frame (+ courts) ──▶ features.design_rows(frame, spec, target, window)
+                         index events (the registry's gate) → feature levels
+                         (strictly before the known-at instant) → missing
+                         rule → encoding → rows ordered by source keys
+          ▼
+   fit.fit_frame  per target and window:
+          ├─ events-per-column gate ─▶ insufficient_events (no fit)
+          ├─ logistic.fit_logistic (L2, Newton, intercept unpenalized)
+          │       └─▶ not_converged (no coefficients) | fitted
+          ├─ temporal split (cutoff at the 75th percentile of index time)
+          │       └─▶ diagnostics.evaluate (Brier, skill, AUC, bins, slope)
+          └─ resample.replicates (person clusters, seeded stream) ─▶ refits
+                  └─▶ diagnostics.stability
+          ▼
+   fit.fit_models(snapshot) ─▶ artifacts.render (canonical JSON, sha256 id)
+          ▼                   └─▶ <snapshot_dir>/<snapshot>/models/<sha>.json
+   catalog.fit_snapshot ─▶ outcome_model (one row per snapshot, source,
+                           spec version, target, window, seed)
+          ▼
+   judgemetrics models fit | list | show | verify [--refit]
+```
+
+- **The specification is the contract.** `data/reference/outcome_model.yaml`
+  is the third versioned reference file beside the case vocabulary and the
+  metric registry. `metrics.adjustment.spec.load_spec` reads it once with
+  `yaml.safe_load` and validates every field by name (an unknown field is
+  rejected). Each target names a registry metric as its population — the
+  release target `pretrial_decisions` (its gate is the published one), the
+  windowed targets `new_case_rate` and `failure_to_appear_rate` (their
+  pretrial-release cohort and the brief's six windows). Each feature names
+  a builder the code implements (`spec.FEATURE_CONTRACTS`, the same keys as
+  `features.FEATURE_BUILDERS`) and must state that builder's kind, the frame
+  columns it reads, and its known-at instant, plus its levels or bands, its
+  reference, its missing rule, and a leakage justification, so the file
+  cannot describe a feature differently from what is computed. A feature
+  naming a restricted attribute — any value of the vocabulary's
+  `restricted_attribute` kind, read from the vocabulary so no module under
+  `metrics/` names one — an excluded variable (`judge`, `release_terms`,
+  `propensity`, …), or an excluded column is rejected before anything else.
+  A change that alters a fitted model or a published figure bumps
+  `version`; a `recovery` tolerance does not (the rule is in the file's
+  header).
+- **The feature builder** (`features.design_rows`). One row per eligible
+  index event: the release target's rows are the decisions the population
+  metric's rule attributes to any judge of the frame (judge by judge,
+  through `attribution.pretrial_decisions_for`), outcome released; a
+  windowed target's rows are the pretrial-release cohort with its exposure
+  and first outcome (`index_events`, `with_exposure`, `first_outcomes`),
+  kept when followed for the window (`censoring.member_windows`), outcome
+  the fixed-window numerator membership. Every feature is computed from
+  rows strictly before its known-at instant: the index case's charges
+  filed before the pretrial decision (lead severity, lead category with
+  severity ties broken by the source's charge id, the charge count), and
+  every history feature at the index case's filing — 00:00 UTC of its
+  filing date, the frame's `cases.filed_at` and the instant the synthetic
+  generator's risk index reads, so on the synthetic worlds the model's
+  features equal the generator's exactly (a unit test proves it on the
+  golden world). A prior case counts when filed on an earlier date; a
+  conviction when disposed before the filing; a case is pending when,
+  among its charges filed before the filing, one was pending then
+  (disposed at or after it, or still pending) or none was disposed before
+  it, charges without a recorded disposition being ignored.
+  `prior_failures_to_appear` is dropped for a source that cannot document
+  failures to appear. The missing rule either excludes the row or maps the
+  null to the feature's `missing_level` (`unrecorded`: a case without a
+  filing date cannot place its history) and flags the row for Step 4's
+  complete-case refit.
+- **Order invariance.** Fixed levels follow the specification; data levels
+  (court, jurisdiction, calendar year) are ordered by their number of rows
+  and then by a source-assigned key — a court's earliest charge
+  (`<filing time>|<source_row_id>`), a jurisdiction's earliest court key,
+  the year itself — and courts and jurisdictions are labelled by that rank,
+  so no artifact carries a canonical id (the catalogue row maps a rank back
+  to the court for the model card). The reference level (the
+  specification's, or the busiest data level) and every column without a
+  row are dropped; a feature left without a column (one jurisdiction) is
+  reported as dropped. Rows sort by the index time, the index case's
+  earliest charge, the person's cluster key (the merged person's earliest
+  charge), the outcome, and the encoded labels. Relabelling every canonical
+  id of a frame therefore leaves the design matrix, the coefficients, and
+  the bootstrap draws byte-identical (`tests/property/test_feature_leakage.py`).
+- **The solver** (`logistic.fit_logistic`). Newton-Raphson on the
+  L2-penalized log-likelihood with the intercept unpenalized, step halving
+  until the objective does not decrease, and a stop when the gradient's
+  infinity norm falls below the tolerance; the result carries the
+  coefficients, the iterations, the final gradient norm, `converged`, and
+  the per-step trace. Every matrix product is an `np.einsum` with the
+  default `optimize=False` (NumPy's own single-threaded loops, never BLAS)
+  and the Newton system is solved by a column Cholesky written in NumPy
+  rather than LAPACK, so two fits of the same arrays are bit-identical on a
+  machine. Without the penalty separated data has no maximizer and the
+  coefficients run away until the vanishing gradient meets the tolerance;
+  every published fit is penalized.
+- **Resampling** (`resample.replicates`). Person-cluster bootstrap weights:
+  the cluster keys sorted, `K` draws with replacement per replicate from
+  one `random.Random` per model stream (`bootstrap:<target>:<window>`),
+  derived exactly as `synthetic/rng.py` derives its streams and drawn only
+  through `random()`. Each replicate refit starts from the published
+  coefficients.
+- **Diagnostics** (`diagnostics`). The temporal split's test set is the
+  index events at or after the nearest-rank 75th percentile of index time;
+  the split fit keeps the columns with a training row, re-scores a data
+  level unseen in training (the calendar year at the last training year,
+  a court at the reference), and passes the same events-per-column gate.
+  On the test set: the Brier score and its skill against the training base
+  rate, ROC AUC by the Mann–Whitney statistic with ties averaged, ten
+  equal-count calibration bins of the rows ordered by prediction, observed
+  over expected, and the calibration slope. Over the replicates: each
+  coefficient's mean, standard deviation, and sign agreement.
+  `refit_complete_cases` is the refit Step 4's missing-data sensitivity
+  compares with the published fit.
+- **Statuses.** A design whose limiting class (the fewer of outcomes and
+  non-outcomes) is below `minimum_events_per_column` times the design width
+  is `insufficient_events` and is not fitted; a published fit that does not
+  converge is `not_converged`; otherwise `fitted`. An outcome the source
+  cannot document yields no model. Every golden model is
+  `insufficient_events`; every demo model is `fitted`.
+- **Artifacts** (`artifacts`). One canonical JSON document per model (keys
+  sorted, no whitespace, ASCII, floats rounded to twelve significant
+  digits, `artifact_version` 1): the specification, model, and code
+  versions, the snapshot hash, the source's register name (never its
+  UUID), the target, window, seed, status, the design columns and every
+  feature's levels, reference, and drops, the training counts and range,
+  the split, the coefficients, the solver trace, the diagnostics, the
+  stability summary, and the replicate coefficients. Its sha256 is its id;
+  it is written once to `<snapshot_dir>/<snapshot hash>/models/<sha256>.json`
+  through `artifact_path`, which validates both hashes as 64 hexadecimal
+  characters and keeps the resolved path under the snapshot directory, and
+  `open(path, "xb")` (an equal file is a no-op, a different one raises).
+  Artifacts are read back as JSON only. No artifact holds an array as long
+  as the index events or the persons, a UUID-shaped string, or a 64-hex
+  string other than the snapshot hash (`tests/unit/test_model_artifacts.py`
+  inspects every artifact a fit writes; the design rows, the cluster keys,
+  and the member ids exist only in memory inside a fit).
+- **The catalogue and the commands** (`catalog`, migration
+  `0009_outcome_models`). `judgemetrics models fit [--snapshot HASH]`
+  (ingest role) takes the latest snapshot (`exported_at` descending, as
+  `/api/v1/ready` reports it) or the named one, fits only the models of
+  the current specification version and seed it lacks, writes their
+  artifacts, and inserts one `outcome_model` row each — a second run fits
+  nothing. `models list` and `models show <id or content hash>` read the
+  catalogue as the app role (the card never shows `storage_uri`).
+  `models verify [--snapshot HASH] [--refit]` rebuilds every artifact path
+  from the configured snapshot directory and the two hashes (never from the
+  stored URI), checks the bytes hash to the row's `content_hash` and the
+  row's columns agree with the artifact, and with `--refit` refits every
+  model from its snapshot and seed under the code version the row records
+  and compares the bytes, naming the model and the first differing field;
+  it exits 1 on any problem. `metrics compute` does not fit in this step:
+  the operator (and the CI `e2e` job) runs `models fit` and `models verify`
+  after it.
