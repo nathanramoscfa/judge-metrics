@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase04-roadmap.md -->
-# Phase 4 Roadmap — Risk Adjustment and Statistical Validation
+# Phase 4 Roadmap — Risk Adjustment and Statistical Validation ✅
 
-**Status:** In progress
+**Status:** Complete — 2026-10-02
 
 ## Overview
 
@@ -6270,9 +6270,9 @@ phase-boundary hygiene.
 
 ---
 
-## Step 6 — QA & Verification Script
+## Step 6 — QA & Verification Script ✅
 
-**Status:** Not started
+**Status:** Complete — PR #45 (2026-10-02)
 
 > **Goal:** Package the verification matrix into `scripts/verify_phase04.py`
 > (with `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, and `--post`
@@ -7518,7 +7518,7 @@ workflow above maps directly to the corresponding row below.
 | 3    | Expected counts, ratios, pooling, recovery     | Opus 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #41 |
 | 4    | Validation report, methodology 1.0             | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #43 |
 | 5    | Adjusted panels, compare, model card           | Opus 5.5 | Claude Code | Effort High    | On       | New  | Complete — PR #44 |
-| 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Not started |
+| 6    | QA + verify_phase04.py                         | Opus 5.5 | Claude Code | Effort Medium  | On       | New  | Complete — PR #45 |
 | V1   | Planted effects and restricted schema scope    | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
 | V2   | Specification and model scope                  | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
 | V3   | Estimator and recovery scope                   | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
