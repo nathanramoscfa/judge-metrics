@@ -2,13 +2,14 @@
 
 > **Status:** Draft v2.1 (v2 supersedes v1, same day, after the full
 > brief arrived; v2.1 adds the post-launch Phase 9); Phases 1–3
-> complete (Phase 3, the first milestone, on 2026-09-29); Phase 4 in progress
+> complete (Phase 3, the first milestone, on 2026-09-29); Phase 4 complete
+> on 2026-10-02 (`v0.4.0-phase-4`); Phase 5 next
 > **Owner:** Nathan Ramos, founder and sole maintainer
 > **Audience:** Maintainer and the AI coding agents executing phase steps;
 > public once the repository is published
 > **Target environment:** Local (Docker Compose) through Phase 7;
 > vendor-neutral managed cloud from Phase 8
-> **Last updated:** September 2026
+> **Last updated:** October 2026
 
 This roadmap takes JudgeMetrics from a scaffolded repository with a
 written brief to a public, reproducible analytics platform over public
@@ -599,9 +600,10 @@ milestone.
 
 ---
 
-### Phase 4 — Risk Adjustment and Statistical Validation
+### Phase 4 — Risk Adjustment and Statistical Validation ✅
 
-**Status:** In progress — [`docs/roadmap/phase04-roadmap.md`](phase04-roadmap.md)
+**Status:** Complete — 2026-10-02; PR #45; v0.4.0-phase-4;
+[`phase04-roadmap.md`](phase04-roadmap.md)
 
 **Goal:** Compare observed outcomes with model-expected outcomes for
 comparable cohorts on synthetic data with planted effects, publish
@@ -663,6 +665,12 @@ of 5; the calibration portion of 10.
 - `scripts/verify_phase04.py --fast` exits 0 in CI.
 - **Security:** gate clean; model artifacts contain no person-level
   rows (artifact inspection test).
+
+Verified by the phase roadmap's V-matrix: reproducibility from a
+snapshot and seed by V2.4–V2.5 and V3.4; the planted recovery by V3.3
+and V4.3; the web's links, intervals, and suppression reasons by
+V5.2–V5.4; `docs/VALIDATION.md` by V4.1–V4.3; `--fast` in CI by V6.1;
+the gate and the artifact inspection by V6.4 and V2.2.
 
 ---
 
@@ -1640,7 +1648,7 @@ court-level comparison arrive with Phase 7.
 | 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
 | 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | Complete — 2026-09-29 |
-| 4     | Risk adjustment and validation                       | High       | Claude Opus 5.5 (Claude Code): Extra High for Steps 1–3, High for Steps 4–5, Medium for QA | In progress |
+| 4     | Risk adjustment and validation                       | High       | Claude Opus 5.5 (Claude Code): Extra High for Steps 1–3, High for Steps 4–5, Medium for QA | Complete — 2026-10-02 |
 | 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |
 | 7     | Florida pilot, federal dockets, coverage map         | High       | Claude Opus 5 (Claude Code)                                     | Not started |

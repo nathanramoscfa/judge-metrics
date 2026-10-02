@@ -11,28 +11,21 @@ file at the end of every step (Stage 6 of the step lifecycle).
 
 ## Current phase
 
-**Phase 4 — Risk Adjustment and Statistical Validation.** In progress
-(`docs/roadmap/phase04-roadmap.md`): Step 1 — planted effects, synthetic
-restricted attributes, and the restricted schema — is complete
-(`GENERATOR_VERSION` and `TRUTH_VERSION` 3, `truth/effects.json`,
-methodology `0.2`, migration `0008_restricted_schema`); Step 2 — the
-feature specification, the leakage review, and the baseline model — is
-complete (`data/reference/outcome_model.yaml`, `metrics/adjustment/`,
-migration `0009_outcome_models`, `judgemetrics models
-fit|list|show|verify`); Step 3 — expected counts, ratios, partial
-pooling, and the recovery test — is complete (registry version 2 with the
-`observed_expected` kind, methodology `0.3`, migration
-`0010_adjusted_observations`, held out of every public response until
-Step 5); Step 4 — the validation report and methodology `1.0` — is
-complete (`judgemetrics.validation`, `judgemetrics validation
-report|recovery`, the committed `docs/VALIDATION.md` checked by the `e2e`
-job, the "Adjusted statistics" methodology served by `GET /api/v1/metrics`
-as `adjustment`); Step 5 — risk-adjusted panels, adjusted compare, and the
-model card — is complete (the API serves `observed_expected` with its
-figures, model reference, and suppression reason, `GET
-/api/v1/models/{id}`, the judge page's "Risk-adjusted comparison" panel,
-`AdjustedStat`, `/models/[modelId]`, `web/tests/e2e/adjusted.spec.ts`);
-Step 6 (QA and `scripts/verify_phase04.py`) is next.
+**Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
+Plan.** Not started: the next step is the Phase 5 roadmap, written from
+a re-exported planning kit (`uv run poe kit`, then `/roadmap-phase 5`).
+Phase 4 (Risk Adjustment and Statistical Validation) completed on
+2026-10-02 with Step 6 (QA, `scripts/verify_phase04.py`, and
+`phase-verify (04)` as a required context) and is tagged
+`v0.4.0-phase-4` on the squash-merged commit: planted effects and the
+`restricted` schema (`GENERATOR_VERSION`/`TRUTH_VERSION` 3), the
+versioned expected-outcome specification and its deterministic
+penalized fit, observed-to-expected ratios with partial pooling and
+bootstrap intervals recovered against the planted answer, the
+validation report and methodology `1.0`, and the risk-adjusted panels,
+adjusted compare, and model card (`docs/phase04-qa-findings.md` holds
+the phase's findings, pre-ship items, and the Phase 5 carry-over
+checklist).
 Phase 3
 (Metrics Engine and the Complete Local Demo — the first milestone)
 completed on 2026-09-29 with Step 6 (QA, `scripts/verify_phase03.py`,
@@ -59,6 +52,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-02 | **Phase 4 Step 6 (PR #45) — Phase 4 complete.** `scripts/verify_phase04.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 50 static checks — 45 over Steps 1–5 and 5 self-checks — with every version compared as a `>=` minimum; `--post` adds the seed and compute idempotency probes, `metrics verify`, `models verify --refit`, `validation report --check`, `validation recovery`, and an adjusted provenance trace on the scratch database), `tests/unit/test_phase04_verification.py`, the `phase-verify.yml` matrix entry `04` and `phase-verify (04)` as a required context, `docs/phase04-qa-findings.md` (the rollup, the three alarm exercises, the pre-ship items, the Phase 5 carry-over checklist), both roadmaps marked complete; tagged `v0.4.0-phase-4`. |
 | 2026-10-01 | **Phase 4 Step 5 (PR #44).** Risk-adjusted panels, adjusted compare, and the model card (`docs/API.md` "Metrics" and "Models", `docs/ARCHITECTURE.md` "Public API v1" and "Web tier", `docs/PROVENANCE.md`, `web/AGENTS.md`). API: `SERVED_KINDS` gains `observed_expected`; `Observation`, `CompareRow`, and the traced observation gain `expected`, `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, `pooling_weight`, `model` (`ModelRef`), and `suppression_reason`, every figure withheld when suppressed (the reason and the model survive); `MetricKind`, the `ratio` unit, and the `bootstrap` interval method; `MetricDefinitionOut.adjustment`; `/metrics/compare` `sort=ratio`, the default for the kind (still one statement); the provenance body's `model` with the artifact check under the API's snapshot directory; `GET /api/v1/models/{model_id}` (one statement, never `storage_uri`, 404 for an unknown or superseded snapshot's model). Twenty-one OpenAPI paths and nineteen StrictQuery routes (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). Web: `components/adjusted-stat.tsx` (the only renderer of an adjusted figure), the judge page's "Risk-adjusted comparison" panel beside the raw rates with the cohort definition and position, adjusted columns in `CompareTable`, `/models/[modelId]`, and the methodology page's `#adjusted-statistics` section. The Compose `api` service mounts `./data/snapshots` read-only so the provenance artifact check holds in the container. Tests: `test_api_adjusted.py` (now the serving tests), `test_schemas_metrics.py`, `test_openapi.py`, `test_query_counts.py` (model card 1 statement), `test_public_contract.py` (model cards, model hashes allowed), `test_golden_provenance.py` (CLI and endpoint agree on an adjusted chain); Vitest `adjusted-stat`, `compare-table`, `model-page`, `metrics`, `methodology-page`; Playwright `adjusted.spec.ts` beside the unchanged smoke, metrics, and first-milestone suites (25 passed locally over the demo seed). Screenshots: `docs/screenshots/phase04-step5/`. |
 | 2026-10-01 | **Phase 4 Step 4 (PR #43).** The validation report and methodology `1.0` (`docs/VALIDATION.md`, `docs/METHODOLOGY.md` "Adjusted statistics", `docs/ARCHITECTURE.md` "Validation", `docs/API.md` "The `adjustment` block", `docs/SYNTHETIC_DATA.md` "Temporal transport" and "Restricted controls"). `src/judgemetrics/validation/` — `inputs.py` (the snapshot's models with their designs, in memory), `fairness.py` (the one reader of the `restricted` schema: one parameterized statement on the ingest role's session, aggregate cells withheld below 30 index events or 5 expected events), `sensitivity.py` (complete-case refit), `stability.py` (interval widths, share excluding 1, rank-interval widths as distributions), `recovery.py` (the published figures against `truth/effects.json`), `report.py` (deterministic render, `--check`); `judgemetrics validation report [--out] [--check] [--truth DIR]` and `validation recovery --truth DIR [--json]`. Registry `methodology_version` `1.0` (registry `version` stays 2), changelog 0.1-1.0, the "Interval" term restated (the pooled estimate's sampling variability, not a confidence interval for the true ratio); `GET /api/v1/metrics` gains `adjustment` (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). The `e2e` job runs `validation report --check --truth data/synthetic/ci`. On the demo seed every recovery tolerance is met on the database path (Spearman 0.934 / 0.719 / 0.963), the age-band positive control shows the planted direction (Spearman 0.9 with the planted effects), and every negative-control cell lies in [0.8, 1.25]. Tests: `test_validation_report.py`, `test_subgroup_calibration.py`, `test_restricted_readers.py`, `test_fairness_analysis.py`, the methodology render and API registry tests extended. |
 | 2026-09-30 | **Phase 4 Step 3 (PR #41).** Observed-to-expected ratios (`docs/ARCHITECTURE.md` "Observed-to-expected ratios", `docs/DATA_MODEL.md`, `docs/SYNTHETIC_DATA.md` "Recovery"). Registry version 2, methodology `0.3`: the kind `observed_expected` (unit `ratio`, a required `adjustment` block) and three judge metrics — `pretrial_release_observed_expected`, `new_case_observed_expected`, `failure_to_appear_observed_expected` (six windows) — with their descriptive twins' eligibility and attribution, threshold 30, minimum expected count 5. `metrics/adjustment/expected.py` (one design per target and window over every eligible event of the source; per judge n, O, E from the published coefficients read back from the artifact), `pooling.py` (the gamma–Poisson shape by maximum marginal likelihood, Σ log(α+k) exact, a 200-point log grid refined by golden-section; pooled ratio (α+O)/(α+E), weight E/(E+α)), `bootstrap.py` (the fit's person-cluster replicates replayed from the stored coefficients; 2.5/97.5% quantiles), `ratios.py` (the drafts). Migration `0010_adjusted_observations` (`outcome_model_id`, `pooling_weight`, `suppression_reason` with two checks; stored suppressed rows backfilled `below_threshold`). `metrics compute` fits the snapshot's missing models first; pipeline step 13 computes the descriptive kinds only and `publish` is scoped by kind; `metrics verify` recomputes an adjusted observation from its cited artifact; the provenance trace names the model and checks its artifact; the public hold-out (`SERVED_KINDS`) on the registry, subject, compare, and provenance routes; `/api/v1/ready` reports the latest snapshot's models. Recovery on the demo world (`test_golden_recovery.py`): Spearman 0.934 / 0.719 / 0.963 against raw rates 0.689 / 0.716 / 0.871, expected counts tracking the oracle (≥ 0.986), intervals covering the true ratio for 60–68% of judges; tolerances recorded in `outcome_model.yaml`. Tests: `test_pooling.py` (15), `test_bootstrap.py` (5), `test_golden_adjusted.py` (84), `test_golden_recovery.py` (6), `test_api_adjusted.py` (6), the step-13 test, migration `0010`. Findings: interval under-coverage and the thin new-case margin — Step 4 task block and `docs/SYNTHETIC_DATA.md`; what serving the kind must undo — Step 5 task block; the double-prefixed constraint names — fixed in-step, lesson in `AGENTS.md`; a reused snapshot's version columns — known issues below. |
@@ -388,7 +382,8 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
   the golden fixture. Its `--py` mode runs the `property` and `golden`
   markers as well as `integration`, so the database-backed property
   and golden tests run twice there (about 40 s more).
-- `scripts/verify_phase03.py --post` writes to the scratch database
+- `scripts/verify_phase03.py --post` and `scripts/verify_phase04.py
+  --post` write to the scratch database
   when `JUDGEMETRICS_TEST_DATABASE_URL` is configured (the three role
   URLs pointed at it, snapshots under `data/snapshots/scratch-test-db`),
   else to the
@@ -400,6 +395,12 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
   minutes. More than five `--e2e` runs an hour against a local API make
   the walkthrough's corrections test answer 429 (the limiter, not the
   page).
+  `verify_phase04.py --post` additionally fits the demo seed's
+  thirteen models when the scratch database has none (about five
+  minutes for the whole `bootstrap`), and its Python suites purge the
+  scratch database's synthetic source at the end, so a later alarm
+  exercise there starts with `uv run poe bootstrap` in the probe
+  environment.
 
 - The expected-outcome model's bootstrap clusters persons by the
   merged person's earliest charge, keyed `<filed_at>|<source_row_id>`
@@ -458,18 +459,14 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **Phase 4 Step 6.** QA and verification: `scripts/verify_phase04.py`
-   with the phase's static checks and V-matrix, `phase-verify (04)` as a
-   required context, and the phase exit (`docs/roadmap/phase04-roadmap.md`
-   Step 6).
-2. **Phase 4 exit (`v0.4.0-phase-4`).** Methodology `1.0`: the
-   expected-outcome model, expected counts and rates, observed-to-expected
-   ratios with adjusted intervals, planted judge effects in the
-   generator under a new `TRUTH_VERSION` recovered on the golden fixture,
-   and the statistical validation the root roadmap names.
-3. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
+1. **The Phase 5 roadmap.** Re-export the planning kit (`uv run poe
+   kit`) and write `docs/roadmap/phase05-roadmap.md` (`/roadmap-phase
+   5`), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
+   checklist" into its steps.
+2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metric published with a
    complete provenance trace; per-metric suppression thresholds
-   revisited; the Florida acquisition plan written. (First milestone
-   `v0.3.0-phase-3` reached 2026-09-29; Phase 2 exit `v0.2.0-phase-2`
+   revisited; the Florida acquisition plan written. (Phase 4 exit
+   `v0.4.0-phase-4` 2026-10-02; first milestone `v0.3.0-phase-3` reached
+   2026-09-29; Phase 2 exit `v0.2.0-phase-2`
    2026-09-18; Phase 1 exit `v0.1.0-phase-1` 2026-09-16.)
