@@ -1070,6 +1070,26 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `web/tests/e2e/adjusted.spec.ts` needs the demo seed's fitted models (CI's
   `e2e` job seeds it). `uv run poe dev-web` cannot spawn `pnpm` on Windows
   (uv finds no `pnpm.exe`); run `pnpm dev` in `web/` there.
+- Phase 4 verification (Phase 4 Step 6, docs/phase04-qa-findings.md):
+  `scripts/verify_phase04.py` keeps the Phase 3 chassis (50 static checks,
+  `phase-verify (04)` required beside `test` and `(01)`–`(03)`). Every
+  version check compares the source constant (or the YAML scalar) with a
+  `>=` minimum, never a literal, so a later phase's bump never fails this
+  phase's required check. The specification's features are read with a
+  line reader (`_spec_features`) and the brief's `<interpretation>` with a
+  regular expression; `test_phase04_verification.py` pins both, the
+  registry reader, and the changelog reader against `yaml.safe_load`, an
+  independent expression, and the module. A guard that forbids a name
+  matches uses, not mentions (check 15: `artifacts.py`'s docstring names
+  `pickle`, `numpy.load`, and `eval`). `_function_body` ends a function at
+  the next top-level `def`/`class`/decorator/comment/name, never at the
+  column-0 `)` of a multi-line signature. `--post`'s first-milestone items
+  carry no V id in Phase 4's matrix, so an `M` row folds them into the
+  summary (otherwise a failed item would print `[FAIL]` and still exit 0).
+  The validation probes read the truth of the probe's dataset
+  (`JUDGEMETRICS_SYNTHETIC_DIR`, default `data/synthetic/20260916`); the
+  adjusted trace probe picks a current `observed_expected` observation that
+  cites a model and requires an `outcome model <hash>` line.
 
 ## End-of-session report (from the brief)
 

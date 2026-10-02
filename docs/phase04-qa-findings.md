@@ -97,7 +97,83 @@ the V1–V6 matrix; see "Step 6" below) and runs in CI through
 
 ### Alarm exercise
 
-_Recorded below as run._
+**(a) The phase's required checks.** Recorded per the Step 6 plan
+("break one static check on the PR, observe `phase-verify (04)` and
+`test` fail, fix, observe both pass"):
+
+| Event | Commit (PR #45) | `phase-verify (04)` | `test` |
+|-------|-----------------|---------------------|--------|
+| Deliberate break (check 45 → `docs/screenshots/phase04-step5-alarm-exercise/README.md`) | `91f1d81` | fail — `[FAIL] 45 … missing docs/screenshots/phase04-step5-alarm-exercise/README.md`, `FAILED: 45` (run 37017815741) | fail — `python` job: `test_verify_script_fast_exits_zero` (`passed 49 failed 1 … FAILED: 45`; 1 failed, 1,615 passed; run 37017815579); every other job green, `phase-verify (01)`–`(03)` included |
+| Fix (check 45 restored) | `f108090` | pass (run 37019595323) | pass (run 37019595596) |
+
+`phase-verify (04)` became a required context on `main` after that run
+(`gh api -X PATCH …/protection/required_status_checks`, five contexts;
+`CONTRIBUTING.md` "Repository settings").
+
+**(b) The adjusted-observation alarm** (the Operations criterion's
+health signal: `/api/v1/ready` `metrics.models` with `metrics verify`
+green; its alarm: `metrics verify` non-zero). Run on 2026-10-02 against
+the scratch database after `uv run poe bootstrap` there (role URLs
+pointed at `JUDGEMETRICS_TEST_DATABASE_URL`, snapshots under
+`data/snapshots/scratch-test-db`); one current, unsuppressed adjusted
+observation had its `standardized_ratio` raised by 0.1 and then
+restored:
+
+```text
+observation=015871a9-53d5-4dd0-9036-4574deddfb93 slug=failure_to_appear_observed_expected standardized_ratio=0.903772
+tamper: observation=015871a9-53d5-4dd0-9036-4574deddfb93 standardized_ratio=1.003772
+$ uv run judgemetrics metrics verify
+snapshots=1 observations=3730 verified=3729 mismatches=1 unverifiable=0
+mismatch: failure_to_appear_observed_expected judge:0e0679ca-51d3-4ae9-8729-39dad4f82175@730 column=standardized_ratio stored=1.003772 recomputed=0.903772 observation=015871a9-53d5-4dd0-9036-4574deddfb93
+exit 1
+restore: observation=015871a9-53d5-4dd0-9036-4574deddfb93 standardized_ratio=0.903772
+$ uv run judgemetrics metrics verify
+snapshots=1 observations=3730 verified=3730 mismatches=0 unverifiable=0
+exit 0
+```
+
+The alarm names the observation by id, slug, subject, window, and
+column. `test_golden_adjusted.py` keeps the tamper assertion in CI.
+
+**(c) The model-artifact alarm.** Same environment; one byte of one
+fitted model's artifact under `data/snapshots/scratch-test-db` was
+changed and then restored:
+
+```text
+model=91115941-610c-4459-9cf9-69caab5ad525 artifact=<scratch>/a1703c955643…/models/02ac7c83e2eb….json bytes=254402
+tamper: byte 250452 changed
+$ uv run judgemetrics models verify
+models=13 verified=12 refitted=0 problems=1
+mismatch: model 91115941-610c-4459-9cf9-69caab5ad525 failure_to_appear@365 field=content_hash: the artifact does not hash to the row's content_hash
+exit 1
+restore: artifact bytes restored
+$ uv run judgemetrics models verify
+models=13 verified=13 refitted=0 problems=0
+exit 0
+```
+
+`test_outcome_models.py` keeps the changed-byte assertion in CI. The
+third alarm, `validation report --check` non-zero on drift, is
+exercised by `test_validation_report.py` and runs in the `e2e` job.
+
+**`--post` on the maintainer's machine** (2026-10-02, Windows, the
+Compose services, `dev-api` and `pnpm dev` running, on PR #45 at
+`f108090`; 1,054 s): **76 passed, 0 failed, 0 skipped.** 50/50 static
+checks; items 1–5 (`uv sync`, `poe up`, `poe migrate`, `poe seed` on the
+scratch database) and the `bootstrap` rerun; the seed probe (sixteen
+tables' row counts unchanged, `metric_observation` 3,730, `outcome_model`
+13); the compute probe (`models_fitted=0 models_read=13 observations=0
+superseded=0 subjects_published=0 subjects_unchanged=29` on both runs);
+`metrics verify`; `models verify --refit` (`models=13 verified=13
+refitted=13 problems=0`); `validation report --check --truth
+data/synthetic/20260916`; `validation recovery` (Spearman 0.934 release,
+0.719 365-day new case, 0.963 365-day failure to appear; interval
+coverage 0.60, 0.63, 0.68 — every tolerance met); the adjusted
+provenance trace (`outcome model 6544e266…`, `complete: yes`); items 6–7;
+Playwright (27 tests, `adjusted.spec.ts` included); the web suites (121
+Vitest tests); the security gate; every V-check suite; item 17 (`poe
+check`); and V1.1–V6.4 with V6.1 read from the PR's green `phase-verify
+(04)`.
 
 ## Pre-ship items
 
