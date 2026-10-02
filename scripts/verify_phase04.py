@@ -1307,7 +1307,7 @@ def check_44() -> str | None:
 
 
 def check_45() -> str | None:
-    folder = f"docs/screenshots/phase{PHASE}-step5"
+    folder = f"docs/screenshots/phase{PHASE}-step5-alarm-exercise"
     if (reason := _missing(f"{folder}/README.md")) is not None:
         return reason
     light = [p for p in _path(folder).glob("*-light.png") if p.stat().st_size > 0]
