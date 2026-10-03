@@ -1,3 +1,15 @@
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+# pnpm audit exceptions: each entry names its advisory, why it cannot reach
+# production, and the issue that removes it. Never add one an upgrade can fix.
+auditConfig:
+  ignoreGhsas:
+    # GHSA-vfj7-8cjw-p6xm / CVE-2026-93687 (high): braces <= 3.0.3 overflows
+    # the stack on deeply nested brace patterns, and no fixed release exists.
+    # Its only path is lint tooling (eslint-config-next > @next/eslint-plugin-next
+    # > fast-glob > micromatch > braces) fed this repository's own patterns;
+    # `pnpm why braces --prod` is empty and the runtime image ships only
+    # .next/standalone. Remove with issue #47.
+    - GHSA-vfj7-8cjw-p6xm

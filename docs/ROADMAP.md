@@ -12,8 +12,10 @@ file at the end of every step (Stage 6 of the step lifecycle).
 ## Current phase
 
 **Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
-Plan.** Not started: the next step is the Phase 5 roadmap, written from
-a re-exported planning kit (`uv run poe kit`, then `/roadmap-phase 5`).
+Plan.** Not started: the next step is the Phase 5 roadmap
+(`/roadmap-phase 5` in a new conversation), written from the planning
+kit the roadmodel updater keeps current (roadmodel 0.2.57, which
+`uv.lock` now pins too, so no `uv run poe kit` is needed first).
 Phase 4 (Risk Adjustment and Statistical Validation) completed on
 2026-10-02 with Step 6 (QA, `scripts/verify_phase04.py`, and
 `phase-verify (04)` as a required context) and is tagged
@@ -52,6 +54,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-02 | **roadmodel 0.2.57 locked (PR #46).** `uv.lock` pins the release the roadmodel updater exported `planning/` with on 2026-10-02 (PR #45's kit commit names 0.2.54 in error: that is the separate `roadmodel` on `PATH`), so `uv run poe kit` reproduces the committed kit instead of rolling six files back to 0.2.51; `AGENTS.md` "Where the plan lives", `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, and the project roadmap now say that `poe kit` exports the locked release and that a step committing the updater's refresh moves the lock with it. |
 | 2026-10-02 | **Phase 4 Step 6 (PR #45) — Phase 4 complete.** `scripts/verify_phase04.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 50 static checks — 45 over Steps 1–5 and 5 self-checks — with every version compared as a `>=` minimum; `--post` adds the seed and compute idempotency probes, `metrics verify`, `models verify --refit`, `validation report --check`, `validation recovery`, and an adjusted provenance trace on the scratch database), `tests/unit/test_phase04_verification.py`, the `phase-verify.yml` matrix entry `04` and `phase-verify (04)` as a required context, `docs/phase04-qa-findings.md` (the rollup, the three alarm exercises, the pre-ship items, the Phase 5 carry-over checklist), both roadmaps marked complete; tagged `v0.4.0-phase-4`. |
 | 2026-10-01 | **Phase 4 Step 5 (PR #44).** Risk-adjusted panels, adjusted compare, and the model card (`docs/API.md` "Metrics" and "Models", `docs/ARCHITECTURE.md` "Public API v1" and "Web tier", `docs/PROVENANCE.md`, `web/AGENTS.md`). API: `SERVED_KINDS` gains `observed_expected`; `Observation`, `CompareRow`, and the traced observation gain `expected`, `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, `pooling_weight`, `model` (`ModelRef`), and `suppression_reason`, every figure withheld when suppressed (the reason and the model survive); `MetricKind`, the `ratio` unit, and the `bootstrap` interval method; `MetricDefinitionOut.adjustment`; `/metrics/compare` `sort=ratio`, the default for the kind (still one statement); the provenance body's `model` with the artifact check under the API's snapshot directory; `GET /api/v1/models/{model_id}` (one statement, never `storage_uri`, 404 for an unknown or superseded snapshot's model). Twenty-one OpenAPI paths and nineteen StrictQuery routes (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). Web: `components/adjusted-stat.tsx` (the only renderer of an adjusted figure), the judge page's "Risk-adjusted comparison" panel beside the raw rates with the cohort definition and position, adjusted columns in `CompareTable`, `/models/[modelId]`, and the methodology page's `#adjusted-statistics` section. The Compose `api` service mounts `./data/snapshots` read-only so the provenance artifact check holds in the container. Tests: `test_api_adjusted.py` (now the serving tests), `test_schemas_metrics.py`, `test_openapi.py`, `test_query_counts.py` (model card 1 statement), `test_public_contract.py` (model cards, model hashes allowed), `test_golden_provenance.py` (CLI and endpoint agree on an adjusted chain); Vitest `adjusted-stat`, `compare-table`, `model-page`, `metrics`, `methodology-page`; Playwright `adjusted.spec.ts` beside the unchanged smoke, metrics, and first-milestone suites (25 passed locally over the demo seed). Screenshots: `docs/screenshots/phase04-step5/`. |
 | 2026-10-01 | **Phase 4 Step 4 (PR #43).** The validation report and methodology `1.0` (`docs/VALIDATION.md`, `docs/METHODOLOGY.md` "Adjusted statistics", `docs/ARCHITECTURE.md` "Validation", `docs/API.md` "The `adjustment` block", `docs/SYNTHETIC_DATA.md` "Temporal transport" and "Restricted controls"). `src/judgemetrics/validation/` — `inputs.py` (the snapshot's models with their designs, in memory), `fairness.py` (the one reader of the `restricted` schema: one parameterized statement on the ingest role's session, aggregate cells withheld below 30 index events or 5 expected events), `sensitivity.py` (complete-case refit), `stability.py` (interval widths, share excluding 1, rank-interval widths as distributions), `recovery.py` (the published figures against `truth/effects.json`), `report.py` (deterministic render, `--check`); `judgemetrics validation report [--out] [--check] [--truth DIR]` and `validation recovery --truth DIR [--json]`. Registry `methodology_version` `1.0` (registry `version` stays 2), changelog 0.1-1.0, the "Interval" term restated (the pooled estimate's sampling variability, not a confidence interval for the true ratio); `GET /api/v1/metrics` gains `adjustment` (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). The `e2e` job runs `validation report --check --truth data/synthetic/ci`. On the demo seed every recovery tolerance is met on the database path (Spearman 0.934 / 0.719 / 0.963), the age-band positive control shows the planted direction (Spearman 0.9 with the planted effects), and every negative-control cell lies in [0.8, 1.25]. Tests: `test_validation_report.py`, `test_subgroup_calibration.py`, `test_restricted_readers.py`, `test_fairness_analysis.py`, the methodology render and API registry tests extended. |
@@ -316,6 +319,15 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 - `eslint-config-next` 16 depends on `eslint-plugin-react` 7, which
   fails to load under ESLint 10, so `web/` pins ESLint 9 (npm marks it
   deprecated, not vulnerable; `pnpm audit` is clean).
+- `pnpm audit --audit-level=high` carries one exception (2026-10-02,
+  PR #46): GHSA-vfj7-8cjw-p6xm / CVE-2026-93687, a stack-exhaustion
+  crash in `braces` <= 3.0.3 with no fixed release. Its only path is
+  lint tooling (`eslint-config-next` → `@next/eslint-plugin-next` →
+  `fast-glob` → `micromatch` → `braces`), fed this repository's own
+  patterns; `pnpm why braces --prod` is empty and the runtime image ships
+  only `.next/standalone`. The exception is `auditConfig.ignoreGhsas` in
+  `web/pnpm-workspace.yaml`, justified inline, and issue #47 removes it
+  once `braces` ships a fix or the plugin drops `fast-glob`.
 - The Supreme Court page lists retired justices as serving on a date
   after their retirement because the FJC interval ends only at
   termination (`active_on`, above); the court page says so beside the
@@ -459,9 +471,10 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **The Phase 5 roadmap.** Re-export the planning kit (`uv run poe
-   kit`) and write `docs/roadmap/phase05-roadmap.md` (`/roadmap-phase
-   5`), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
+1. **The Phase 5 roadmap.** Write `docs/roadmap/phase05-roadmap.md`
+   with `/roadmap-phase 5` in a new conversation (the kit is current;
+   `AGENTS.md` "Where the plan lives" says when `uv run poe kit` is
+   safe), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
    checklist" into its steps.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metric published with a

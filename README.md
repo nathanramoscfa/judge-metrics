@@ -348,14 +348,19 @@ Roadmaps are authored with the
 [roadmodel](https://github.com/nathanramoscfa/roadmodel) planning kit
 exported to `planning/`. The AI in the editor runs the model selector
 itself against the operator context; nothing calls a paid API. The
-operator context file is not tracked; regenerate the kit from your own
-`~/.config/roadmodel/user-context.md` with:
+committed kit is the export of the roadmodel release `uv.lock` pins,
+and the operator context file is not tracked; regenerate the kit from
+your own `~/.config/roadmodel/user-context.md` with:
 
 ```sh
 uv run poe kit
 ```
 
-Re-export at the start of every phase so the catalog is current.
+On the maintainer's machine roadmodel's updater (`/roadmodel-upgrade`)
+re-exports the kit daily from the newest release, and the step that
+commits that refresh moves the lock to the same release. `uv run poe
+kit` exports whatever the lock pins, so run it only when the lock is at
+least the kit's release; an older pin rolls `planning/` back.
 
 ## Repository layout
 

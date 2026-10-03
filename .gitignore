@@ -46,8 +46,8 @@ data/synthetic/
 *.duckdb
 *.duckdb.wal
 
-# Planning kit: the operator context is personal; regenerate it with
-# `uv run roadmodel export-kit . --force`.
+# Planning kit: the operator context is personal; every kit export copies it
+# from ~/.config/roadmodel/user-context.md (AGENTS.md "Where the plan lives").
 planning/user-context.md
 
 # Git worktrees for declared-parallel steps (ROADMAP.md §5)
