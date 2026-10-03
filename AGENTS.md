@@ -28,8 +28,20 @@ PostgreSQL, Polars, DuckDB; Next.js and TypeScript in `web/`.
 - `planning/` — the roadmodel planning kit. When asked to recommend a
   model for a step, run `planning/model-selector.txt` yourself against
   `planning/user-context.md`; do not call an external API or MCP tool
-  (`planning/HOW-TO-USE.md`, "you are the engine"). Re-export the kit
-  at the start of each phase: `uv run poe kit`.
+  (`planning/HOW-TO-USE.md`, "you are the engine"). The roadmodel
+  updater (`/roadmodel-upgrade`, run daily on the maintainer's machine)
+  keeps the kit current: it upgrades roadmodel inside `.venv` and
+  re-exports `planning/`, so a phase starts on a current kit without
+  anyone running anything. A step that finds that refresh uncommitted
+  commits it first, on its own, together with the matching lock bump
+  (`uv lock --upgrade-package roadmodel==<release>`), and names the
+  release from the latest `[judge-metrics] <old> -> <new> | kit
+  refreshed` line of `~/.config/roadmodel/update.log` — not from
+  `roadmodel version` on `PATH`, which is a separate install. `uv sync`
+  and every `uv run` put `.venv` back on the release `uv.lock` pins, so
+  `uv run poe kit` exports the locked release: run it only when the
+  lock is at least the kit's release, or it rolls `planning/` back to
+  an older kit.
 
 ## Step discipline (binding)
 
@@ -133,7 +145,7 @@ uv run poe typecheck       # mypy --strict
 uv run poe gate            # the security gate: all hooks + pre-push stage
 uv run poe up              # docker compose: minio volume owner, postgres + minio healthy, bucket, scratch DB
 uv run poe down            # docker compose down
-uv run poe kit             # refresh the planning kit
+uv run poe kit             # re-export planning/ with the locked roadmodel (only when the lock is at least the kit's release)
 uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
 uv run poe dev-web         # Next.js dev server in web/ (pnpm) against the local API

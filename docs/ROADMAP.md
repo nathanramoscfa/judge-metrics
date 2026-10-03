@@ -12,8 +12,10 @@ file at the end of every step (Stage 6 of the step lifecycle).
 ## Current phase
 
 **Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
-Plan.** Not started: the next step is the Phase 5 roadmap, written from
-a re-exported planning kit (`uv run poe kit`, then `/roadmap-phase 5`).
+Plan.** Not started: the next step is the Phase 5 roadmap
+(`/roadmap-phase 5` in a new conversation), written from the planning
+kit the roadmodel updater keeps current (roadmodel 0.2.57, which
+`uv.lock` now pins too, so no `uv run poe kit` is needed first).
 Phase 4 (Risk Adjustment and Statistical Validation) completed on
 2026-10-02 with Step 6 (QA, `scripts/verify_phase04.py`, and
 `phase-verify (04)` as a required context) and is tagged
@@ -459,9 +461,10 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **The Phase 5 roadmap.** Re-export the planning kit (`uv run poe
-   kit`) and write `docs/roadmap/phase05-roadmap.md` (`/roadmap-phase
-   5`), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
+1. **The Phase 5 roadmap.** Write `docs/roadmap/phase05-roadmap.md`
+   with `/roadmap-phase 5` in a new conversation (the kit is current;
+   `AGENTS.md` "Where the plan lives" says when `uv run poe kit` is
+   safe), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
    checklist" into its steps.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metric published with a

@@ -1662,6 +1662,8 @@ Max subscription (top useful effort, thinking on); GPT-family backups
 (GPT-5.6 Sol for design-heavy steps, GPT-5.3 Codex for implementation
 steps) run on Codex funded by ChatGPT Plus. Per-step tables, rationales,
 and selection blocks live in each phase roadmap, beginning with
-[`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md). Re-export the kit
-at the start of every phase (`uv run poe kit`) so the catalog is current
-before the phase roadmap is written.
+[`docs/roadmap/phase01-roadmap.md`](phase01-roadmap.md). The roadmodel
+updater re-exports the kit daily, and the step that commits a refresh
+moves `uv.lock` to the same release, so the catalog is current before a
+phase roadmap is written; `uv run poe kit` re-exports with the locked
+release only (`AGENTS.md` "Where the plan lives").

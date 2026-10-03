@@ -35,7 +35,7 @@ mirrors every target for environments with GNU make (`make check`).
 | `lint`, `fmt`, `fmt-check`, `typecheck` | ruff check, ruff format, ruff format --check, mypy --strict |
 | `gate`          | the full security gate: every pre-commit hook plus the pre-push stage |
 | `up`, `down`    | Docker Compose services (PostgreSQL 17, MinIO) up / down; `up` also creates the scratch test database (`up-test-db`) |
-| `kit`           | re-export the roadmodel planning kit                   |
+| `kit`           | re-export the roadmodel planning kit with the release `uv.lock` pins; run it only when the lock is at least the kit's release (`AGENTS.md` "Where the plan lives") |
 | `migrate`       | Alembic migrations to head, as the admin role          |
 | `dev-api`       | the API with auto-reload                               |
 | `ingest-fjc`    | `judgemetrics ingest run fjc`: the FJC connector, as the ingest role, into the raw lake and canonical tables |
