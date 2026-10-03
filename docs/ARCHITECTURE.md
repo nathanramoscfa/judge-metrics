@@ -794,9 +794,12 @@ script, and reads exactly one variable, `NEXT_PUBLIC_API_BASE_URL`
 - **Security gate for the web tier.** `pnpm lint` runs ESLint with
   `eslint-plugin-security` and `--max-warnings 0` (`react/no-danger`
   and `no-eval` are errors); `pnpm audit --audit-level=high` runs in
-  CI; `tests/unit/bundle-secrets.test.ts` scans the production build
-  for any `JUDGEMETRICS_` variable; the Python hygiene test checks that
-  no `process.env` read outside `NEXT_PUBLIC_*` exists in `web/`.
+  CI, with exceptions only in `web/pnpm-workspace.yaml`
+  (`auditConfig.ignoreGhsas`), each justified inline and tied to the
+  issue that removes it; `tests/unit/bundle-secrets.test.ts` scans the
+  production build for any `JUDGEMETRICS_` variable; the Python hygiene
+  test checks that no `process.env` read outside `NEXT_PUBLIC_*` exists
+  in `web/`.
   Response headers add `X-Content-Type-Options: nosniff`,
   `X-Frame-Options: DENY`, and a strict referrer policy;
   `poweredByHeader` is off.

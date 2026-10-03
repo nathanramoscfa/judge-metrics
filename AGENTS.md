@@ -1082,6 +1082,13 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `web/tests/e2e/adjusted.spec.ts` needs the demo seed's fitted models (CI's
   `e2e` job seeds it). `uv run poe dev-web` cannot spawn `pnpm` on Windows
   (uv finds no `pnpm.exe`); run `pnpm dev` in `web/` there.
+- Audit exceptions: an advisory with no fixed release and no production
+  path (`pnpm why <pkg> --prod` empty, absent from the runtime image) is
+  excepted, never ignored silently: `auditConfig.ignoreGhsas` in
+  `web/pnpm-workspace.yaml` (pnpm 10 reads it there, and YAML holds the
+  inline justification JSON cannot), with an issue that removes it. The
+  first is GHSA-vfj7-8cjw-p6xm (`braces`, lint tooling only; #47). An
+  advisory an upgrade can fix is fixed in the step that meets it.
 - Phase 4 verification (Phase 4 Step 6, docs/phase04-qa-findings.md):
   `scripts/verify_phase04.py` keeps the Phase 3 chassis (50 static checks,
   `phase-verify (04)` required beside `test` and `(01)`–`(03)`). Every

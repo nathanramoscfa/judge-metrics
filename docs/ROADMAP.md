@@ -319,6 +319,15 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 - `eslint-config-next` 16 depends on `eslint-plugin-react` 7, which
   fails to load under ESLint 10, so `web/` pins ESLint 9 (npm marks it
   deprecated, not vulnerable; `pnpm audit` is clean).
+- `pnpm audit --audit-level=high` carries one exception (2026-10-02,
+  PR #46): GHSA-vfj7-8cjw-p6xm / CVE-2026-93687, a stack-exhaustion
+  crash in `braces` <= 3.0.3 with no fixed release. Its only path is
+  lint tooling (`eslint-config-next` → `@next/eslint-plugin-next` →
+  `fast-glob` → `micromatch` → `braces`), fed this repository's own
+  patterns; `pnpm why braces --prod` is empty and the runtime image ships
+  only `.next/standalone`. The exception is `auditConfig.ignoreGhsas` in
+  `web/pnpm-workspace.yaml`, justified inline, and issue #47 removes it
+  once `braces` ships a fix or the plugin drops `fast-glob`.
 - The Supreme Court page lists retired justices as serving on a date
   after their retirement because the FJC interval ends only at
   termination (`active_on`, above); the court page says so beside the
