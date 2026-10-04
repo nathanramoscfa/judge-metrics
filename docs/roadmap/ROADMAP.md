@@ -484,7 +484,7 @@ strategy's property tests and golden dataset.
 
 ### Phase 3 — Metrics Engine and the Complete Local Demo (First Milestone) ✅
 
-**Status:** Complete — 2026-09-29
+**Status:** Complete — 2026-09-30
 
 **Goal:** Publish reproducible descriptive and longitudinal metrics from
 a versioned registry with exact golden expectations, a provenance trace
@@ -688,6 +688,27 @@ and a lawful acquisition plan.
 **Handles sensitive data:** Yes — real defendant-level records
 (pseudonymous), restricted demographic attributes
 
+**Phase roadmap settings** — the session that writes
+`phase05-roadmap.md` (`/roadmap-phase 5`):
+
+| Setting      | Value                                  |
+|--------------|----------------------------------------|
+| Model        | Opus 5.5                               |
+| Backup       | GPT-6 Astra — Codex · Intelligence Max |
+| Platform     | Claude Code                            |
+| Effort       | Max                                    |
+| Thinking     | On                                     |
+| Conversation | **New**                                |
+
+This roadmap must get the first real data right: Cook County's actor-attribution
+rules, conservative person resolution, the restricted attributes, the
+expected-outcome refit on real cohorts, and a lawful Florida acquisition plan.
+Opus 5.5 leads `roadmodel score --category planning --complexity high --budget
+best` (94.1, ahead of Sonnet 5.5 at 92.2) and runs at Max, the deepest rung,
+under the operator's quality-first rule for roadmap-writing sessions; the $200
+claude.ai Max subscription pays, and GPT-6 Astra on the $100 ChatGPT Pro 5x plan
+is the backup.
+
 Brief phases: 8 and 9 (with Cook County standing in for the first real
 pipeline until Florida access is secured), and the Florida pilot
 selection process. Source facts verified on 2026-09-15 are in
@@ -785,6 +806,27 @@ and pass an external legal review.
 external legal review cost TBD · **Handles sensitive data:** Yes —
 admin credentials, correction requester contacts, suppression lists
 
+**Phase roadmap settings** — the session that writes
+`phase06-roadmap.md` (`/roadmap-phase 6`):
+
+| Setting      | Value                                  |
+|--------------|----------------------------------------|
+| Model        | Opus 5.5                               |
+| Backup       | GPT-6 Astra — Codex · Intelligence Max |
+| Platform     | Claude Code                            |
+| Effort       | Max                                    |
+| Thinking     | On                                     |
+| Conversation | **New**                                |
+
+This roadmap must turn real-data error rates, the admin surface behind
+authentication, the corrections and rapid-suppression process, and the external
+legal review into verifiable steps, without softening a published limitation.
+Opus 5.5 leads `roadmodel score --category planning --complexity high --budget
+best` (94.1, ahead of Sonnet 5.5 at 92.2) and runs at Max, the deepest rung,
+under the operator's quality-first rule for roadmap-writing sessions; the $200
+claude.ai Max subscription pays, and GPT-6 Astra on the $100 ChatGPT Pro 5x plan
+is the backup.
+
 Brief phases: 10, the admin tools, the privacy and legal design, and
 the security requirements for admin permissions and admin change
 logging.
@@ -856,6 +898,26 @@ coverage map and a repeatable jurisdiction-add playbook.
 metered PACER requests under a hard cap (TBD) · **Handles sensitive
 data:** Yes — source credentials, defendant-level records
 
+**Phase roadmap settings** — the session that writes
+`phase07-roadmap.md` (`/roadmap-phase 7`):
+
+| Setting      | Value                                  |
+|--------------|----------------------------------------|
+| Model        | Opus 5.5                               |
+| Backup       | GPT-6 Astra — Codex · Intelligence Max |
+| Platform     | Claude Code                            |
+| Effort       | Max                                    |
+| Thinking     | On                                     |
+| Conversation | **New**                                |
+
+This roadmap must bring a second state and the federal docket layer through the
+same connector framework, introduce probabilistic cross-source resolution, and
+keep PACER spending under its hard cap. Opus 5.5 leads `roadmodel score
+--category planning --complexity high --budget best` (94.1, ahead of Sonnet 5.5
+at 92.2) and runs at Max, the deepest rung, under the operator's quality-first
+rule for roadmap-writing sessions; the $200 claude.ai Max subscription pays, and
+GPT-6 Astra on the $100 ChatGPT Pro 5x plan is the backup.
+
 Brief phases: 7, 9 (Florida), and 12.
 
 #### 7.1 Florida pilot connector
@@ -921,6 +983,26 @@ public launch.
 **Complexity:** Medium · **Risk:** High · **Cloud cost:** TBD (managed
 PostgreSQL, object storage, hosting, CDN, error tracking) · **Handles
 sensitive data:** Yes — production secrets and the full dataset
+
+**Phase roadmap settings** — the session that writes
+`phase08-roadmap.md` (`/roadmap-phase 8`):
+
+| Setting      | Value                                  |
+|--------------|----------------------------------------|
+| Model        | Opus 5.5                               |
+| Backup       | GPT-6 Astra — Codex · Intelligence Max |
+| Platform     | Claude Code                            |
+| Effort       | Max                                    |
+| Thinking     | On                                     |
+| Conversation | **New**                                |
+
+This roadmap must take the local system to a public service: vendor-neutral
+infrastructure, owned alarms, a codebase-wide audit, a rehearsed release and
+rollback, and a readiness gate before launch. Opus 5.5 leads `roadmodel score
+--category planning --complexity high --budget best` (94.1, ahead of Sonnet 5.5
+at 92.2) and runs at Max, the deepest rung, under the operator's quality-first
+rule for roadmap-writing sessions; the $200 claude.ai Max subscription pays, and
+GPT-6 Astra on the $100 ChatGPT Pro 5x plan is the backup.
 
 Brief phase: 11.
 
@@ -994,6 +1076,26 @@ judge-level aggregate unchanged and never paywalled.
 processor fees and snapshot storage egress (TBD) · **Handles sensitive
 data:** Yes — customer contacts and billing identifiers; never card
 data
+
+**Phase roadmap settings** — the session that writes
+`phase09-roadmap.md` (`/roadmap-phase 9`):
+
+| Setting      | Value                                  |
+|--------------|----------------------------------------|
+| Model        | Opus 5.5                               |
+| Backup       | GPT-6 Astra — Codex · Intelligence Max |
+| Platform     | Claude Code                            |
+| Effort       | Max                                    |
+| Thinking     | On                                     |
+| Conversation | **New**                                |
+
+This roadmap must fund operation without paywalling the public surface, and mark
+the legal-home, funder, and pricing decisions as the operator's own. Opus 5.5
+leads `roadmodel score --category planning --complexity high --budget best`
+(94.1, ahead of Sonnet 5.5 at 92.2) and runs at Max, the deepest rung, under the
+operator's quality-first rule for roadmap-writing sessions; the $200 claude.ai
+Max subscription pays, and GPT-6 Astra on the $100 ChatGPT Pro 5x plan is the
+backup.
 
 Brief phases: none. Implements the brief's future features
 "Downloadable research datasets subject to source restrictions" and
@@ -1647,7 +1749,7 @@ court-level comparison arrive with Phase 7.
 |-------|------------------------------------------------------|------------|-----------------------------------------------------------------|--------|
 | 1     | Foundation, canonical schema, FJC judge slice        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the ingest-framework design step | Complete — 2026-09-17 |
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
-| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | Complete — 2026-09-29 |
+| 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | Complete — 2026-09-30 |
 | 4     | Risk adjustment and validation                       | High       | Claude Opus 5.5 (Claude Code): Extra High for Steps 1–3, High for Steps 4–5, Medium for QA | Complete — 2026-10-02 |
 | 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |

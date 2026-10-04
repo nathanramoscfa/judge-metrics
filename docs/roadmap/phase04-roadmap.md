@@ -2131,7 +2131,7 @@ is New per phase-boundary hygiene.
 
 ## Step 2 — Feature Specification, Leakage Review, and the Baseline Model ✅
 
-**Status:** Complete — PR #39 (2026-09-30)
+**Status:** Complete — PR #39 (2026-10-01)
 
 > **Goal:** Land the expected-outcome model as a versioned, inspectable contract
 > and a deterministic fit. `data/reference/outcome_model.yaml` (specification
@@ -3278,7 +3278,7 @@ Conversation is New per phase-boundary hygiene.
 
 ## Step 3 — Expected Counts, Ratios, Partial Pooling, and the Recovery Test ✅
 
-**Status:** Complete — PR #41 (2026-09-30)
+**Status:** Complete — PR #41 (2026-10-01)
 
 > **Goal:** Turn the fitted models into published, reproducible adjusted
 > observations and prove they recover the planted answer. Registry version 2
