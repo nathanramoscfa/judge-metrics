@@ -12,10 +12,20 @@ file at the end of every step (Stage 6 of the step lifecycle).
 ## Current phase
 
 **Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
-Plan.** Not started: the next step is the Phase 5 roadmap
-(`/roadmap-phase 5` in a new conversation), written from the planning
-kit the roadmodel updater keeps current (roadmodel 0.2.57, which
-`uv.lock` now pins too, so no `uv run poe kit` is needed first).
+Plan.** Not started. Its execution plan,
+[`docs/roadmap/phase05-roadmap.md`](roadmap/phase05-roadmap.md), was
+written on 2026-10-04 from the planning kit at roadmodel 0.2.65 (the
+release on PyPI, in `uv.lock`, and in `planning/` that day): eight steps
+— Cook County due diligence, the streamed fetch, and the value-set
+profile; Florida research and the lawful acquisition plan (drawn in
+parallel with Steps 3–7); the attribution and mapping tables with case
+vocabulary 3; the connector at corpus scale; real-data metric semantics
+and coverage statistics; the metrics engine at corpus scale; the public
+surfaces; and QA. The next step is Step 1 (`/roadmap-step 5 1` in a new
+conversation). Planning measured that the Cook County corpus has no
+cross-case person key (question 4 below), so the plan publishes
+within-case, judge-attributed metrics and reports every cross-case
+outcome of that source as not observable.
 Phase 4 (Risk Adjustment and Statistical Validation) completed on
 2026-10-02 with Step 6 (QA, `scripts/verify_phase04.py`, and
 `phase-verify (04)` as a required context) and is tagged
@@ -87,7 +97,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 1 | Exact column headers of `judges.csv` and `federal-judicial-service.csv`; conditional-request support | `fjc`         | Phase 1 Step 3            | agent    | **resolved 2026-09-16** — 201 and 30 headers recorded in `docs/DATA_SOURCES.md` and `src/judgemetrics/ingest/fjc/schema.py`; the server sends `ETag` and `Last-Modified` and the connector uses both |
 | 2 | Cook County open-data portal terms: republication of derived aggregates and pseudonymous case views, and commercial redistribution (Phase 9 snapshot tier) | `cook_sao`   | Phase 5 Step 1; Phase 9 §9.2 | operator | open   |
 | 3 | Documented value sets for `charge_disposition`, `charge_disposition_reason`, bond types, sentence fields | `cook_sao` | Phase 5 attribution rules | agent    | open   |
-| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | open   |
+| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | open — planning measurement 2026-10-04 (read-only aggregate queries): no `case_participant_id` appears under more than one `case_id` in any of the five datasets, so the identifier is per case and links no person across cases; Phase 5 Step 1 re-measures from the stored artifacts, adds the cross-dataset stability, and resolves the question |
 | 5 | CourtListener API rate limits and terms including redistribution of API responses; whether docket entries and parties are bulk or API-only; RECAP coverage of federal criminal dockets | `courtlistener` | Phase 7; Phase 9 §9.2 | agent | open |
 | 6 | PACER account, Case Locator API terms including redistribution, fee schedule, waiver threshold | `pacer`           | Phase 7 (feature-flagged); Phase 9 §9.2 | operator | open   |
 | 7 | New York pretrial release data: files, cadence, data dictionary, presence of judge names, terms including redistribution (page returned HTTP 403 to automated fetch) | `ny_oca_pretrial` | Phase 7 candidate; Phase 9 §9.2 | operator | open — verify manually |
@@ -471,15 +481,18 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **The Phase 5 roadmap.** Write `docs/roadmap/phase05-roadmap.md`
-   with `/roadmap-phase 5` in a new conversation (the kit is current;
-   `AGENTS.md` "Where the plan lives" says when `uv run poe kit` is
-   safe), carrying `docs/phase04-qa-findings.md` "Phase 5 carry-over
-   checklist" into its steps.
+1. **Phase 5 Step 1.** Cook County due diligence, the streamed fetch,
+   and the value-set profile (`/roadmap-step 5 1` in a new
+   conversation); Step 2, the Florida research and the requests, may
+   follow at once and run in parallel with Steps 3–7, because the
+   requests' lead time is the longest in the project.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
-   attribution and coverage; the first real metric published with a
-   complete provenance trace; per-metric suppression thresholds
-   revisited; the Florida acquisition plan written. (Phase 4 exit
+   attribution and coverage; the first real metrics — the
+   judge-attributed sentencing and disposition families and the
+   court-level bond decisions — published with complete provenance
+   traces, coverage statistics, and the corpus end date; per-metric
+   suppression thresholds revisited; the Florida acquisition plan
+   written and its requests submitted. (Phase 4 exit
    `v0.4.0-phase-4` 2026-10-02; first milestone `v0.3.0-phase-3` reached
    2026-09-29; Phase 2 exit `v0.2.0-phase-2`
    2026-09-18; Phase 1 exit `v0.1.0-phase-1` 2026-09-16.)
