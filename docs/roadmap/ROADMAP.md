@@ -932,13 +932,18 @@ GPT-6 Astra on the $100 ChatGPT Pro 5x plan is the backup.
 Brief phases: 7, 9 (Florida), and 12.
 
 #### 7.1 Florida pilot connector
-- The connector for the jurisdiction selected in §5.5, gated on the
-  access secured there: a limited historical sample, normalization,
-  judge resolution, conservative defendant resolution, timelines,
-  coverage statistics, and a methodology compatibility review. If
-  access is still pending when Phase 7 starts, the next-best verified
-  state source enters through the due-diligence gate and Florida lands
-  when access arrives.
+- The connectors for the jurisdiction selected in §5.5 — Hillsborough
+  County's clerk files, with FDLE's Criminal Justice Data Transparency
+  records as the statewide companion for the cross-case person key
+  (`docs/florida-data-inventory.md`) — gated on the access secured
+  there: a limited historical sample, normalization, judge resolution,
+  conservative defendant resolution, timelines, coverage statistics,
+  and a methodology compatibility review. A ranked Florida fallback
+  (Broward, then Miami-Dade) takes the pilot's place when it meets the
+  inventory's Phase 7 trigger and the pilot does not. If no Florida
+  candidate meets that trigger when Phase 7 starts, the next-best
+  verified state source enters through the due-diligence gate and
+  Florida lands when access arrives.
 
 #### 7.2 CourtListener prototype and PACER interface
 - CourtListener quarterly bulk snapshots (courts, dockets, judges) and
