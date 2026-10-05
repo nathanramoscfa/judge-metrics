@@ -58,6 +58,9 @@ Checkpoint = dict[str, Any]
 PREVIOUS_ETAG = "previous_etag"
 PREVIOUS_LAST_MODIFIED = "previous_last_modified"
 PREVIOUS_SHA256 = "previous_sha256"
+# A data portal's rows-updated time recorded with the previous retrieval
+# (Phase 5: the Socrata ``rowsUpdatedAt``); equal means the export is unchanged.
+PREVIOUS_ROWS_UPDATED_AT = "previous_rows_updated_at"
 
 # Keys of the ``RawArtifact.response_headers`` subset (lower-case).
 HEADER_ETAG = "etag"
@@ -65,6 +68,12 @@ HEADER_LAST_MODIFIED = "last_modified"
 HEADER_CONTENT_TYPE = "content_type"
 HEADER_CONTENT_LENGTH = "content_length"
 HEADER_FINAL_URL = "final_url"
+# A portal's rows-updated time as ISO 8601 UTC, read from the dataset's
+# metadata before the export (stored in ``source_record.metadata``).
+HEADER_ROWS_UPDATED_AT = "rows_updated_at"
+
+# Files are hashed and copied in chunks of this size, never loaded whole.
+CHUNK_BYTES = 1 << 20
 
 
 class IngestError(Exception):
@@ -81,6 +90,17 @@ class NormalizationError(IngestError):
 
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def sha256_file(path: Path) -> tuple[str, int]:
+    """``(sha256, size in bytes)`` of a file read in ``CHUNK_BYTES`` chunks."""
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(CHUNK_BYTES), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
 
 
 def utc_now() -> datetime:
@@ -141,19 +161,23 @@ class RawArtifact:
         *,
         retrieved_at: datetime,
         response_headers: Mapping[str, str] | None = None,
+        sha256: str | None = None,
+        size_bytes: int | None = None,
     ) -> RawArtifact:
-        digest = hashlib.sha256()
-        size = 0
-        with path.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1 << 20), b""):
-                digest.update(chunk)
-                size += len(chunk)
+        """A file-backed artifact; ``sha256`` and ``size_bytes`` when the caller hashed it.
+
+        A streamed download hashes the body while writing it and passes the
+        digest here, so the file is not read twice; otherwise the file is
+        hashed in chunks. The runner re-verifies the digest either way.
+        """
+        if sha256 is None or size_bytes is None:
+            sha256, size_bytes = sha256_file(path)
         return cls(
             artifact=artifact,
             path_or_bytes=path,
-            sha256=digest.hexdigest(),
+            sha256=sha256,
             retrieved_at=retrieved_at,
-            size_bytes=size,
+            size_bytes=size_bytes,
             response_headers=dict(response_headers or {}),
         )
 
@@ -616,3 +640,17 @@ class SupportsContext(Protocol):
     """
 
     def load_context(self, artifacts: Sequence[RawArtifact]) -> None: ...
+
+
+@runtime_checkable
+class SupportsWorkDir(Protocol):
+    """Optional hook for connectors that stream downloads to disk.
+
+    The runner creates one temporary directory per run (outside the
+    repository, under the system temporary directory), hands it to the
+    connector before ``discover``, and removes it with everything in it
+    when the run ends, succeeded or failed. A streamed download writes its
+    body there, so an export of any size never sits in memory.
+    """
+
+    def use_work_dir(self, directory: Path) -> None: ...

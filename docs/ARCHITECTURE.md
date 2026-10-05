@@ -91,8 +91,8 @@ carries a restricted attribute's value.
 |---|--------------------------------|------------------------------------------------------------|
 | 1 | Discover source artifacts      | `connector.discover()` in `_execute`                       |
 | 2 | Download or retrieve           | `_retrieve`: `connector.fetch()`, or `<fixture dir>/<external_id>` with `--from-fixture` |
-| 3 | Calculate cryptographic hash   | `RawArtifact` sha256, re-computed by the runner over the bytes it stores |
-| 4 | Save immutable raw object      | `store.put(data, object_key(...))`                         |
+| 3 | Calculate cryptographic hash   | `RawArtifact` sha256, re-computed by the runner over the payload it stores (a file in 1 MiB chunks, never read whole) |
+| 4 | Save immutable raw object      | `store.put(data, object_key(...))` for bytes, `store.put_file(path, object_key(...))` for a file |
 | 5 | Create `source_record`         | `_retrieve`: one record per `(source, external_id, sha256)` |
 | 6 | Parse                          | `connector.parse()`                                        |
 | 7 | Schema validate                | `connector.validate_raw()` — executed before step 6, because the raw artifact must be validated before it is parsed; errors end the run as `failed` before anything is derived |
@@ -119,6 +119,24 @@ carries a restricted attribute's value.
   stored as object metadata and checked on conflict). `open_raw_store(settings)`
   chooses by `JUDGEMETRICS_RAW_STORE_URL`; in production the S3 endpoint
   must be HTTPS.
+- **Files (Phase 5):** `put_file(path, key)` stores a file without
+  loading it — the filesystem backend copies it in chunks to a temporary
+  file beside the target, fsyncs, and renames; the S3 backend uses boto3's
+  managed multipart transfer (64 MiB parts) with the sha256 in the object
+  metadata — and `get_file(key, dest)` streams an object to a local file
+  and verifies it against the digest its key names. Both refuse a file
+  that does not hash to its key's digest, compare an existing object by
+  its stored digest (the key's on the filesystem, the metadata on S3)
+  rather than by reading it, and remove every temporary file on success
+  and on failure.
+- **The run's work directory:** every ingest run owns one temporary
+  directory (`tempfile`, prefix `judgemetrics-ingest-`, under the system
+  temporary directory and never the repository). A `SupportsWorkDir`
+  connector streams its downloads there, and the runner reads lake
+  objects back there with `get_file` when an unchanged artifact must be
+  re-parsed (`--force`, a new parser version) or handed to `load_context`;
+  the directory and everything in it are removed when the run ends,
+  succeeded or failed.
 - **Lineage:** `source_record.raw_object_path` is the key and
   `source_record.raw_sha256` the hash; the integration test verifies that
   the stored bytes hash to the recorded value for every published row.
@@ -231,6 +249,82 @@ publishing each party's restricted `age_band` and `synthetic_group` into
 ingest run synthetic --from-fixture tests/fixtures/golden` reads the
 golden fixture through the runner's fixture path, which accepts
 contained relative ids for this reason.
+
+### Cook County source
+
+`ingest/cook_sao/` is the first real source (`docs/DATA_SOURCES.md`,
+`cook_sao`): the Cook County State's Attorney's five case-level datasets
+on the county's Socrata portal. Phase 5 Step 1 lands the fetch, the
+evidence, and the fixture; parsing is Step 4's.
+
+- **Fetch (`connector.py`, parser version `0`).** `discover` lists Intake,
+  Initiation, Dispositions, Sentencing, and Diversion from constants
+  (`sources.py`; external ids `intake.csv` … `diversion.csv`, the store
+  key's extension) and makes no network call. `fetch` first reads the
+  dataset's metadata document (`/api/views/<id>.json`, under a 5 MiB cap)
+  into the artifact's response metadata — the rows-updated time, license,
+  attribution, column list, and metadata URL, all recorded on the
+  `source_record` — and returns `RawArtifact.unchanged` with the previous
+  digest when the rows-updated time equals the one the previous record
+  carries (the runner forwards it as `previous_rows_updated_at` beside the
+  digest, `ETag`, and `Last-Modified`): an unchanged corpus costs five
+  small requests. Otherwise the export
+  (`/api/views/<id>/rows.csv?accessType=DOWNLOAD`) streams through
+  `http.download_to_file` into the run's work directory under
+  `MAX_EXPORT_BYTES` (1.5 GiB, more than twice the largest export,
+  Initiation's 512,058,076 bytes), hashed while written; the runner
+  re-hashes the file in chunks and stores it with `put_file`. A full fetch
+  of the five exports (1,221,648,291 bytes; the largest 512 MB) on
+  2026-10-05 took 12 to 36 minutes, depending on the portal's throughput,
+  at a peak working set of 130 MiB — the CLI alone takes 92 MiB and a
+  rerun that downloads nothing 125 MiB — so memory does not grow with the
+  export. `validate_raw` reads the
+  header row only and checks it, and the metadata's column list, against
+  the verified headers (`schema.py`: the export's display names, which
+  differ from the API field names; missing → error naming the header,
+  extra → warning). `parse` yields nothing until Step 4 bumps the version,
+  after which the runner re-parses every stored export from the lake.
+- **Profile (`profile.py`, `judgemetrics sources profile cook_sao`).** As
+  the ingest role, reads the latest stored record of each dataset, streams
+  its object out of the lake into a temporary directory (`get_file`,
+  verified), scans it lazily with Polars, every column a string and every
+  empty field null, and writes `data/reference/cook_sao/profile.yaml`
+  with `yaml.safe_dump`, sorted keys, and no wall-clock time: the artifacts
+  (digest, bytes, rows updated, retrieved at), per dataset the row count
+  and per column the null count plus — by the column's class in
+  `schema.py` — the coded and judge columns' values with counts, the date
+  columns' values per format, ranges, and parse failures, the numeric
+  ranges, race and gender as values only and the age as a range only, the
+  distinct count otherwise; the (disposition, reason) pairs; the `keys`
+  (cases, participants, participants under more than one case — the
+  cross-case measurement — overlaps with Intake, charge versions per
+  charge and per participant); and the `anomalies` (receipts before 2011,
+  dates after the corpus end, unparseable values, with examples only from
+  columns that are neither identifiers, restricted, nor
+  quasi-identifiers). The same exports always render the same bytes;
+  `--check` exits 1 with a diff, `--from-fixture DIR` profiles a directory
+  of the five CSVs. The profile is regenerated, never hand-edited.
+- **Excerpt (`excerpt.py`, `judgemetrics sources excerpt cook_sao --out
+  DIR`).** Chooses cases stratum by stratum — each time the smallest
+  `CASE_ID` in string order not chosen yet that satisfies it — with the
+  strata and thresholds read from the committed profile (every disposition
+  with at least 100 rows, the commonest reasons and the suppression-motion
+  reason, each bond type and a null bond, each sentence phase but "Summary
+  Charge Info", each sentence type with at least 1,000 rows, a diversion,
+  an open case, two participants, a disposition without a judge, receipts
+  before 2011 and from 2023-09-18, a charge with two versions, and twelve
+  sentenced and twelve disposed cases of the judge with the most
+  sentences), then writes every row of the chosen cases, in artifact order,
+  with the restricted and quasi-identifying columns (`BLANKED_COLUMNS`)
+  emptied and the headers verbatim, plus a README of the rule, each case's
+  strata, the blanked columns, the source digests, and the counts. Every
+  stratum tests the case's own rows only and every row of a chosen case is
+  kept, so excerpting the fixture itself chooses the same cases and writes
+  identical bytes. The result is the committed `tests/fixtures/cook_sao/`
+  (73 cases).
+- **Logging.** The fetch logs dataset names, rows-updated times, sizes,
+  and digests; the profile and the excerpt log nothing about rows. No log
+  line names a participant id, a case id, or a restricted value.
 
 ### Restricted schema
 
@@ -506,7 +600,9 @@ because the web client is generated from it ("Web tier" below).
 | Command                                          | Role   | Notes                                                   |
 |--------------------------------------------------|--------|---------------------------------------------------------|
 | `judgemetrics ingest list-sources`               | none   | Registered connectors with parser versions.             |
-| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector. |
+| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector, `uv run poe ingest-cook` the Cook County connector (outside `bootstrap`). |
+| `judgemetrics sources profile cook_sao [--out PATH] [--check] [--from-fixture DIR]` | ingest | Write `data/reference/cook_sao/profile.yaml` from the stored exports ("Cook County source"); `--check` exits 1 with a diff, 2 when the exports cannot be read. |
+| `judgemetrics sources excerpt cook_sao --out DIR [--from-fixture DIR]` | ingest | Write the stratified real-row fixture (blanked columns) by the committed profile's strata; exit 2 when the profile describes other exports. |
 | `judgemetrics ingest runs [--source ID] [--limit N]` | app | A table of runs with counts, status, and parser version. |
 | `judgemetrics seed [--seed 20260916] [--scale demo] [--force]` | ingest | Generate `data/synthetic/<seed>` (skipped when its manifest already records the seed, scale, and generator version) and ingest it through the synthetic connector. `uv run poe seed`. |
 | `judgemetrics er run [--source ID]`              | ingest | Recompute person candidates under the current model version and apply system merges; prints pairs, candidates created and updated, matched, rejected, review, merges. |

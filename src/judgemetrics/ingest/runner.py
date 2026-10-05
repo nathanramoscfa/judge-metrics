@@ -6,7 +6,9 @@ Brief step → function here:
  1. discover                      ``connector.discover()`` in ``_execute``
  2. download or retrieve          ``_retrieve`` (``connector.fetch`` or a fixture file)
  3. calculate cryptographic hash  ``RawArtifact`` sha256, re-verified in ``_retrieve``
- 4. save immutable raw object     ``store.put`` with a hash-derived key
+                                  (a file in chunks, never read whole)
+ 4. save immutable raw object     ``store.put`` (bytes) or ``store.put_file`` (a file)
+                                  with a hash-derived key
  5. create source_record          ``_retrieve`` (one record per artifact per hash)
  6. parse                         ``connector.parse``
  7. schema validate               ``connector.validate_raw`` — run before 6: a raw
@@ -40,6 +42,16 @@ canonical rows. A connector that implements ``SupportsContext`` receives
 every artifact of the run (parsed or not) before parsing starts, so its
 cross-file lookups are complete when a single file changed.
 
+Files (Phase 5): every run owns one temporary directory (``tempfile``, under
+the system temporary directory, never the repository) that a
+``SupportsWorkDir`` connector streams its downloads into and that the
+runner reads lake objects back into (``store.get_file``, verified against
+the record's digest) when an unchanged artifact must be re-parsed or
+handed to ``load_context``; the directory and everything in it are removed
+when the run ends, succeeded or failed. A path-backed artifact is hashed
+in chunks and stored with ``put_file``, so an export of any size is
+fetched, stored, and re-read in bounded memory.
+
 Person resolution is ``judgemetrics.entity_resolution.pipeline`` (Phase 2
 Step 3): at step 10 ``resolve_persons`` finds each draft's person by its
 stable source identifier or creates it with its identifier rows; right
@@ -59,6 +71,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import re
+import tempfile
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -96,8 +109,10 @@ from judgemetrics.ingest.base import (
     HEADER_ETAG,
     HEADER_FINAL_URL,
     HEADER_LAST_MODIFIED,
+    HEADER_ROWS_UPDATED_AT,
     PREVIOUS_ETAG,
     PREVIOUS_LAST_MODIFIED,
+    PREVIOUS_ROWS_UPDATED_AT,
     PREVIOUS_SHA256,
     CanonicalRecord,
     CaseDraft,
@@ -124,8 +139,10 @@ from judgemetrics.ingest.base import (
     SupportsCheckpoint,
     SupportsContext,
     SupportsCoverage,
+    SupportsWorkDir,
     TaggedRecord,
     describe_key,
+    sha256_file,
     sha256_hex,
     utc_now,
 )
@@ -145,7 +162,7 @@ from judgemetrics.ingest.publish import (
     upsert_sentences,
 )
 from judgemetrics.ingest.registry import get_connector
-from judgemetrics.ingest.store import RawObjectStore, object_key
+from judgemetrics.ingest.store import ObjectRef, RawObjectStore, object_key
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
 from judgemetrics.metrics.engine import EngineResult
@@ -154,6 +171,8 @@ from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplic
 log = get_logger(__name__)
 
 MAX_REASON_LENGTH = 2000
+# Prefix of the per-run temporary directory (downloads and lake read-backs).
+WORK_DIR_PREFIX = "judgemetrics-ingest-"
 NORMALIZE_FAILED = "normalize_failed"
 UNRESOLVED_JUDGE = "unresolved_judge"
 UNRESOLVED_COURT = "unresolved_court"
@@ -613,6 +632,37 @@ def _execute(
     force: bool,
     bound: Any,
 ) -> tuple[RunCounts, Checkpoint | None]:
+    with tempfile.TemporaryDirectory(prefix=WORK_DIR_PREFIX) as work:
+        work_dir = Path(work)
+        if isinstance(connector, SupportsWorkDir):
+            connector.use_work_dir(work_dir)
+        return _execute_in(
+            connector,
+            source,
+            run,
+            session=session,
+            store=store,
+            settings=settings,
+            from_fixture=from_fixture,
+            force=force,
+            bound=bound,
+            work_dir=work_dir,
+        )
+
+
+def _execute_in(
+    connector: SourceConnector,
+    source: Source,
+    run: IngestRun,
+    *,
+    session: Session,
+    store: RawObjectStore,
+    settings: Settings,
+    from_fixture: Path | None,
+    force: bool,
+    bound: Any,
+    work_dir: Path,
+) -> tuple[RunCounts, Checkpoint | None]:
     if isinstance(connector, SupportsCheckpoint):
         connector.restore_checkpoint(_last_checkpoint(session, source.id))
 
@@ -631,12 +681,13 @@ def _execute(
             from_fixture=from_fixture,
             force=force,
             bound=bound,
+            work_dir=work_dir,
         )
         for artifact in artifacts
     ]
 
     if isinstance(connector, SupportsContext):
-        connector.load_context([_materialized(state, store) for state in states])
+        connector.load_context([_materialized(state, store, work_dir) for state in states])
     _record_coverage(session, source, connector, bound)
 
     counts = RunCounts()
@@ -712,6 +763,7 @@ def _retrieve(
     from_fixture: Path | None,
     force: bool,
     bound: Any,
+    work_dir: Path,
 ) -> _ArtifactState:
     previous = _latest_record(session, source.id, artifact.external_id)
     enriched = _with_validators(artifact, previous)
@@ -720,40 +772,31 @@ def _retrieve(
     else:
         raw = asyncio.run(connector.fetch(enriched))  # step 2
 
-    data: bytes | None
     if raw.not_modified:
         if previous is None or previous.raw_sha256 != raw.sha256:
             msg = (
                 f"{artifact.external_id}: not modified per the server, but no prior record matches"
             )
             raise IngestFailed(msg)
-        data = None
         digest = previous.raw_sha256
         existing: SourceRecord | None = previous
     else:
-        data = raw.read_bytes()
-        digest = sha256_hex(data)  # step 3, re-verified
+        digest = _payload_sha256(raw)  # step 3, re-verified
         if digest != raw.sha256:
             msg = f"{artifact.external_id}: connector sha256 does not match the payload"
             raise IngestFailed(msg)
         existing = _find_record(session, source.id, artifact.external_id, digest)
 
     if existing is not None:
-        if data is not None and not store.exists(existing.raw_object_path):
-            store.put(data, existing.raw_object_path)
+        if not raw.not_modified and not store.exists(existing.raw_object_path):
+            _store(store, raw, existing.raw_object_path)
         reparse = force or existing.parser_version != connector.parser_version
         if existing.parser_version != connector.parser_version:
             existing.parser_version = connector.parser_version
             session.flush()
         if reparse and raw.not_modified:
             # The server confirmed the bytes are unchanged: re-parse them from the lake.
-            stored = store.get(existing.raw_object_path)
-            if sha256_hex(stored) != existing.raw_sha256:
-                msg = f"{artifact.external_id}: stored raw object does not match its record"
-                raise IngestFailed(msg)
-            raw = dataclasses.replace(
-                raw, path_or_bytes=stored, size_bytes=len(stored), not_modified=False
-            )
+            raw = _read_back(raw, existing, store, work_dir)
         bound.info(
             "ingest.artifact.unchanged",
             external_id=artifact.external_id,
@@ -763,13 +806,10 @@ def _retrieve(
         )
         return _ArtifactState(artifact=enriched, raw=raw, record=existing, reparse=reparse)
 
-    if data is None:  # pragma: no cover - guarded above
-        msg = f"{artifact.external_id}: no payload to store"
-        raise IngestFailed(msg)
     key = object_key(
         connector.source_id, raw.retrieved_at, digest, _extension(artifact.external_id)
     )
-    ref = store.put(data, key)  # step 4
+    ref = _store(store, raw, key)  # step 4
     record = SourceRecord(
         source_id=source.id,
         external_record_id=artifact.external_id,
@@ -814,6 +854,35 @@ def _find_record(
     return session.scalar(stmt)
 
 
+def _payload_sha256(raw: RawArtifact) -> str:
+    """The digest of the payload itself: a file in chunks, bytes directly."""
+    if isinstance(raw.path_or_bytes, Path):
+        return sha256_file(raw.path_or_bytes)[0]
+    return sha256_hex(raw.path_or_bytes)
+
+
+def _store(store: RawObjectStore, raw: RawArtifact, key: str) -> ObjectRef:
+    """Step 4: a file through ``put_file`` (never loaded), bytes through ``put``."""
+    if isinstance(raw.path_or_bytes, Path):
+        return store.put_file(raw.path_or_bytes, key)
+    return store.put(raw.path_or_bytes, key)
+
+
+def _read_back(
+    raw: RawArtifact, record: SourceRecord, store: RawObjectStore, work_dir: Path
+) -> RawArtifact:
+    """The recorded object streamed from the lake into the run's directory, digest verified."""
+    dest = work_dir / f"lake-{record.id.hex}{_extension(raw.artifact.external_id)}"
+    ref = store.get_file(record.raw_object_path, dest)
+    if ref.sha256 != record.raw_sha256:
+        dest.unlink(missing_ok=True)
+        msg = f"{raw.artifact.external_id}: stored raw object does not match its record"
+        raise IngestFailed(msg)
+    return dataclasses.replace(
+        raw, path_or_bytes=dest, size_bytes=ref.size_bytes, not_modified=False
+    )
+
+
 def _with_validators(artifact: SourceArtifact, previous: SourceRecord | None) -> SourceArtifact:
     if previous is None:
         return artifact
@@ -821,6 +890,7 @@ def _with_validators(artifact: SourceArtifact, previous: SourceRecord | None) ->
     for header, key in (
         (HEADER_ETAG, PREVIOUS_ETAG),
         (HEADER_LAST_MODIFIED, PREVIOUS_LAST_MODIFIED),
+        (HEADER_ROWS_UPDATED_AT, PREVIOUS_ROWS_UPDATED_AT),
     ):
         value = previous.metadata_.get(header)
         if isinstance(value, str) and value:
@@ -828,18 +898,11 @@ def _with_validators(artifact: SourceArtifact, previous: SourceRecord | None) ->
     return artifact.with_metadata(**extra)
 
 
-def _materialized(state: _ArtifactState, store: RawObjectStore) -> RawArtifact:
-    """The artifact with its bytes present, read back from the lake after a 304."""
-    raw = state.raw
-    if not raw.not_modified:
-        return raw
-    stored = store.get(state.record.raw_object_path)
-    if sha256_hex(stored) != state.record.raw_sha256:
-        msg = f"{state.artifact.external_id}: stored raw object does not match its record"
-        raise IngestFailed(msg)
-    return dataclasses.replace(
-        raw, path_or_bytes=stored, size_bytes=len(stored), not_modified=False
-    )
+def _materialized(state: _ArtifactState, store: RawObjectStore, work_dir: Path) -> RawArtifact:
+    """The artifact with its payload present, read back from the lake after a 304."""
+    if not state.raw.not_modified:
+        return state.raw
+    return _read_back(state.raw, state.record, store, work_dir)
 
 
 def _read_fixture(artifact: SourceArtifact, directory: Path) -> RawArtifact:

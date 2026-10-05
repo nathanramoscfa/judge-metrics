@@ -35,7 +35,7 @@ def test_cli_lists_command_groups() -> None:
 def test_ingest_list_sources_names_the_registered_connectors() -> None:
     result = runner.invoke(app, ["ingest", "list-sources"])
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines() == ["fjc\t2026.09.1", "synthetic\t2"]
+    assert result.output.splitlines() == ["cook_sao\t0", "fjc\t2026.09.1", "synthetic\t2"]
 
 
 def test_db_group_has_migration_commands() -> None:

@@ -71,6 +71,7 @@ SHARED_TARGETS = (
     "dev-api",
     "dev-web",
     "ingest-fjc",
+    "ingest-cook",
     "seed",
     "compute-metrics",
 )
@@ -567,6 +568,8 @@ def test_command_interface_targets_present() -> None:
     assert tasks["dev-api"] == "judgemetrics serve --reload"
     assert tasks["dev-web"] == "pnpm --dir web dev"
     assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
+    # Phase 5 Step 1: the Cook County fetch, outside the one-command demo.
+    assert tasks["ingest-cook"] == "judgemetrics ingest run cook_sao"
     assert tasks["seed"] == "judgemetrics seed"
     assert tasks["compute-metrics"] == "judgemetrics metrics compute"
     # The one-command startup (Phase 3 Step 5): a sequence of idempotent stages;
@@ -630,6 +633,8 @@ def test_bandit_configured_to_exclude_tests() -> None:
         ("docs/DATA_MODEL.md", "<!-- "),
         ("data/README.md", "<!-- "),
         ("tests/fixtures/fjc/README.md", "<!-- "),
+        ("tests/fixtures/cook_sao/README.md", "<!-- "),
+        ("data/reference/cook_sao/profile.yaml", "# "),
         ("tests/fixtures/golden/README.md", "<!-- "),
         ("docs/SYNTHETIC_DATA.md", "<!-- "),
         ("SECURITY.md", "<!-- "),

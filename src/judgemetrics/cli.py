@@ -26,7 +26,13 @@ role; ``list`` and ``show`` read the catalogue as the read-only role), and
 the latest snapshot's models, ``--check`` exits 1 with a diff when the file
 differs; ``recovery`` prints the planted-effect recovery of the published
 figures and exits 1 below a tolerance; both as the ingest role, because the
-report's subgroup calibration reads the restricted schema).
+report's subgroup calibration reads the restricted schema), and ``sources``
+(Phase 5 Step 1: ``profile cook_sao`` derives
+``data/reference/cook_sao/profile.yaml`` from the stored exports and
+``--check`` exits 1 with a diff when the file differs; ``excerpt cook_sao``
+writes the stratified real-row fixture with the restricted and
+quasi-identifying columns blanked; both read the raw lake as the ingest
+role, or a directory of the five CSVs with ``--from-fixture``).
 
 Every command that hashes person identifiers (``ingest run``, ``seed``)
 checks ``JUDGEMETRICS_IDENTIFIER_PEPPER`` first and exits with a named
@@ -72,6 +78,9 @@ models_app = typer.Typer(
 validation_app = typer.Typer(
     help="The validation of the expected-outcome models (docs/VALIDATION.md)."
 )
+sources_app = typer.Typer(
+    help="Source due diligence: the value-set profile and the real-row fixture excerpt."
+)
 er_app.add_typer(er_review_app, name="review")
 app.add_typer(db_app, name="db")
 app.add_typer(ingest_app, name="ingest")
@@ -83,6 +92,7 @@ app.add_typer(metrics_app, name="metrics")
 app.add_typer(provenance_app, name="provenance")
 app.add_typer(models_app, name="models")
 app.add_typer(validation_app, name="validation")
+app.add_typer(sources_app, name="sources")
 
 EXIT_RUN_NOT_SUCCEEDED = 1
 EXIT_USAGE = 2
@@ -1411,6 +1421,189 @@ def validation_recovery(
             )
     if not passed:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+# --- sources: the Cook County profile and fixture excerpt -------------------------------
+
+PROFILED_SOURCES = ("cook_sao",)
+
+
+def _profiled_source(source_id: str) -> None:
+    if source_id not in PROFILED_SOURCES:
+        typer.echo(
+            f"error: no profile or excerpt exists for source {source_id!r} "
+            f"(supported: {', '.join(PROFILED_SOURCES)})",
+            err=True,
+        )
+        raise typer.Exit(EXIT_USAGE)
+
+
+def _source_artifacts(from_fixture: Path | None, work_dir: Path) -> list[Any]:
+    """The five Cook County exports: a fixture directory, or the raw lake as the ingest role."""
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.ingest.cook_sao.stored import (
+        ArtifactsError,
+        fixture_artifacts,
+        lake_artifacts,
+    )
+    from judgemetrics.ingest.store import RawStoreError, open_raw_store
+    from judgemetrics.logging import configure_logging
+
+    try:
+        if from_fixture is not None:
+            return list(fixture_artifacts(from_fixture))
+        settings = get_settings()
+        configure_logging(settings)
+        store = open_raw_store(settings)
+        engine = make_engine(settings.effective_ingest_database_url)
+        try:
+            with Session(engine) as session:
+                try:
+                    return list(lake_artifacts(session, store, work_dir))
+                finally:
+                    session.rollback()
+        finally:
+            engine.dispose()
+    except (ArtifactsError, RawStoreError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+
+
+@sources_app.command("profile")
+def sources_profile(
+    source_id: Annotated[str, typer.Argument(help="The source to profile (cook_sao).")],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="Where to write (a relative path is under the repository root).",
+            dir_okay=False,
+        ),
+    ] = Path("data") / "reference" / "cook_sao" / "profile.yaml",
+    check: Annotated[
+        bool,
+        typer.Option("--check", help="Compare with the file instead of writing; exit 1 on a diff."),
+    ] = False,
+    from_fixture: Annotated[
+        Path | None,
+        typer.Option(
+            "--from-fixture",
+            help="Profile a directory of the five CSVs instead of the stored artifacts.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ] = None,
+) -> None:
+    """Derive the value-set profile from SOURCE_ID's stored exports (the ingest role).
+
+    Reads the latest stored export of each dataset from the raw lake,
+    streamed to a temporary directory and verified against its digest;
+    the same artifacts always render the same bytes. Exits 1 with a
+    unified diff when --check finds the file differs, 2 when the artifacts
+    cannot be read.
+    """
+    import tempfile
+
+    from judgemetrics.ingest.cook_sao.profile import (
+        ProfileError,
+        build_profile,
+        check_profile,
+        render_profile,
+        write_profile,
+    )
+    from judgemetrics.metrics.methodology import resolve_output
+
+    _profiled_source(source_id)
+    target = resolve_output(out)
+    with tempfile.TemporaryDirectory(prefix="judgemetrics-profile-") as work:
+        artifacts = _source_artifacts(from_fixture, Path(work))
+        try:
+            rendered = render_profile(build_profile(artifacts))
+        except ProfileError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(EXIT_USAGE) from exc
+    if check:
+        diff = check_profile(target, rendered)
+        if diff:
+            typer.echo(f"{target} differs from the profile render:", err=True)
+            for line in diff[:METHODOLOGY_DIFF_LINES]:
+                typer.echo(line, err=True)
+            if len(diff) > METHODOLOGY_DIFF_LINES:
+                typer.echo(f"... {len(diff) - METHODOLOGY_DIFF_LINES} more lines", err=True)
+            raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+        typer.echo(f"{target} is up to date")
+        return
+    write_profile(target, rendered)
+    typer.echo(f"wrote {target}")
+
+
+@sources_app.command("excerpt")
+def sources_excerpt(
+    source_id: Annotated[str, typer.Argument(help="The source to excerpt (cook_sao).")],
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            help="The directory to write the five CSVs and the README into.",
+            file_okay=False,
+            resolve_path=True,
+        ),
+    ],
+    from_fixture: Annotated[
+        Path | None,
+        typer.Option(
+            "--from-fixture",
+            help="Excerpt a directory of the five CSVs instead of the stored artifacts.",
+            exists=True,
+            file_okay=False,
+            dir_okay=True,
+            resolve_path=True,
+        ),
+    ] = None,
+) -> None:
+    """Write the stratified real-row fixture of SOURCE_ID (restricted columns blanked).
+
+    The strata come from the committed profile
+    (data/reference/cook_sao/profile.yaml), which must describe the stored
+    exports; excerpting the committed fixture itself writes identical bytes.
+    Exits 2 when the profile or the artifacts cannot be read.
+    """
+    import tempfile
+
+    from judgemetrics.config import REPO_ROOT
+    from judgemetrics.ingest.cook_sao.excerpt import (
+        ExcerptError,
+        check_profile_matches,
+        write_excerpt,
+    )
+    from judgemetrics.ingest.cook_sao.profile import PROFILE_PATH, ProfileError, load_profile
+
+    _profiled_source(source_id)
+    if from_fixture is not None and from_fixture.resolve() == out.resolve():
+        typer.echo("error: --out must differ from --from-fixture", err=True)
+        raise typer.Exit(EXIT_USAGE)
+    try:
+        profile = load_profile(REPO_ROOT / PROFILE_PATH)
+    except ProfileError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(EXIT_USAGE) from exc
+    with tempfile.TemporaryDirectory(prefix="judgemetrics-excerpt-") as work:
+        artifacts = _source_artifacts(from_fixture, Path(work))
+        try:
+            if from_fixture is None:
+                check_profile_matches(profile, artifacts)
+            excerpt = write_excerpt(artifacts, profile, out)
+        except (ExcerptError, ProfileError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(EXIT_USAGE) from exc
+    typer.echo(f"wrote {out}: {len(excerpt.chosen)} cases")
+    for stratum in excerpt.unsatisfied:
+        typer.echo(f"no case satisfies: {stratum.label}")
 
 
 def main() -> None:

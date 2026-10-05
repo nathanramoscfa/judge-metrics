@@ -1,6 +1,7 @@
 # tests/integration/test_store_s3.py
 """The S3 raw-store backend against MinIO: the same immutability contract as the
-filesystem backend (tests/unit/test_store.py).
+filesystem backend (tests/unit/test_store.py and, for files,
+tests/unit/test_raw_store_files.py).
 
 Skipped unless `JUDGEMETRICS_RAW_STORE_URL` is an `s3://` bucket and the
 endpoint and keys are configured (`.env` locally with `uv run poe up`; the
@@ -13,13 +14,16 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
 from judgemetrics.config import Settings
+from judgemetrics.ingest import store as store_module
 from judgemetrics.ingest.base import sha256_hex
 from judgemetrics.ingest.store import (
     ImmutableObjectError,
+    RawStoreError,
     S3RawObjectStore,
     object_key,
     open_raw_store,
@@ -101,3 +105,78 @@ def test_missing_key(s3_store: S3RawObjectStore) -> None:
     assert not s3_store.exists(key)
     with pytest.raises(KeyError):
         s3_store.get(key)
+
+
+# --- files (Phase 5): managed transfer, digest in the metadata, verified reads ---------
+
+
+def _file(tmp_path: Path, data: bytes, name: str = "export.csv") -> Path:
+    path = tmp_path / name
+    path.write_bytes(data)
+    return path
+
+
+def test_put_file_and_get_file_round_trip(s3_store: S3RawObjectStore, tmp_path: Path) -> None:
+    data = _payload()
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(data), ".csv")
+    ref = s3_store.put_file(_file(tmp_path, data), key)
+    assert ref.sha256 == sha256_hex(data) and ref.size_bytes == len(data)
+    head = s3_store.client.head_object(Bucket=s3_store.bucket, Key=f"{s3_store.prefix}{key}")
+    assert head["Metadata"]["sha256"] == ref.sha256
+    assert head["ContentType"] == "text/csv"
+    back = s3_store.get_file(key, tmp_path / "back.csv")
+    assert back.sha256 == ref.sha256
+    assert (tmp_path / "back.csv").read_bytes() == data
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["back.csv", "export.csv"]
+
+
+def test_put_file_uploads_in_parts(
+    s3_store: S3RawObjectStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 5 MiB is S3's minimum part size; a 12 MiB file then crosses boto3's 8 MiB threshold.
+    monkeypatch.setattr(store_module, "S3_PART_BYTES", 5 * 1024 * 1024)
+    data = _payload() * (12 * 1024 * 1024 // len(_payload()) + 1)
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(data), ".csv")
+    s3_store.put_file(_file(tmp_path, data), key)
+    head = s3_store.client.head_object(Bucket=s3_store.bucket, Key=f"{s3_store.prefix}{key}")
+    assert head["ETag"].strip('"').endswith("-3")  # three parts
+    assert head["Metadata"]["sha256"] == sha256_hex(data)
+    assert s3_store.get_file(key, tmp_path / "back.csv").sha256 == sha256_hex(data)
+
+
+def test_put_file_same_digest_is_a_no_op_and_another_is_refused(
+    s3_store: S3RawObjectStore, tmp_path: Path
+) -> None:
+    data = _payload()
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(data), ".csv")
+    first = s3_store.put_file(_file(tmp_path, data), key)
+    assert s3_store.put_file(_file(tmp_path, data, "again.csv"), key) == first
+    with pytest.raises(ImmutableObjectError, match="refusing to overwrite"):
+        s3_store.put_file(_file(tmp_path, _payload(), "other.csv"), key)
+    assert s3_store.get(key) == data
+
+
+def test_put_file_refuses_a_file_that_does_not_hash_to_its_key(
+    s3_store: S3RawObjectStore, tmp_path: Path
+) -> None:
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(_payload()), ".csv")
+    with pytest.raises(RawStoreError, match="does not hash"):
+        s3_store.put_file(_file(tmp_path, _payload()), key)
+    assert not s3_store.exists(key)
+
+
+def test_get_file_refuses_an_object_that_does_not_match_its_key(
+    s3_store: S3RawObjectStore, tmp_path: Path
+) -> None:
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(_payload()), ".csv")
+    s3_store.client.put_object(Bucket=s3_store.bucket, Key=f"{s3_store.prefix}{key}", Body=b"x")
+    with pytest.raises(RawStoreError, match="does not match its digest"):
+        s3_store.get_file(key, tmp_path / "back.csv")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_get_file_of_a_missing_key(s3_store: S3RawObjectStore, tmp_path: Path) -> None:
+    key = object_key(SOURCE_ID, RETRIEVED, sha256_hex(_payload()), ".csv")
+    with pytest.raises(KeyError):
+        s3_store.get_file(key, tmp_path / "back.csv")
+    assert list(tmp_path.iterdir()) == []

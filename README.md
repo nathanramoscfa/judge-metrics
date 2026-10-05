@@ -205,6 +205,7 @@ cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
+uv run poe ingest-cook  # the five Cook County SAO exports (1.2 GB) → raw lake; a rerun downloads nothing (see "Data")
 uv run poe seed         # generate data/synthetic/20260916 (demo scale) and ingest it through the synthetic connector
 uv run judgemetrics synthetic generate   # the generator alone → data/synthetic/20260916/{source,truth,manifest.json}
 uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
@@ -224,7 +225,9 @@ uv run judgemetrics models show <id or content hash> [--json]   # a model card: 
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row (--refit: a fresh fit reproduces it byte for byte); exit 1 on any mismatch
 uv run judgemetrics validation report --check   # docs/VALIDATION.md equals the render from the latest snapshot's models (omit --check to rewrite it; --truth DIR names the synthetic dataset)
 uv run judgemetrics validation recovery --truth data/synthetic/20260916   # the planted-effect recovery of the published figures; exit 1 below a tolerance
-uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace, models fit|list|show|verify, validation report|recovery
+uv run judgemetrics sources profile cook_sao --check   # data/reference/cook_sao/profile.yaml equals the profile of the stored exports (omit --check to rewrite it)
+uv run judgemetrics sources excerpt cook_sao --out DIR   # the stratified real-row fixture (restricted columns blanked) by the committed profile
+uv run judgemetrics --help   # db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export, synthetic generate|verify, seed [--out DIR], er run|review, methodology render, metrics compute|verify, provenance trace, models fit|list|show|verify, validation report|recovery, sources profile|excerpt
 ```
 
 `ingest run` and `seed` need `JUDGEMETRICS_IDENTIFIER_PEPPER` in `.env`
@@ -411,6 +414,31 @@ followed by a deterministic synthetic justice dataset (Phase 2:
 first real state-court corpus is the Cook County State's Attorney's
 case-level datasets (Phase 5), with the Florida pilot following once
 lawful access is secured (Phase 7).
+
+### Fetching the real Cook County corpus
+
+The five Cook County exports are public-domain bulk downloads of the
+county's open-data portal (no account, no token). With the services up
+and migrated (`uv run poe up`, `uv run poe migrate`) and
+`JUDGEMETRICS_IDENTIFIER_PEPPER` set:
+
+```sh
+uv run poe ingest-cook   # about 1.2 GB streamed into the raw lake; 12 minutes or more
+uv run poe ingest-cook   # again: five metadata requests, nothing downloaded
+uv run judgemetrics ingest runs --source cook_sao
+uv run judgemetrics sources profile cook_sao --check   # the committed profile describes your exports
+```
+
+Each export streams to a temporary file outside the repository and is
+stored by its sha256; nothing is parsed yet (parser version `0`; Phase 5
+Step 4 maps the rows). The data stays on your machine: the raw lake and
+the database are never committed, and the only real rows in the
+repository are the small fixture in `tests/fixtures/cook_sao/`, whose
+race, gender, age, and incident and arrest-agency columns are blank. The
+corpus is frozen (the State's Attorney stopped maintaining it on
+2024-12-30) and has no person key that spans cases, so it supports
+within-case metrics only (`docs/DATA_SOURCES.md`, `cook_sao`). It is not
+part of `uv run poe bootstrap`.
 
 ## License
 

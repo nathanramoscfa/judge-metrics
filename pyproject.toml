@@ -155,6 +155,11 @@ dev-web = "pnpm --dir web dev"
 # Ingest: the FJC connector as the ingest role (JUDGEMETRICS_INGEST_DATABASE_URL)
 # into the raw lake named by JUDGEMETRICS_RAW_STORE_URL.
 ingest-fjc = "judgemetrics ingest run fjc"
+# Ingest (Phase 5): the five Cook County State's Attorney exports (about 1.2 GB)
+# streamed into the raw lake as the ingest role; a rerun downloads nothing while
+# the portal's rows-updated times are unchanged. Not part of `bootstrap`: a
+# gigabyte download does not belong in the one-command demo.
+ingest-cook = "judgemetrics ingest run cook_sao"
 # Seed: generate the demo-scale synthetic dataset (data/synthetic/20260916,
 # skipped when its manifest is current) and ingest it through the synthetic
 # connector as the ingest role; refused in production.

@@ -168,7 +168,7 @@ These gaps drive the phase ordering below.
 | `apps/api`, `apps/web`, `pipelines/*.py`, pnpm workspace | `src/judgemetrics` at the root, `web/` for Next.js, pipelines as CLI subcommands | One Python package and one web app need no workspace; loose scripts outside the package escape typing and tests |
 | Thirteen development phases (0–12)                  | Eight build phases, each independently shippable, mapped below, plus a post-launch Phase 9 | The planning-kit template caps a build at eight phases; the brief's sequence is preserved inside them; Phase 9 sits after launch and outside the brief's sequence |
 | No funding or sustainability plan                   | Phase 9 — Sustainability and Data Products, after launch                       | The brief names the dataset, not the website, as the strategic asset but never says how operation is funded; a solo maintainer needs a plan that keeps the public surface free while institutions pay for snapshots, service levels, and onboarding |
-| Florida jurisdiction as the first real state pipeline | Cook County, IL first (verified bulk access today); Florida research runs in parallel from Phase 5 and the Florida pilot lands in Phase 7 | Florida court data needs credentials or agreements with unbounded lead time; Cook County is official, free, judge-attributed, and person-linkable now, and the brief's own selection rule is "strongest data, not population" |
+| Florida jurisdiction as the first real state pipeline | Cook County, IL first (verified bulk access today); Florida research runs in parallel from Phase 5 and the Florida pilot lands in Phase 7 | Florida court data needs credentials or agreements with unbounded lead time; Cook County is official, free, and judge-attributed now, and the brief's own selection rule is "strongest data, not population". Its participant id names one defendant in one case (measured in Phase 5 Step 1), so Cook County supports within-case metrics only; a lawful cross-case person key is a weighted criterion of the Florida selection |
 | `Makefile` with `make <target>`                     | poethepoet tasks (`uv run poe <task>`) plus a `Makefile` shim with the same targets | The maintainer develops on Windows without GNU make; the brief permits equivalent documented scripts   |
 | Bash verify scripts (`verify-phaseNN.sh`, kit template) | Python verify scripts (`scripts/verify_phaseNN.py`) with the same modes    | One script runs identically on Windows and Ubuntu CI                                                     |
 | Fixed-window outcome rates                          | Fixed-window rates on adequately followed cohorts plus censoring-aware (Kaplan–Meier) estimates | Real corpora end on a date; ignoring right-censoring biases every window rate                   |
@@ -711,24 +711,29 @@ is the backup.
 
 Brief phases: 8 and 9 (with Cook County standing in for the first real
 pipeline until Florida access is secured), and the Florida pilot
-selection process. Source facts verified on 2026-09-15 are in
-`docs/DATA_SOURCES.md`: five bulk datasets, judge attribution on
-dispositions and sentences, bond type and amount at initiation without
-a deciding judge, a pseudonymous participant id linking a person across
-cases, and a corpus frozen at 2024-12-30.
+selection process. Source facts verified on 2026-10-05 (Phase 5 Step 1)
+are in `docs/DATA_SOURCES.md` and `data/reference/cook_sao/profile.yaml`:
+five bulk datasets (1.2 GB), free-text judge names on dispositions and
+sentences, bond type and amount at initiation without a deciding judge, a
+pseudonymous participant id that names one defendant in one case — no
+participant id appears under more than one case in any dataset, so the
+corpus has no cross-case person key — and a corpus frozen at 2024-12-30.
 
 #### 5.1 Source due diligence
 - Complete the source-policy record; confirm portal terms permit
   republication of derived aggregates and pseudonymous case-level
   views; read the published value sets for dispositions, reasons, bond
   types, and sentence fields into versioned reference tables; confirm
-  participant-id stability across datasets.
+  participant-id stability across datasets (Step 1: stable across the five
+  datasets of one release, never shared by two cases, and re-hashed for
+  every release).
 
 #### 5.2 Cook County connector and the restricted schema
 - Bulk export per dataset, immutable raw storage, parser versioning,
   normalization into the canonical model; persons from the participant
-  id (confidence 1.0 within source, never merged across sources by
-  name); age band, race, and gender into a `restricted` schema granted
+  id — each a case participation, since the id names one defendant in one
+  case (confidence 1.0 within source, never merged across cases, across
+  sources, or by name); age band, race, and gender into a `restricted` schema granted
   only to the ingest and admin roles; public views excluding every
   restricted column and a test that fails if a public route exposes
   one.
@@ -741,15 +746,19 @@ cases, and a corpus frozen at 2024-12-30.
   court and facility resolution.
 
 #### 5.4 Real timelines, coverage, and the first real metrics
-- Justice events from cross-case linkage on the participant id;
-  coverage statistics per the brief (share with identified judge, with
-  disposition, with usable person resolution, with adequate follow-up,
-  with complete charge classification, with provenance); the first
-  real metric follows the brief's preference — new criminal case after
-  a clearly identified qualifying pretrial release event — at the court
-  level, plus judge-attributed disposition and sentencing metrics;
-  outcomes the source cannot support (rearrest, failure to appear,
-  release violation) reported as unavailable, never as zero.
+- Within-case timelines only: the participant id links no person
+  across cases, so the one subsequent event the source records is a
+  within-case probation-violation resentencing; coverage statistics per
+  the brief (share with identified judge, with disposition, with usable
+  person resolution, with adequate follow-up, with complete charge
+  classification, with provenance); the first real metrics are the
+  judge-attributed sentencing and disposition families and the
+  court-level bond decisions — the brief's preferred metric (a new
+  criminal case after a qualifying pretrial release event) needs a
+  cross-case person key this source does not have and waits for a source
+  that does; outcomes the source cannot support (new case, new charge,
+  reconviction, rearrest, failure to appear, release violation) reported
+  as unavailable, never as zero.
 
 #### 5.5 Florida source research and acquisition plan
 - `docs/florida-data-inventory.md`: inventory of Florida Courts
@@ -780,9 +789,11 @@ cases, and a corpus frozen at 2024-12-30.
   `unknown`; the unknown share appears on the coverage page.
 - No restricted column is reachable through any public route
   (automated test over the OpenAPI document and database grants).
-- The first real metric is published with provenance, coverage, and
-  the corpus end date on every surface; real-data observations pass
-  `metrics verify`.
+- The first real metrics — the judge-attributed sentencing and
+  disposition families and the court-level bond decisions — are published
+  with provenance, coverage, and the corpus end date on every surface; no
+  cross-case outcome is published for Cook County; real-data observations
+  pass `metrics verify`.
 - `docs/florida-data-inventory.md` names the selected pilot
   jurisdiction and its acquisition plan; requests are logged in
   `docs/ROADMAP.md` with dates.
@@ -1678,6 +1689,7 @@ once, or a synthetic failure was injected to prove they do.
 | Synthetic data mistaken for real                                 | Labelled on every surface; refused in production; separate source type.                             |
 | The first real corpus is frozen at 2024-12-30                    | Documented coverage end date; censoring-aware rates; expansion phase adds maintained sources.       |
 | Pretrial decisions lack judge attribution in the first real corpus | Court-level pretrial metrics only; Phase 7 adds a source with attribution after verification.     |
+| The first real corpus has no cross-case person key (Cook County's participant id names one defendant in one case, measured in Phase 5 Step 1) | Within-case metrics only; cross-case outcomes (new case, new charge, reconviction) declared not observable for the source and never published as zero; the Florida selection weights a lawful cross-case person key. |
 | Florida access never materializes on schedule                    | Cook County proves the state pipeline first; documented fallback source for Phase 7.                |
 | Legal exposure (defamation, republication, privacy)              | Pseudonymity, suppression, corrections, and an external legal review before launch.                 |
 | PACER spend                                                      | Feature flag, dry-run mode, ledger, hard cap tested to hold.                                        |

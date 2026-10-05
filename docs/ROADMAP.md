@@ -95,15 +95,31 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | # | Question                                                                                     | Source            | Blocks                    | Owner    | Status |
 |---|----------------------------------------------------------------------------------------------|-------------------|---------------------------|----------|--------|
 | 1 | Exact column headers of `judges.csv` and `federal-judicial-service.csv`; conditional-request support | `fjc`         | Phase 1 Step 3            | agent    | **resolved 2026-09-16** — 201 and 30 headers recorded in `docs/DATA_SOURCES.md` and `src/judgemetrics/ingest/fjc/schema.py`; the server sends `ETag` and `Last-Modified` and the connector uses both |
-| 2 | Cook County open-data portal terms: republication of derived aggregates and pseudonymous case views, and commercial redistribution (Phase 9 snapshot tier) | `cook_sao`   | Phase 5 Step 1; Phase 9 §9.2 | operator | open   |
-| 3 | Documented value sets for `charge_disposition`, `charge_disposition_reason`, bond types, sentence fields | `cook_sao` | Phase 5 attribution rules | agent    | open   |
-| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | open — planning measurement 2026-10-04 (read-only aggregate queries): no `case_participant_id` appears under more than one `case_id` in any of the five datasets, so the identifier is per case and links no person across cases; Phase 5 Step 1 re-measures from the stored artifacts, adds the cross-dataset stability, and resolves the question |
+| 2 | Cook County open-data portal terms: republication of derived aggregates and pseudonymous case views, and commercial redistribution (Phase 9 snapshot tier) | `cook_sao`   | Phase 5 Step 1; Phase 9 §9.2 | operator | open — documents read 2026-10-05 (`docs/DATA_SOURCES.md` `cook_sao` "Terms" and "Redistribution"): every dataset's metadata says `"license": {"name": "Public Domain"}`, so derived aggregates are `yes`; the County site terms the portal links (cookcountyil.gov/terms-use) say "The content of County websites is copyrighted" (§10) and forbid violating "the rights of any third parties" (§7), and nothing mentions record-level republication or commercial use, so pseudonymous case-level views and commercial redistribution stay `unverified` for the operator (for example, written confirmation from the SAO or the County's open-data team); until then the corpus enters no snapshot bundle |
+| 3 | Documented value sets for `charge_disposition`, `charge_disposition_reason`, bond types, sentence fields | `cook_sao` | Phase 5 attribution rules | agent    | **resolved 2026-10-05** — the SAO's data glossary (attached to every dataset) documents only the "most common values" of dispositions, reasons, and commitment types, and complete sets of bond types, diversion programs and results, and sentence phases; the complete value sets with counts, measured from the stored exports, are `data/reference/cook_sao/profile.yaml` (`judgemetrics sources profile cook_sao`, `--check` on drift); mapping them to rules is Phase 5 Step 3 |
+| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | **resolved 2026-10-05** — measured from the stored exports (`profile.yaml` `keys`): stable across the five datasets of one release (no participant id appears in Intake under another case; every Initiation and Diversion key is in Intake; the Dispositions and Sentencing keys not in Intake are exactly the 23,759 and 18,158 received before Intake's 2011 start), never shared by two cases in any dataset (zero participants under more than one case), and re-hashed for every release per the SAO glossary — so the corpus has no cross-case person key (Known issues) |
 | 5 | CourtListener API rate limits and terms including redistribution of API responses; whether docket entries and parties are bulk or API-only; RECAP coverage of federal criminal dockets | `courtlistener` | Phase 7; Phase 9 §9.2 | agent | open |
 | 6 | PACER account, Case Locator API terms including redistribution, fee schedule, waiver threshold | `pacer`           | Phase 7 (feature-flagged); Phase 9 §9.2 | operator | open   |
 | 7 | New York pretrial release data: files, cadence, data dictionary, presence of judge names, terms including redistribution (page returned HTTP 403 to automated fetch) | `ny_oca_pretrial` | Phase 7 candidate; Phase 9 §9.2 | operator | open — verify manually |
 | 8 | Florida target jurisdiction: JDMS/UCR credentials, county clerk bulk or API offering, public-records process, cost, terms, fields; redistribution rights (aggregates, pseudonymous case-level, commercial) requested as a term of every agreement | `fl_jdms`, `fl_clerks` | Phase 5 §5.5, Phase 7; Phase 9 §9.2 | operator | open — research in Phase 5 |
 
 ## Known issues and limitations
+
+- **Cook County has no cross-case person key.** `CASE_PARTICIPANT_ID`
+  names one defendant in one case (zero participants under more than one
+  case in all five datasets, measured 2026-10-05), and the exports carry
+  no name or date of birth. Cook County supports within-case metrics only:
+  new case, new charge, and reconviction are not observable for it and are
+  never published, not even as zero; a lawful cross-case key is a weighted
+  criterion of the Florida selection (Phase 5 Step 2).
+- **The SAO re-hashes `CASE_ID` and `CASE_PARTICIPANT_ID` for every
+  release** ("Hashed independently for every version released", the SAO
+  glossary). The current release (rows updated 2026-04-02) is frozen, but
+  a re-publication would change every rows-updated time, the connector
+  would store five new exports, and every case and participant would
+  arrive under a new key; the 2018 archives cannot be joined to the
+  current release for the same reason. Retiring a superseded export's
+  rows is `judgemetrics ingest retire` (Phase 5 Step 4, issue #36).
 
 - Case-level data-quality checks that need a case's filing date or
   status (`disposition_before_filing`, `event_order_impossible`,
