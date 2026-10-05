@@ -4,7 +4,7 @@
 # On Windows without make, run `uv run poe <task>` directly; the targets are
 # identical, except `bootstrap`, which runs `install` first here because poe
 # runs inside the environment `uv sync` creates.
-.PHONY: install test lint fmt fmt-check typecheck check gate kit up up-test-db down migrate dev-api dev-web ingest-fjc seed compute-metrics bootstrap
+.PHONY: install test lint fmt fmt-check typecheck check gate kit up up-test-db down migrate dev-api dev-web ingest-fjc ingest-cook seed compute-metrics bootstrap
 
 install:
 	uv sync
@@ -53,6 +53,9 @@ dev-web:
 
 ingest-fjc:
 	uv run poe ingest-fjc
+
+ingest-cook:
+	uv run poe ingest-cook
 
 seed:
 	uv run poe seed

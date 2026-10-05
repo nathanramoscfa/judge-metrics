@@ -32,7 +32,7 @@ it as a term of the agreement (root roadmap §5.5).
 |---------------|----------------------------------------------------------|-------------------------------------------|--------------------------|-------|---------------------------|
 | `fjc`         | Federal Judicial Center, Biographical Directory export   | Federal judge master data, court roster   | verified (2026-09-16)    | 1     | yes (US government work) |
 | `synthetic`   | Deterministic synthetic justice dataset (in-repo generator) | MVP demo data, golden regression fixture | by construction         | 2     | n/a (never a product) |
-| `cook_sao`    | Cook County State's Attorney case-level datasets         | First real state-court corpus             | verified (2026-09-15)    | 5     | unverified (question 2) |
+| `cook_sao`    | Cook County State's Attorney case-level datasets         | First real state-court corpus             | verified (2026-10-05)    | 5     | unverified (question 2; aggregates yes) |
 | `fl_jdms`     | Florida Courts Judicial Data Management Services / UCR   | Florida court-event structure; credentialed access | unverified; workstream | 5, 7 | unverified; negotiate (question 8) |
 | `fl_clerks`   | Florida county clerks (candidates: Broward, Miami-Dade, others) | Florida pilot criminal case data     | unverified; workstream   | 5, 7  | unverified; negotiate (question 8) |
 | `courtlistener` | CourtListener bulk data and REST API                   | Federal courts, dockets, judges; coverage | verified, partial (2026-09-15) | 7 | bulk yes (Public Domain Mark); API unverified (question 5) |
@@ -208,116 +208,243 @@ it as a term of the agreement (root roadmap §5.5).
 ## `cook_sao` — Cook County State's Attorney case-level datasets
 
 - **Owner:** Cook County State's Attorney's Office (SAO), published on
-  the Cook County open-data portal (`datacatalog.cookcountyil.gov`).
-- **Documentation:** each dataset's portal page and the SAO data
-  documentation. The datasets' descriptions state: "This dataset is no
-  longer actively maintained as of 12/30/2024" and point to the SAO
-  data dashboards for 2025 onward.
-- **Access method:** Socrata export endpoints (bulk CSV) and the SODA
-  API. An application token raises API rate limits; bulk export needs
-  no credential.
-- **Datasets (verified 2026-09-15; portal ids in parentheses):**
-  - **Intake** (`3k7z-hchi`), 17 columns: `case_id`,
-    `case_participant_id`, `received_date`, `offense_category`,
-    `participant_status`, `age_at_incident`, `race`, `gender`,
-    `incident_city`, `incident_begin_date`, `incident_end_date`,
-    `law_enforcement_agency`, `unit`, `arrest_date`,
-    `felony_review_date`, `felony_review_result`,
-    `update_offense_category`. One row per potential defendant per case
-    brought for felony review.
-  - **Initiation** (`7mck-ehwz`), 38 columns, including `case_id`,
-    `case_participant_id`, `received_date`, `offense_category`,
-    `primary_charge`, `charge_id`, `charge_version_id`,
-    `charge_offense_title`, `charge_count`, `chapter`, `act`,
-    `section`, `class`, `aoic`, `event`, `event_date`,
-    `finding_no_probable_cause`, `arraignment_date`,
-    `bond_date_initial`, `bond_date_current`, `bond_type_initial`,
-    `bond_type_current`, `bond_amount_initial`, `bond_amount_current`,
-    `bond_electronic_monitor_flag_initial`,
-    `bond_electroinic_monitor_flag_current` (sic, as published),
-    `age_at_incident`, `race`, `gender`, `incident_city`,
-    `incident_begin_date`, `incident_end_date`,
-    `law_enforcement_agency`, `unit`, `arrest_date`,
-    `felony_review_date`, `felony_review_result`,
-    `updated_offense_category`. One row per charge at initiation.
-    Bond fields describe the pretrial release decision; the deciding
-    judicial officer is not in the data.
-  - **Dispositions** (`apwk-dzx8`), 33 columns, including `case_id`,
-    `case_participant_id`, `received_date`, `offense_category`,
-    `primary_charge`, `charge_id`, `charge_version_id`,
-    `disposition_charged_offense_title`, `charge_count`,
-    `disposition_date`, `disposition_charged_chapter`,
-    `disposition_charged_act`, `disposition_charged_section`,
-    `disposition_charged_class`, `disposition_charged_aoic`,
-    `charge_disposition`, `charge_disposition_reason`, `judge`,
-    `court_name`, `court_facility`, `age_at_incident`, `race`,
-    `gender`, `incident_city`, `incident_begin_date`,
-    `incident_end_date`, `law_enforcement_agency`, `unit`,
-    `arrest_date`, `felony_review_date`, `felony_review_result`,
-    `arraignment_date`, `updated_offense_category`. One row per
-    disposed charge. `judge` is the disposing judge as recorded by the
-    SAO.
-  - **Sentencing** (`tg8v-tm6u`), 41 columns: the Dispositions columns
-    plus `sentence_judge`, `sentence_phase`, `sentence_date`,
-    `sentence_type`, `current_sentence`, `commitment_type`,
-    `commitment_term`, `commitment_unit`, `length_of_case_in_days`.
-    One row per sentenced charge.
-  - **Diversion** (`gpu3-5dfh`), 13 columns: `case_id`,
-    `case_participant_id`, `received_date`, `offense_category`,
-    `diversion_program`, `referral_date`, `diversion_count`,
-    `primary_charge_offense_title`, `statute`, `race`, `gender`,
-    `diversion_result`, `diversion_closed_date`.
-  - Archived pre-2018-02-13 versions of Intake, Initiation,
-    Dispositions, and Sentencing also exist on the portal; the
-    connector records which version each raw file came from.
-- **Person linkage:** `case_participant_id` is a pseudonymous
-  participant identifier assigned by the source. It is the only lawful
-  person key for this source; the canonical `person` row is created
-  from it with resolution confidence 1.0 within the source, and it is
-  never merged across sources by name.
-- **Judge attribution:** present on dispositions (`judge`) and
-  sentences (`sentence_judge`) as free-text names; resolved to judge
-  entities in Phase 5 with a curated alias table and the review queue.
-- **Actor attribution:** `charge_disposition` and
-  `charge_disposition_reason` value sets drive the attribution rule
-  table; the value sets must be read from the published documentation
-  and the data itself in Phase 5 Step 1.
-- **First real metric:** the brief prefers a metric based on new
-  criminal court cases after a clearly identified qualifying pretrial
-  event; this source supports it at the court level (bond type at
-  initiation plus participant-id linkage to later cases) without
-  judge attribution of the pretrial decision.
-- **Update frequency:** frozen; the SAO stopped maintaining the
-  datasets on 2024-12-30. Rows were last updated on the portal on
-  2026-04-02. Treat the corpus as a fixed historical snapshot and
-  record the coverage end date on every coverage surface.
-- **Terms:** the Cook County open-data portal terms of use. Confirm in
-  Phase 5 Step 1 that republication of derived aggregates and
-  pseudonymous case-level views is permitted, and record the required
-  citation.
-- **Redistribution:** aggregates `unverified`; case-level
-  `unverified`; commercial `unverified` — all three resolve with
-  question 2 in `docs/ROADMAP.md` when the portal terms are read in
-  Phase 5 Step 1. Until then the corpus enters no snapshot bundle.
-- **Cost / rate limits:** free. SODA API limits apply without an app
-  token; bulk export is the preferred path.
-- **Fields prohibited / sensitive:** `race`, `gender`, and
-  `age_at_incident` are ingested only into the restricted schema, are
-  never exposed at the person level, are never model features by
-  default, and are used only for aggregate fairness analysis pending
-  the Phase 6 legal review. Names of defendants are not in these
-  datasets.
+  the Cook County open-data portal (`datacatalog.cookcountyil.gov`, owner
+  "Cook County Open Data"; every dataset's metadata says `provenance:
+  official`, category "Legal & Judicial").
+- **Documentation read (2026-10-05):**
+  - Each dataset's portal page and metadata document
+    (`https://datacatalog.cookcountyil.gov/api/views/<id>.json`). Every
+    description opens: "This dataset is no longer actively maintained as
+    of 12/30/2024. Please visit the site below to explore data dashboards
+    published by the State's Attorney's Office beginning 2025."
+    Initiation's adds: "This data includes felony cases handled by the
+    Criminal, Narcotics, and Special Prosecution Bureaus. It does not
+    include information about cases processed through the Juvenile Justice
+    and Civil Actions Bureaus."
+  - The SAO's two attachments, identical on every dataset: the *CCSAO
+    Data Glossary* (19 pages, authored 2020-07-01; definitions and
+    "most common values" of every column),
+    `https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf`,
+    and the *CCSAO Felony Cases Flowchart* (one page: intake, felony
+    review, bond hearing, preliminary hearing or grand jury, arraignment,
+    plea, bench or jury trial, sentencing, diversion),
+    `https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/ebb427cf-8198-4b8d-bb7a-fd6906076eee?download=true&filename=CCSAO%20Felony%20Cases%20Flowchart.pdf`.
+  - The portal's terms of use: its footer links
+    `https://www.cookcountyil.gov/terms-use` (the County's site terms,
+    sections 1–10).
+- **Access method (verified 2026-10-05):** the Socrata bulk CSV export
+  `https://datacatalog.cookcountyil.gov/api/views/<id>/rows.csv?accessType=DOWNLOAD`,
+  anonymous HTTPS, no token, served chunked (no `Content-Length`; range
+  requests are ignored), with `Last-Modified` and an `ETag`. UTF-8, LF
+  line endings, no byte-order mark, a header row of the portal's column
+  *display names*. The connector reads each dataset's metadata first and
+  downloads nothing when its `rowsUpdatedAt` equals the one recorded with
+  the previous retrieval; the SODA API is not used.
+- **Datasets (stored 2026-10-05 by `judgemetrics ingest run cook_sao`,
+  parser version `0`; rows updated on the portal on 2026-04-02 for all
+  five):**
+
+  | Dataset | Portal id | Columns | Rows | Bytes | sha256 |
+  |---|---|---|---|---|---|
+  | Intake | `3k7z-hchi` | 17 | 528,111 | 92,556,995 | `b43e8983b505d0be486a095660e38dd8f1ca96c4578e6510f77858b4d7d47b0f` |
+  | Initiation | `7mck-ehwz` | 38 | 1,228,260 | 512,058,076 | `a333e72a0b928c30681914b93a07b316b0e5a354bc4de68aab396b0ba92f1457` |
+  | Dispositions | `apwk-dzx8` | 33 | 1,080,014 | 453,255,374 | `38e516e38f6f373d083441efd03737ff5045d657c83749e4358978b72bd5c526` |
+  | Sentencing | `tg8v-tm6u` | 41 | 305,884 | 158,370,275 | `3322a3c3d1c7e64458968e26b64826adf9f040c43000b910faa7be7144b3f1b3` |
+  | Diversion | `gpu3-5dfh` | 13 | 29,421 | 5,407,571 | `69e843df6bc50e77a8f6656bf8daa83ea320b3d74aa853124191ef146103fd12` |
+
+  1,221,648,291 bytes in total; a second download on the same day
+  produced the same digests. The streamed fetch peaked at a 130 MiB
+  working set (92 MiB of it the CLI itself), independent of the export
+  size. Intake is one row per potential defendant
+  per case brought for felony review; Initiation one row per charge per
+  participant at initiation; Dispositions one row per disposed charge;
+  Sentencing one row per sentenced charge; Diversion one row per
+  referral to a program.
+- **Headers (re-verified 2026-10-05 against each export's first line and
+  each metadata column list; recorded in
+  `src/judgemetrics/ingest/cook_sao/schema.py`):** the export's header row
+  carries the display names, upper-case, which differ from the API field
+  names above where noted: Intake `CASE_ID`, `CASE_PARTICIPANT_ID`,
+  `RECEIVED_DATE`, `OFFENSE_CATEGORY`, `PARTICIPANT_STATUS`,
+  `AGE_AT_INCIDENT`, `RACE`, `GENDER`, `INCIDENT_CITY`,
+  `INCIDENT_BEGIN_DATE`, `INCIDENT_END_DATE`, `LAW_ENFORCEMENT_AGENCY`,
+  `LAW_ENFORCEMENT_UNIT` (field `unit`), `ARREST_DATE`,
+  `FELONY_REVIEW_DATE`, `FELONY_REVIEW_RESULT`, `UPDATE_OFFENSE_CATEGORY`
+  (sic; the other datasets say `UPDATED_…`); Initiation and the two
+  disposition datasets say `PRIMARY_CHARGE_FLAG` (field `primary_charge`);
+  Dispositions `DISPOSITION_COURT_NAME` and `DISPOSITION_COURT_FACILITY`
+  (fields `court_name`, `court_facility`); Sentencing
+  `SENTENCE_COURT_NAME`, `SENTENCE_COURT_FACILITY`,
+  `CURRENT_SENTENCE_FLAG` (field `current_sentence`), and
+  `LENGTH_OF_CASE_in_Days`; Initiation keeps the published misspelling
+  `BOND_ELECTROINIC_MONITOR_FLAG_CURRENT`. A verified header missing from
+  an export or from the metadata fails the run naming it; an extra one is
+  a warning.
+- **Formats:** every date is month first, in one of two formats:
+  `MM/DD/YYYY hh:mm:ss AM` (a real time on the arrest dates and on some
+  bond and event dates) or `MM/DD/YYYY` (Intake's received, felony-review,
+  and incident dates, and Dispositions' `INCIDENT_BEGIN_DATE`); every
+  value parses under one of them. The checkbox columns
+  (`PRIMARY_CHARGE_FLAG`, `CURRENT_SENTENCE_FLAG`, the electronic-monitor
+  flags) export `true`/`false` where the glossary documents `1`/`0`.
+- **Value sets:** every coded column's distinct values with counts, the
+  (`CHARGE_DISPOSITION`, `CHARGE_DISPOSITION_REASON`) pairs, and the
+  judge strings are in `data/reference/cook_sao/profile.yaml`, generated
+  from the stored exports by `judgemetrics sources profile cook_sao`
+  (`--check` fails on drift). The glossary documents "most common values"
+  only for dispositions, reasons, commitment types, and felony-review
+  results, and complete sets for bond types (I, D, C, No Bond, null —
+  spelled `I-Bond` there and `I Bond` in the data), diversion programs and
+  results, and sentence phases. Highlights: 36 dispositions in
+  Dispositions (28 in Sentencing); 31 reasons plus 791,562 null; four
+  bond types plus 419,212 null (initial and current alike); six sentence
+  phases (7,492 "Probation Violation Sentencing"); 15 sentence types; 29
+  commitment types and 12 commitment units ("Natural Life", "Term",
+  "Dollars" among them) plus null; 13 classes; six districts plus
+  "PROMIS" and "Traffic" in Dispositions; 16 facilities plus null.
+- **Person linkage (measured 2026-10-05 from the stored exports):**
+  `CASE_PARTICIPANT_ID` is the SAO's pseudonymous identifier of *one
+  defendant in one case*: in every dataset no participant id appears
+  under more than one `CASE_ID` (Intake 528,111 ids over 479,260 cases;
+  Initiation 450,133 over 417,905; Dispositions 379,670 over 355,113;
+  Sentencing 264,518 over 247,649; Diversion 27,695 over 26,561). The
+  corpus therefore has **no cross-case person key**; the exports carry no
+  name or date of birth, and linking on demographics would use the
+  restricted attributes and is forbidden. Within the release the keys are
+  stable across datasets: no participant id appears in Intake under
+  another case, every Initiation and Diversion (case, participant) key is
+  in Intake, and the Dispositions and Sentencing keys not in Intake
+  (23,759 and 18,158) are exactly those received before 2011, which
+  Intake does not cover. The glossary adds that both ids are "Hashed
+  independently for every version released. Therefore, it is impossible
+  to link two datasets released at different times." A canonical person
+  of this source is a case participation (`person` from the participant
+  id, confidence 1.0 within the source, never merged across sources or by
+  name).
+- **Charges:** `CHARGE_ID` and `CHARGE_VERSION_ID` are shared by
+  co-defendants — 43,477 Initiation charge versions span more than one
+  participant — so a charge row is keyed by (charge version, participant).
+  Initiation has 1,171,412 charge ids over 1,171,413 versions; amended
+  charges appear in the disposition datasets (3,930 Dispositions charges
+  have two versions). Eight Initiation and two Dispositions charge ids
+  appear under two cases.
+- **Judge attribution:** free-text names on Dispositions (`JUDGE`, 469
+  distinct strings, 76,613 rows without one) and Sentencing
+  (`SENTENCE_JUDGE`, 402 strings, 742 rows without one), with spacing
+  variants ("Stanley  Sacks"). The glossary defines `JUDGE` as "Judge who
+  oversaw the case" and `SENTENCE_JUDGE` as "Judge who oversaw the
+  sentencing" — it does not call `JUDGE` the judge who entered the
+  disposition. The bond fields name no judicial officer. Resolution to
+  judge entities by a curated alias table is Phase 5 Step 3.
+- **Actor attribution:** the glossary attributes "Nolle Prosecution" to
+  the prosecutor ("The prosecutor has decided not to pursue this
+  charge"), "Finding Guilty" and "FNG" to "a judge in a bench trial", the
+  verdicts to "jurors in a jury trial", and describes "SOL" as "Illinois
+  judges remove cases from the court's active list … without the State
+  forfeiting the right to reinstate". The rule table that maps every
+  (disposition, reason) pair of the profile to an actor and a
+  judicial-discretion classification, with `unknown` as the explicit
+  fallback, is Phase 5 Step 3.
+- **First real metrics:** the judge-attributed sentencing family
+  (`SENTENCE_JUDGE`), the disposition family where Step 3's rules and
+  Step 5's gate attribute it, and court-level bond decisions; the one
+  within-case subsequent event the data records is a probation-violation
+  resentencing. No cross-case outcome (new case, new charge,
+  reconviction) is observable, and none is published for this source,
+  never as a zero.
+- **Update frequency and coverage evidence:** frozen. The SAO stopped
+  maintaining the datasets on 2024-12-30, and the portal re-published
+  all five on 2026-04-02 (the metadata's "Update Frequency: As Needed" and
+  "Publishing frequency: Quarterly" are stale). The last receipt dates
+  are 2024-11-30 (Intake, Initiation), 2024-11-29 (Dispositions),
+  2024-10-31 (Sentencing), and 2024-11-12 (Diversion); Intake and
+  Initiation begin on 2011-01-01. Record the coverage end on every
+  coverage surface.
+- **Archived versions (recorded, never fetched):** the releases of
+  2018-02-13, archived on 2018-10-03 with no license recorded — Intake
+  `a2mv-5et6` (298,919 rows, 16 columns), Initiation `qr2q-atnt`
+  (732,589, 24), Dispositions `75tm-jf99` (654,580, 29), Sentencing
+  `qhfs-h477` (189,288, 36); there is no Diversion archive. Their ids
+  were hashed for that release and cannot be joined to the current one.
+  The portal also holds 2017 aggregate reports of the SAO (counts by
+  offense type, race, gender, age, location), not case-level data.
+- **Terms (read 2026-10-05):** the County's terms disclaim liability and
+  warranty ("NO WARRANTY, EXPRESSED OR IMPLIED, IS MADE REGARDING
+  ACCURACY, ADEQUACY, COMPLETENESS, LEGALITY, RELIABILITY OR USEFULNESS
+  OF ANY INFORMATION POSTED ON THE COUNTY WEBSITES", §2), bind the user to
+  lawful use ("By use of this system and any data contained therein, you
+  agree that your use shall conform to all applicable laws and
+  regulations and you shall not violate the rights of any third
+  parties", §7), and state that "The content of County websites is
+  copyrighted … one should presume the need to obtain permission from the
+  copyright holder before reproducing or otherwise using images/graphics
+  from this website" (§10). Each dataset's metadata carries `"license":
+  {"name": "Public Domain"}` (`licenseId` `PUBLIC_DOMAIN`), `"attribution":
+  "Cook County State's Attorney's Office"` (Dispositions and Sentencing
+  spell it "Cook County State's Attorney Office"), and the attribution
+  link `https://www.cookcountystatesattorney.org/`.
+- **Citation:** no document prescribes one. The project cites "Cook
+  County State's Attorney's Office, <dataset> (Cook County Open Data,
+  datacatalog.cookcountyil.gov, dataset <portal id>), rows updated
+  2026-04-02, retrieved <date>", the attribution the metadata names.
+- **Redistribution:** aggregates `yes` — all five datasets are licensed
+  "Public Domain", and a derived aggregate reproduces none of the
+  County's content, so §10 does not reach it; case-level `unverified` — a
+  pseudonymous case-level view republishes the dataset's records, for
+  which the dataset's "Public Domain" designation and the site terms'
+  "content of County websites is copyrighted" (§10) conflict on their
+  face, and §7 forbids violating "the rights of any third parties"
+  without saying whether a pseudonymous view of a defendant's record does;
+  commercial `unverified` — no document mentions commercial use, and the
+  one-word designation carries no deed or license text defining its scope.
+  Both open answers are question 2's (operator) in `docs/ROADMAP.md`;
+  until they settle, the corpus enters no snapshot bundle and no paid
+  tier.
+- **Cost / rate limits:** free; the bulk export needs no token and none
+  is used. Downloads ran at 0.25–4 MB/s on 2026-10-05 (a full fetch took
+  12 minutes once and longer when the portal throttled).
+- **Fields prohibited / sensitive:** `RACE`, `GENDER`, and
+  `AGE_AT_INCIDENT` are ingested only into the restricted schema (the age
+  as a band), are never exposed at the person level, are never model
+  features by default, and are used only for aggregate fairness analysis
+  pending the Phase 6 legal review; `profile.yaml` lists race and gender
+  as values only and the age as a range, never with a count. The
+  incident's city and dates and the arresting agency and unit are
+  quasi-identifiers the canonical model never reads; with the restricted
+  columns they are blanked in every row of the committed fixture
+  (`tests/fixtures/cook_sao/`). The exports carry no defendant name.
 - **Retention:** none stated.
-- **Provenance requirements:** immutable raw CSV per dataset per fetch
-  with sha256, portal id, rows-updated timestamp from the portal
-  metadata, and retrieval time; parser version on every derived row.
-- **Known limitations:** felony cases only; pretrial release decisions
-  lack judge attribution; no failure-to-appear, rearrest, or
-  release-violation events; judge names are free text; the corpus ends
-  on 2024-12-30, so outcome windows are right-censored there.
-- **Remaining to verify:** portal terms of use; the documented value
-  sets for dispositions, reasons, bond types, and sentence fields;
-  stability of `case_participant_id` across the five datasets.
+- **Provenance requirements:** one immutable raw CSV per dataset per
+  changed export in the raw lake with its sha256; the `source_record`
+  carries the portal id, the rows-updated time, the license, the
+  attribution, the column list, the metadata URL, the retrieval time, the
+  `ETag`, and `Last-Modified`; the parser version on every derived row.
+- **Ingested by:** `judgemetrics ingest run cook_sao` (`uv run poe
+  ingest-cook`), connector `CookSaoConnector`, parser version `0` (fetch
+  and store only; Phase 5 Step 4 parses); the fixture is
+  `tests/fixtures/cook_sao/` (73 real cases chosen by
+  `judgemetrics sources excerpt cook_sao`, restricted and
+  quasi-identifying columns blanked).
+- **Known limitations:** felony cases of three SAO bureaus only; no
+  cross-case person key, so no cross-case outcome; the ids are re-hashed
+  for every release, so a re-publication would re-key every case and
+  participant and the 2018 archives cannot be joined; a bond type records
+  the bond court's decision, not whether the person was released (posting
+  is not recorded), and the bond fields name no judicial officer;
+  Illinois ended cash bail on 2023-09-18 (the Pretrial Fairness Act), so
+  bond types mean different things before and after; `JUDGE` is "Judge
+  who oversaw the case", and 76,613 disposition rows have none; judge
+  names are free text; 97,464 Dispositions and 25,013 Sentencing rows were
+  received before 2011 (Intake and Initiation start on 2011-01-01), four
+  Dispositions rows on 1901-07-24; typo dates run to the year 2924
+  (`anomalies` in the profile); no failure-to-appear, rearrest, or
+  release-violation events; the corpus ends on 2024-12-30, so outcome
+  windows are right-censored there.
+- **Remaining to verify:** question 2 only — whether pseudonymous
+  case-level views may be republished and whether either view may be
+  redistributed commercially, given the license and terms quoted above
+  (for example, written confirmation from the SAO or the County's
+  open-data team).
 
 ---
 

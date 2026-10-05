@@ -18,6 +18,7 @@ from judgemetrics.ingest.base import SourceConnector
 BUILTIN_CONNECTOR_MODULES: tuple[str, ...] = (
     "judgemetrics.ingest.fjc.connector",
     "judgemetrics.ingest.synthetic.connector",
+    "judgemetrics.ingest.cook_sao.connector",
 )
 
 _REGISTRY: dict[str, type[SourceConnector]] = {}

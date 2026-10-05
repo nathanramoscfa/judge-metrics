@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase05-roadmap.md -->
 # Phase 5 Roadmap — First Real State-Court Pipeline and the Florida Acquisition Plan
 
-**Status:** Not started
+**Status:** In progress
 
 ## Overview
 
@@ -550,13 +550,13 @@ declaring a step complete.
   "Probation Violation Sentencing" 7,492, "Amended/Corrected Sentencing",
   "Resentenced", "Remanded Sentencing", "Summary Charge Info");
   `sentence_type` 15 ("Prison" 159,122, "Probation" 116,834, "Jail" 13,415,
-  …, "Death" 73); `commitment_type` 30; `bond_type_initial` four plus null
+  …, "Death" 73); `commitment_type` 30 (29 values plus null, Step 1); `bond_type_initial` four plus null
   ("D Bond" 543,247, null 419,212, "I Bond" 196,468, "No Bond" 63,712, "C
   Bond" 5,621) — a bond type records the decision, not whether the person was
   released, and Illinois ended cash bail on 2023-09-18 (the Pretrial Fairness
   Act); `court_name` six districts ("District 1 - Chicago" 634,058 rows, then
   Bridgeview, Markham, Skokie, Maywood, Rolling Meadows) plus "PROMIS",
-  "Traffic", and null; `court_facility` 17 values; `judge` 469 distinct
+  "Traffic", and null; `court_facility` 17 values (16 plus null, Step 1); `judge` 469 distinct
   strings with 76,613 null rows; `sentence_judge` 402 distinct strings with 742
   null rows, some with doubled spaces ("Stanley  Sacks").
 
@@ -827,8 +827,8 @@ declaring a step complete.
   now fires on a tampered statistic), Step 6 makes `metrics verify` and the
   trace feasible on the full corpus within recorded budgets, and Step 8's alarm
   exercise tampers a real observation and a coverage statistic in the scratch
-  database and records each alarm failing and then passing. The raw lake (about
-  1.5 GB for the five exports, TBD exactly until Step 1 measures), the canonical
+  database and records each alarm failing and then passing. The raw lake
+  (1,221,648,291 bytes for the five exports, measured by Step 1), the canonical
   database, and the snapshots stay on the maintainer's machine; the object-store
   variant and scheduled verification are Phase 8.
 
@@ -1013,9 +1013,9 @@ after later steps, the operator resumes at the first step whose Status is not
 
 ---
 
-## Step 1 — Cook County Source Due Diligence, the Streamed Fetch, and the Value-Set Profile
+## Step 1 — Cook County Source Due Diligence, the Streamed Fetch, and the Value-Set Profile ✅
 
-**Status:** Not started
+**Status:** Complete — PR #52 (2026-10-05)
 
 > **Goal:** Complete the source-policy record for `cook_sao` and build the path
 > every later step reads the source through. The fetch path is rebuilt for
@@ -1047,8 +1047,8 @@ after later steps, the operator resumes at the first step whose Status is not
 **Branch:** `feature/phase05-step1-cook-county-due-diligence`
 
 **Deploys:** local raw lake and database rows — after the merge the operator
-runs `uv run poe ingest-cook` once (the five exports, about 1.5 GB in total,
-TBD exactly, stream into the raw lake with five `source_record` rows and an
+runs `uv run poe ingest-cook` once (the five exports, 1,221,648,291 bytes in
+total as measured on 2026-10-05, stream into the raw lake with five `source_record` rows and an
 `ingest_run` that publishes no canonical row) and a second time (no download:
 the rows-updated times are unchanged). No migration; `/api/v1/coverage` lists
 `cook_sao` with zero rows and no coverage window until Step 4.
@@ -2408,6 +2408,18 @@ Conversation is New per phase-boundary hygiene (and, when it overlaps Steps
     Current state (as of Phase 4,
     post-Phase-5 Step 1):
 
+    - Step 1 finding (2026-10-05),
+      for the cross-case criterion:
+      Cook County's participant id
+      names one defendant in one case
+      and the SAO re-hashes it, and
+      the case id, for every release
+      ("Hashed independently for
+      every version released", the
+      SAO glossary), so a candidate's
+      person key must be checked for
+      stability across cases and
+      across releases alike.
     - The brief's `<florida_pilot>`:
       after the architecture works
       on synthetic data, ingest
@@ -3080,6 +3092,50 @@ variant. Conversation is New per phase-boundary hygiene.
     Current state (as of Phase 4,
     post-Phase-5 Step 1):
 
+    - Step 1 findings (2026-10-05,
+      docs/DATA_SOURCES.md
+      `cook_sao`): the exports'
+      headers are the portal's
+      display names (`CASE_ID`,
+      `CHARGE_DISPOSITION`,
+      `DISPOSITION_COURT_NAME`,
+      `LENGTH_OF_CASE_in_Days`), as
+      `ingest/cook_sao/schema.py`
+      records them, and the tables
+      key on those spellings; the
+      SAO glossary defines `JUDGE`
+      as "Judge who oversaw the
+      case" and `SENTENCE_JUDGE` as
+      "Judge who oversaw the
+      sentencing" — it never calls
+      `JUDGE` the judge who entered
+      the disposition, so a rule
+      reading it as the disposing
+      judge states that reading and
+      its rationale; the glossary
+      describes "SOL" as "Illinois
+      judges remove cases from the
+      court's active list … without
+      the State forfeiting the right
+      to reinstate", which the SOL
+      rule must reconcile with its
+      `prosecutor` actor and cite;
+      the checkbox columns export
+      `true`/`false` (the glossary
+      documents 1/0); the glossary
+      spells bond types `D-Bond`
+      where the data has `D Bond`;
+      race and gender values differ
+      by dataset (Diversion's race
+      has `Latinx` and `Other`;
+      gender includes "Male name, no
+      gender given" and "Unknown
+      Gender"); seven
+      `COMMITMENT_TERM` values are
+      free text (`18 months`, `24
+      wrap`), and `COMMITMENT_UNIT`
+      includes `Dollars`, `Term`,
+      `Hours`, and `Natural Life`.
     - `data/reference/cook_sao/profile.yaml`
       (Step 1) holds every coded
       column's value set with
@@ -3112,11 +3168,12 @@ variant. Conversation is New per phase-boundary hygiene.
       Bond, and null, six sentence
       phases (7,492 "Probation
       Violation Sentencing"), 15
-      sentence types, 30 commitment
-      types, six districts, 17
-      facilities, 469 and 402 judge
-      strings. The profile is
-      authoritative.
+      sentence types, 29 commitment
+      types and 12 commitment units
+      plus null, six districts, 16
+      facilities plus null, 469 and
+      402 judge strings. The profile
+      is authoritative.
     - `data/reference/case_vocabulary.yaml`
       is `version: 2`, equal to
       `synthetic/vocabulary.py` by
@@ -4021,6 +4078,44 @@ variant. Conversation is New per phase-boundary hygiene.
     Current state (as of Phase 4,
     post-Phase-5 Step 3):
 
+    - Step 1 findings (2026-10-05)
+      for the parser: co-defendants
+      share `CHARGE_ID` and
+      `CHARGE_VERSION_ID` (43,477
+      Initiation charge versions
+      span more than one
+      participant), so a charge
+      row's `source_row_id` includes
+      the participant; amended
+      charges carry a second version
+      in Dispositions (3,930 charges)
+      and Sentencing; dates come in
+      two formats
+      (`schema.DATE_FORMATS`: with a
+      12-hour time, or `MM/DD/YYYY`
+      for Intake's received,
+      felony-review, and incident
+      dates and Dispositions'
+      `INCIDENT_BEGIN_DATE`); typo
+      dates reach the year 2924
+      (profile `anomalies`); the SAO
+      re-hashes `CASE_ID` and
+      `CASE_PARTICIPANT_ID` for every
+      release, so a re-publication
+      would re-key every case — the
+      case `ingest retire` exists
+      for; the fixture's 73 cases
+      are mostly old (the
+      string-smallest case ids are
+      the earliest receipts): 63 have
+      no Intake or Initiation rows,
+      and the 10 that do cover each
+      bond type, the null bond, the
+      post-2023-09-18 regime, the
+      open case, and two
+      participants; the profile's
+      Polars scan of the full corpus
+      peaked at a 1.9 GB working set.
     - Step 1 shipped
       `src/judgemetrics/ingest/cook_sao/`
       at parser version `0` (fetch,
@@ -4937,6 +5032,16 @@ is New per phase-boundary hygiene.
     Current state (as of Phase 4,
     post-Phase-5 Step 4):
 
+    - Step 1 finding (2026-10-05):
+      the SAO glossary defines
+      `JUDGE` as "Judge who oversaw
+      the case", not as the judge who
+      entered the disposition; the
+      `disposing_judge` gate reads
+      `charge.judge_id` as Step 3's
+      rule decided, and "Source
+      limitations" quotes the
+      source's own definition.
     - The local database holds the
       full Cook County corpus (Step
       4; no observation yet), the
@@ -6539,6 +6644,17 @@ New per phase-boundary hygiene.
     Current state (as of Phase 4,
     post-Phase-5 Step 6):
 
+    - Step 1 chose the fixture's
+      end-to-end judge: "James B
+      Linn", the `SENTENCE_JUDGE`
+      string with the most
+      Sentencing rows (7,272), with
+      twelve sentenced and twelve
+      disposed cases chosen for him
+      in `tests/fixtures/cook_sao/`
+      (more of his cases arrive
+      through other strata); the
+      README lists them.
     - The local database holds the
       full Cook County corpus with
       its observations (registry 3,
@@ -8046,7 +8162,7 @@ workflow above maps directly to the corresponding row below.
 
 | Step | Scope                                          | Model      | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | ---------- | ----------- | -------------- | -------- | ---- | ----------- |
-| 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #52 |
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |

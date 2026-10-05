@@ -12,7 +12,14 @@ file at the end of every step (Stage 6 of the step lifecycle).
 ## Current phase
 
 **Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
-Plan.** Not started. Its execution plan,
+Plan.** In progress: Step 1 is complete (PR #52, 2026-10-05) — the five Cook
+County exports (1,221,648,291 bytes) sit in the raw lake through the
+streamed fetch, `data/reference/cook_sao/profile.yaml` profiles them, the
+real-row fixture `tests/fixtures/cook_sao/` is committed, the `cook_sao`
+register entry is complete, questions 3 and 4 are resolved, and question 2
+waits on the operator for case-level and commercial redistribution. Next:
+Step 2 (Florida research, may run in parallel with Steps 3–7) and Step 3
+(the attribution and mapping tables). Its execution plan,
 [`docs/roadmap/phase05-roadmap.md`](roadmap/phase05-roadmap.md), was
 written on 2026-10-04 from the planning kit at roadmodel 0.2.65 (the
 release on PyPI, in `uv.lock`, and in `planning/` that day): eight steps
@@ -64,6 +71,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-05 | **Phase 5 Step 1 (PR #52).** Cook County due diligence, the streamed fetch, and the value-set profile (`docs/DATA_SOURCES.md` `cook_sao`, `docs/ARCHITECTURE.md` "The raw lake" and "Cook County source"). `ingest/http.py` `download_to_file` streams a body to a temporary file under a caller's cap, hashing while it writes; `RawObjectStore.put_file`/`get_file` store and read back files without loading them (chunked copy on the filesystem, managed multipart on S3); the runner hashes path-backed artifacts in chunks and owns a temporary work directory per run. The `cook_sao` connector (parser version `0`) records each dataset's portal metadata and downloads nothing while the rows-updated time is unchanged; the first live fetch stored the five exports (1,221,648,291 bytes) in 718 s at a 130 MiB peak working set, and a rerun downloaded nothing. `judgemetrics sources profile cook_sao` wrote `data/reference/cook_sao/profile.yaml` (zero participants under more than one case in every dataset); `judgemetrics sources excerpt cook_sao` wrote the 73-case real-row fixture with the restricted and quasi-identifying columns blanked; `uv run poe ingest-cook`. Questions 3 and 4 resolved; the project roadmap no longer claims a cross-case person key. |
 | 2026-10-02 | **roadmodel 0.2.57 locked (PR #46).** `uv.lock` pins the release the roadmodel updater exported `planning/` with on 2026-10-02 (PR #45's kit commit names 0.2.54 in error: that is the separate `roadmodel` on `PATH`), so `uv run poe kit` reproduces the committed kit instead of rolling six files back to 0.2.51; `AGENTS.md` "Where the plan lives", `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, and the project roadmap now say that `poe kit` exports the locked release and that a step committing the updater's refresh moves the lock with it. |
 | 2026-10-02 | **Phase 4 Step 6 (PR #45) — Phase 4 complete.** `scripts/verify_phase04.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 50 static checks — 45 over Steps 1–5 and 5 self-checks — with every version compared as a `>=` minimum; `--post` adds the seed and compute idempotency probes, `metrics verify`, `models verify --refit`, `validation report --check`, `validation recovery`, and an adjusted provenance trace on the scratch database), `tests/unit/test_phase04_verification.py`, the `phase-verify.yml` matrix entry `04` and `phase-verify (04)` as a required context, `docs/phase04-qa-findings.md` (the rollup, the three alarm exercises, the pre-ship items, the Phase 5 carry-over checklist), both roadmaps marked complete; tagged `v0.4.0-phase-4`. |
 | 2026-10-01 | **Phase 4 Step 5 (PR #44).** Risk-adjusted panels, adjusted compare, and the model card (`docs/API.md` "Metrics" and "Models", `docs/ARCHITECTURE.md` "Public API v1" and "Web tier", `docs/PROVENANCE.md`, `web/AGENTS.md`). API: `SERVED_KINDS` gains `observed_expected`; `Observation`, `CompareRow`, and the traced observation gain `expected`, `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, `pooling_weight`, `model` (`ModelRef`), and `suppression_reason`, every figure withheld when suppressed (the reason and the model survive); `MetricKind`, the `ratio` unit, and the `bootstrap` interval method; `MetricDefinitionOut.adjustment`; `/metrics/compare` `sort=ratio`, the default for the kind (still one statement); the provenance body's `model` with the artifact check under the API's snapshot directory; `GET /api/v1/models/{model_id}` (one statement, never `storage_uri`, 404 for an unknown or superseded snapshot's model). Twenty-one OpenAPI paths and nineteen StrictQuery routes (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). Web: `components/adjusted-stat.tsx` (the only renderer of an adjusted figure), the judge page's "Risk-adjusted comparison" panel beside the raw rates with the cohort definition and position, adjusted columns in `CompareTable`, `/models/[modelId]`, and the methodology page's `#adjusted-statistics` section. The Compose `api` service mounts `./data/snapshots` read-only so the provenance artifact check holds in the container. Tests: `test_api_adjusted.py` (now the serving tests), `test_schemas_metrics.py`, `test_openapi.py`, `test_query_counts.py` (model card 1 statement), `test_public_contract.py` (model cards, model hashes allowed), `test_golden_provenance.py` (CLI and endpoint agree on an adjusted chain); Vitest `adjusted-stat`, `compare-table`, `model-page`, `metrics`, `methodology-page`; Playwright `adjusted.spec.ts` beside the unchanged smoke, metrics, and first-milestone suites (25 passed locally over the demo seed). Screenshots: `docs/screenshots/phase04-step5/`. |
@@ -95,15 +103,31 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | # | Question                                                                                     | Source            | Blocks                    | Owner    | Status |
 |---|----------------------------------------------------------------------------------------------|-------------------|---------------------------|----------|--------|
 | 1 | Exact column headers of `judges.csv` and `federal-judicial-service.csv`; conditional-request support | `fjc`         | Phase 1 Step 3            | agent    | **resolved 2026-09-16** — 201 and 30 headers recorded in `docs/DATA_SOURCES.md` and `src/judgemetrics/ingest/fjc/schema.py`; the server sends `ETag` and `Last-Modified` and the connector uses both |
-| 2 | Cook County open-data portal terms: republication of derived aggregates and pseudonymous case views, and commercial redistribution (Phase 9 snapshot tier) | `cook_sao`   | Phase 5 Step 1; Phase 9 §9.2 | operator | open   |
-| 3 | Documented value sets for `charge_disposition`, `charge_disposition_reason`, bond types, sentence fields | `cook_sao` | Phase 5 attribution rules | agent    | open   |
-| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | open — planning measurement 2026-10-04 (read-only aggregate queries): no `case_participant_id` appears under more than one `case_id` in any of the five datasets, so the identifier is per case and links no person across cases; Phase 5 Step 1 re-measures from the stored artifacts, adds the cross-dataset stability, and resolves the question |
+| 2 | Cook County open-data portal terms: republication of derived aggregates and pseudonymous case views, and commercial redistribution (Phase 9 snapshot tier) | `cook_sao`   | Phase 5 Step 1; Phase 9 §9.2 | operator | open — documents read 2026-10-05 (`docs/DATA_SOURCES.md` `cook_sao` "Terms" and "Redistribution"): every dataset's metadata says `"license": {"name": "Public Domain"}`, so derived aggregates are `yes`; the County site terms the portal links (cookcountyil.gov/terms-use) say "The content of County websites is copyrighted" (§10) and forbid violating "the rights of any third parties" (§7), and nothing mentions record-level republication or commercial use, so pseudonymous case-level views and commercial redistribution stay `unverified` for the operator (for example, written confirmation from the SAO or the County's open-data team); until then the corpus enters no snapshot bundle |
+| 3 | Documented value sets for `charge_disposition`, `charge_disposition_reason`, bond types, sentence fields | `cook_sao` | Phase 5 attribution rules | agent    | **resolved 2026-10-05** — the SAO's data glossary (attached to every dataset) documents only the "most common values" of dispositions, reasons, and commitment types, and complete sets of bond types, diversion programs and results, and sentence phases; the complete value sets with counts, measured from the stored exports, are `data/reference/cook_sao/profile.yaml` (`judgemetrics sources profile cook_sao`, `--check` on drift); mapping them to rules is Phase 5 Step 3 |
+| 4 | Stability of `case_participant_id` across the five Cook County datasets                       | `cook_sao`        | Phase 5 person resolution | agent    | **resolved 2026-10-05** — measured from the stored exports (`profile.yaml` `keys`): stable across the five datasets of one release (no participant id appears in Intake under another case; every Initiation and Diversion key is in Intake; the Dispositions and Sentencing keys not in Intake are exactly the 23,759 and 18,158 received before Intake's 2011 start), never shared by two cases in any dataset (zero participants under more than one case), and re-hashed for every release per the SAO glossary — so the corpus has no cross-case person key (Known issues) |
 | 5 | CourtListener API rate limits and terms including redistribution of API responses; whether docket entries and parties are bulk or API-only; RECAP coverage of federal criminal dockets | `courtlistener` | Phase 7; Phase 9 §9.2 | agent | open |
 | 6 | PACER account, Case Locator API terms including redistribution, fee schedule, waiver threshold | `pacer`           | Phase 7 (feature-flagged); Phase 9 §9.2 | operator | open   |
 | 7 | New York pretrial release data: files, cadence, data dictionary, presence of judge names, terms including redistribution (page returned HTTP 403 to automated fetch) | `ny_oca_pretrial` | Phase 7 candidate; Phase 9 §9.2 | operator | open — verify manually |
 | 8 | Florida target jurisdiction: JDMS/UCR credentials, county clerk bulk or API offering, public-records process, cost, terms, fields; redistribution rights (aggregates, pseudonymous case-level, commercial) requested as a term of every agreement | `fl_jdms`, `fl_clerks` | Phase 5 §5.5, Phase 7; Phase 9 §9.2 | operator | open — research in Phase 5 |
 
 ## Known issues and limitations
+
+- **Cook County has no cross-case person key.** `CASE_PARTICIPANT_ID`
+  names one defendant in one case (zero participants under more than one
+  case in all five datasets, measured 2026-10-05), and the exports carry
+  no name or date of birth. Cook County supports within-case metrics only:
+  new case, new charge, and reconviction are not observable for it and are
+  never published, not even as zero; a lawful cross-case key is a weighted
+  criterion of the Florida selection (Phase 5 Step 2).
+- **The SAO re-hashes `CASE_ID` and `CASE_PARTICIPANT_ID` for every
+  release** ("Hashed independently for every version released", the SAO
+  glossary). The current release (rows updated 2026-04-02) is frozen, but
+  a re-publication would change every rows-updated time, the connector
+  would store five new exports, and every case and participant would
+  arrive under a new key; the 2018 archives cannot be joined to the
+  current release for the same reason. Retiring a superseded export's
+  rows is `judgemetrics ingest retire` (Phase 5 Step 4, issue #36).
 
 - Case-level data-quality checks that need a case's filing date or
   status (`disposition_before_filing`, `event_order_impossible`,
@@ -481,11 +505,12 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **Phase 5 Step 1.** Cook County due diligence, the streamed fetch,
-   and the value-set profile (`/roadmap-step 5 1` in a new
-   conversation); Step 2, the Florida research and the requests, may
-   follow at once and run in parallel with Steps 3–7, because the
-   requests' lead time is the longest in the project.
+1. **Phase 5 Step 2 and Step 3.** Step 2, the Florida research and the
+   requests (`/roadmap-step 5 2`), is recommended next because the
+   requests' lead time is the longest in the project, and it may run in
+   its own worktree and conversation beside Steps 3–7; Step 3, the
+   attribution and mapping tables and case vocabulary 3
+   (`/roadmap-step 5 3`), maps the Step 1 profile.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metrics — the
    judge-attributed sentencing and disposition families and the

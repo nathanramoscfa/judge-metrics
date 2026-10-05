@@ -12,10 +12,22 @@ Two backends implement ``RawObjectStore``: ``FilesystemRawObjectStore``
 (``file://``, atomic write-then-rename) and ``S3RawObjectStore``
 (``s3://bucket[/prefix]`` through the configured endpoint — MinIO locally).
 ``open_raw_store(settings)`` picks one from ``JUDGEMETRICS_RAW_STORE_URL``.
+
+Files (Phase 5): ``put_file`` stores a file without loading it — a chunked
+copy to a temporary file beside the target, fsynced and renamed, on the
+filesystem; boto3's managed multipart transfer with the sha256 in the
+object metadata on S3 — and ``get_file`` streams an object back to a
+local file and verifies it against the digest its key names, so a corpus
+of gigabyte exports is stored and re-read in bounded memory. Both refuse a
+file that does not hash to its key's digest, and both compare an existing
+object by its stored digest (the key's on the filesystem, the metadata on
+S3), never by reading it whole. Every temporary file is removed on success
+and on failure.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import uuid
@@ -25,7 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from judgemetrics.config import Settings
-from judgemetrics.ingest.base import sha256_hex
+from judgemetrics.ingest.base import CHUNK_BYTES, sha256_file, sha256_hex
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -36,6 +48,8 @@ _EXT = re.compile(r"^(\.[a-z0-9]{1,16}){0,3}$")
 _KEY = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}/\d{4}/\d{2}/[0-9a-f]{64}(\.[a-z0-9]{1,16}){0,3}$")
 _BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
 _DRIVE_PATH = re.compile(r"^/[A-Za-z]:")
+# Part size of the S3 managed transfer (boto3 switches to multipart above it).
+S3_PART_BYTES = 64 * 1024 * 1024
 _CONTENT_TYPES = {
     ".csv": "text/csv",
     ".json": "application/json",
@@ -88,10 +102,41 @@ def content_type_for_key(key: str) -> str:
     return _CONTENT_TYPES.get(Path(key).suffix, "application/octet-stream")
 
 
+def key_sha256(key: str) -> str:
+    """The sha256 a well-formed key names (``<source>/<yyyy>/<mm>/<sha256><ext>``)."""
+    check_key(key)
+    return key.rsplit("/", 1)[1][:64]
+
+
+def _require_key_digest(digest: str, key: str) -> None:
+    if digest != key_sha256(key):
+        msg = f"the file does not hash to the digest its key names: {key!r}"
+        raise RawStoreError(msg)
+
+
+def _temporary_beside(target: Path) -> Path:
+    return target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+
+
+def _verified_replace(temp: Path, dest: Path, key: str) -> ObjectRef:
+    """Move ``temp`` to ``dest`` when it hashes to ``key``'s digest; remove it otherwise."""
+    digest, size = sha256_file(temp)
+    if digest != key_sha256(key):
+        temp.unlink(missing_ok=True)
+        msg = f"stored raw object {key!r} does not match its digest"
+        raise RawStoreError(msg)
+    os.replace(temp, dest)
+    return ObjectRef(key=key, sha256=digest, size_bytes=size)
+
+
 class RawObjectStore(Protocol):
     def put(self, data: bytes, key: str) -> ObjectRef: ...
 
+    def put_file(self, path: Path, key: str) -> ObjectRef: ...
+
     def get(self, key: str) -> bytes: ...
+
+    def get_file(self, key: str, dest: Path) -> ObjectRef: ...
 
     def exists(self, key: str) -> bool: ...
 
@@ -131,11 +176,56 @@ class FilesystemRawObjectStore:
             temp.unlink(missing_ok=True)
         return ObjectRef(key=key, sha256=digest, size_bytes=len(data))
 
+    def put_file(self, path: Path, key: str) -> ObjectRef:
+        """Copy ``path`` to ``key`` in chunks; the same digest is a no-op, another refused.
+
+        An existing object's digest is the one its key names (the store
+        writes nothing that does not hash to its key), so it is never read.
+        """
+        target = self._path(key)
+        if target.exists():
+            digest, _ = sha256_file(path)
+            if digest == key_sha256(key):
+                return ObjectRef(key=key, sha256=digest, size_bytes=target.stat().st_size)
+            msg = f"refusing to overwrite raw object {key!r} with different content"
+            raise ImmutableObjectError(msg)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = _temporary_beside(target)
+        hasher = hashlib.sha256()
+        size = 0
+        try:
+            with path.open("rb") as source, temp.open("wb") as handle:
+                for chunk in iter(lambda: source.read(CHUNK_BYTES), b""):
+                    hasher.update(chunk)
+                    size += len(chunk)
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            _require_key_digest(hasher.hexdigest(), key)
+            os.replace(temp, target)
+        finally:
+            temp.unlink(missing_ok=True)
+        return ObjectRef(key=key, sha256=hasher.hexdigest(), size_bytes=size)
+
     def get(self, key: str) -> bytes:
         path = self._path(key)
         if not path.is_file():
             raise KeyError(key)
         return path.read_bytes()
+
+    def get_file(self, key: str, dest: Path) -> ObjectRef:
+        """Copy the object at ``key`` to ``dest`` in chunks, verified against its digest."""
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyError(key)
+        temp = _temporary_beside(dest)
+        try:
+            with path.open("rb") as source, temp.open("wb") as handle:
+                for chunk in iter(lambda: source.read(CHUNK_BYTES), b""):
+                    handle.write(chunk)
+            return _verified_replace(temp, dest, key)
+        finally:
+            temp.unlink(missing_ok=True)
 
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
@@ -224,6 +314,27 @@ class S3RawObjectStore:
         )
         return ObjectRef(key=key, sha256=digest, size_bytes=len(data))
 
+    def put_file(self, path: Path, key: str) -> ObjectRef:
+        """Upload ``path`` with boto3's managed (multipart) transfer, sha256 in the metadata."""
+        from boto3.s3.transfer import TransferConfig
+
+        digest, size = sha256_file(path)
+        existing = self._existing_sha256(key)
+        if existing is not None:
+            if existing == digest:
+                return ObjectRef(key=key, sha256=digest, size_bytes=size)
+            msg = f"refusing to overwrite raw object {key!r} with different content"
+            raise ImmutableObjectError(msg)
+        _require_key_digest(digest, key)
+        self.client.upload_file(
+            Filename=str(path),
+            Bucket=self.bucket,
+            Key=self._object_key(key),
+            ExtraArgs={"ContentType": content_type_for_key(key), "Metadata": {"sha256": digest}},
+            Config=TransferConfig(multipart_chunksize=S3_PART_BYTES, max_concurrency=4),
+        )
+        return ObjectRef(key=key, sha256=digest, size_bytes=size)
+
     def get(self, key: str) -> bytes:
         from botocore.exceptions import ClientError
 
@@ -234,6 +345,28 @@ class S3RawObjectStore:
                 raise KeyError(key) from exc
             raise
         return response["Body"].read()
+
+    def get_file(self, key: str, dest: Path) -> ObjectRef:
+        """Download the object at ``key`` to ``dest`` (managed transfer), verified by digest."""
+        from boto3.s3.transfer import TransferConfig
+        from botocore.exceptions import ClientError
+
+        temp = _temporary_beside(dest)
+        try:
+            try:
+                self.client.download_file(
+                    Bucket=self.bucket,
+                    Key=self._object_key(key),
+                    Filename=str(temp),
+                    Config=TransferConfig(multipart_chunksize=S3_PART_BYTES, max_concurrency=4),
+                )
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                    raise KeyError(key) from exc
+                raise
+            return _verified_replace(temp, dest, key)
+        finally:
+            temp.unlink(missing_ok=True)
 
     def exists(self, key: str) -> bool:
         return self._existing_sha256(key) is not None
