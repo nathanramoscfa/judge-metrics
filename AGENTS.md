@@ -1161,6 +1161,25 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   corpus has no cross-case person key (the participant id is per case and
   re-hashed for every release), so the SAO's ids never key a person across
   cases.
+- Florida pilot (Phase 5 Step 2, `docs/florida-data-inventory.md`,
+  `docs/DATA_SOURCES.md` `fl_jdms`/`fl_cjdt`/`fl_clerks`): the selected
+  pilot is Hillsborough County — the clerk's open weekly criminal name index
+  files on `publicrec.hillsclerk.com` — with FDLE's Criminal Justice Data
+  Transparency data (`fl_cjdt`) as the companion source, because §943.6871
+  gives every person a random identifier that is "the same for that person
+  in any court case" and bars a license or fee; Broward, then Miami-Dade, is
+  the ranked fallback. Phase 7 §7.1 enters Florida only through a candidate
+  verified on a machine-readable route, a judge for one decision family, and
+  aggregates `yes` in writing (or by counsel's §6.4 opinion); otherwise the
+  next-best verified state source enters first. Every `flcourts.gov` host,
+  the Department of Corrections, and the Palm Beach and Pinellas clerks'
+  sites refuse automated readers (robots or a challenge), so facts from them
+  stay `unverified` until a person reads them in a browser or the office
+  answers. The requests under `docs/florida/requests/` carry the operator's
+  contact details only as bracketed fields; sent copies and answers stay
+  outside the repository, and each answer is recorded the day it arrives in
+  the register's Redistribution field, question 8, and "Florida acquisition
+  requests" in `docs/ROADMAP.md`.
 
 ## End-of-session report (from the brief)
 
