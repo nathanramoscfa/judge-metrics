@@ -1,7 +1,7 @@
 <!-- docs/roadmap/phase05-roadmap.md -->
 # Phase 5 Roadmap — First Real State-Court Pipeline and the Florida Acquisition Plan
 
-**Status:** Not started
+**Status:** In progress
 
 ## Overview
 
@@ -1013,9 +1013,9 @@ after later steps, the operator resumes at the first step whose Status is not
 
 ---
 
-## Step 1 — Cook County Source Due Diligence, the Streamed Fetch, and the Value-Set Profile
+## Step 1 — Cook County Source Due Diligence, the Streamed Fetch, and the Value-Set Profile ✅
 
-**Status:** Not started
+**Status:** Complete — PR #52 (2026-10-05)
 
 > **Goal:** Complete the source-policy record for `cook_sao` and build the path
 > every later step reads the source through. The fetch path is rebuilt for
@@ -8162,7 +8162,7 @@ workflow above maps directly to the corresponding row below.
 
 | Step | Scope                                          | Model      | Platform    | Reasoning dial | Thinking | Conv | Status      |
 | ---- | ---------------------------------------------- | ---------- | ----------- | -------------- | -------- | ---- | ----------- |
-| 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #52 |
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |

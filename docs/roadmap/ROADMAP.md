@@ -3,7 +3,7 @@
 > **Status:** Draft v2.1 (v2 supersedes v1, same day, after the full
 > brief arrived; v2.1 adds the post-launch Phase 9); Phases 1–3
 > complete (Phase 3, the first milestone, on 2026-09-29); Phase 4 complete
-> on 2026-10-02 (`v0.4.0-phase-4`); Phase 5 next
+> on 2026-10-02 (`v0.4.0-phase-4`); Phase 5 in progress (Step 1 complete on 2026-10-05)
 > **Owner:** Nathan Ramos, founder and sole maintainer
 > **Audience:** Maintainer and the AI coding agents executing phase steps;
 > public once the repository is published
@@ -676,7 +676,7 @@ the gate and the artifact inspection by V6.4 and V2.2.
 
 ### Phase 5 — First Real State-Court Pipeline and the Florida Acquisition Plan
 
-**Status:** Not started
+**Status:** In progress — [`phase05-roadmap.md`](phase05-roadmap.md)
 
 **Goal:** Ingest the first real state criminal-court corpus (Cook
 County, IL State's Attorney datasets) end to end with actor attribution,
@@ -1763,7 +1763,7 @@ court-level comparison arrive with Phase 7.
 | 2     | Synthetic dataset, entity resolution, case timelines | High       | Fable 5.1 (Claude Code) for the generator-with-truth and resolution-framework steps; Opus 5 elsewhere | Complete — 2026-09-19 |
 | 3     | Metrics engine and the complete local demo           | High       | Fable 5.1 (Claude Code) for index events, exposure, and censoring design; Opus 5 elsewhere | Complete — 2026-09-30 |
 | 4     | Risk adjustment and validation                       | High       | Claude Opus 5.5 (Claude Code): Extra High for Steps 1–3, High for Steps 4–5, Medium for QA | Complete — 2026-10-02 |
-| 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5 (Claude Code); Fable 5.1 for attribution rules    | Not started |
+| 5     | First real state-court pipeline; Florida plan        | High       | Claude Opus 5.5 (Claude Code) for Steps 1, 2, 3, 5, and 8; Sonnet 5.5 for Steps 4, 6, and 7 | In progress |
 | 6     | Validation on real data, admin tools, trust          | High       | Claude Opus 5 (Claude Code); Fable 5.1 for the audit protocol   | Not started |
 | 7     | Florida pilot, federal dockets, coverage map         | High       | Claude Opus 5 (Claude Code)                                     | Not started |
 | 8     | Production hardening and launch                      | Medium     | Claude Opus 5 (Claude Code); Fable 5.1 at Ultracode for the codebase-wide audit | Not started |

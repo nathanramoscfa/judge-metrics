@@ -12,7 +12,14 @@ file at the end of every step (Stage 6 of the step lifecycle).
 ## Current phase
 
 **Phase 5 — First Real State-Court Pipeline and the Florida Acquisition
-Plan.** Not started. Its execution plan,
+Plan.** In progress: Step 1 is complete (PR #52, 2026-10-05) — the five Cook
+County exports (1,221,648,291 bytes) sit in the raw lake through the
+streamed fetch, `data/reference/cook_sao/profile.yaml` profiles them, the
+real-row fixture `tests/fixtures/cook_sao/` is committed, the `cook_sao`
+register entry is complete, questions 3 and 4 are resolved, and question 2
+waits on the operator for case-level and commercial redistribution. Next:
+Step 2 (Florida research, may run in parallel with Steps 3–7) and Step 3
+(the attribution and mapping tables). Its execution plan,
 [`docs/roadmap/phase05-roadmap.md`](roadmap/phase05-roadmap.md), was
 written on 2026-10-04 from the planning kit at roadmodel 0.2.65 (the
 release on PyPI, in `uv.lock`, and in `planning/` that day): eight steps
@@ -64,6 +71,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-05 | **Phase 5 Step 1 (PR #52).** Cook County due diligence, the streamed fetch, and the value-set profile (`docs/DATA_SOURCES.md` `cook_sao`, `docs/ARCHITECTURE.md` "The raw lake" and "Cook County source"). `ingest/http.py` `download_to_file` streams a body to a temporary file under a caller's cap, hashing while it writes; `RawObjectStore.put_file`/`get_file` store and read back files without loading them (chunked copy on the filesystem, managed multipart on S3); the runner hashes path-backed artifacts in chunks and owns a temporary work directory per run. The `cook_sao` connector (parser version `0`) records each dataset's portal metadata and downloads nothing while the rows-updated time is unchanged; the first live fetch stored the five exports (1,221,648,291 bytes) in 718 s at a 130 MiB peak working set, and a rerun downloaded nothing. `judgemetrics sources profile cook_sao` wrote `data/reference/cook_sao/profile.yaml` (zero participants under more than one case in every dataset); `judgemetrics sources excerpt cook_sao` wrote the 73-case real-row fixture with the restricted and quasi-identifying columns blanked; `uv run poe ingest-cook`. Questions 3 and 4 resolved; the project roadmap no longer claims a cross-case person key. |
 | 2026-10-02 | **roadmodel 0.2.57 locked (PR #46).** `uv.lock` pins the release the roadmodel updater exported `planning/` with on 2026-10-02 (PR #45's kit commit names 0.2.54 in error: that is the separate `roadmodel` on `PATH`), so `uv run poe kit` reproduces the committed kit instead of rolling six files back to 0.2.51; `AGENTS.md` "Where the plan lives", `README.md`, `CONTRIBUTING.md`, `pyproject.toml`, and the project roadmap now say that `poe kit` exports the locked release and that a step committing the updater's refresh moves the lock with it. |
 | 2026-10-02 | **Phase 4 Step 6 (PR #45) — Phase 4 complete.** `scripts/verify_phase04.py` (modes `--fast`, `--py`, `--node`, `--e2e`, `--security`, `--all`, `--post`; 50 static checks — 45 over Steps 1–5 and 5 self-checks — with every version compared as a `>=` minimum; `--post` adds the seed and compute idempotency probes, `metrics verify`, `models verify --refit`, `validation report --check`, `validation recovery`, and an adjusted provenance trace on the scratch database), `tests/unit/test_phase04_verification.py`, the `phase-verify.yml` matrix entry `04` and `phase-verify (04)` as a required context, `docs/phase04-qa-findings.md` (the rollup, the three alarm exercises, the pre-ship items, the Phase 5 carry-over checklist), both roadmaps marked complete; tagged `v0.4.0-phase-4`. |
 | 2026-10-01 | **Phase 4 Step 5 (PR #44).** Risk-adjusted panels, adjusted compare, and the model card (`docs/API.md` "Metrics" and "Models", `docs/ARCHITECTURE.md` "Public API v1" and "Web tier", `docs/PROVENANCE.md`, `web/AGENTS.md`). API: `SERVED_KINDS` gains `observed_expected`; `Observation`, `CompareRow`, and the traced observation gain `expected`, `expected_rate`, `ratio`, `ratio_lower`, `ratio_upper`, `pooling_weight`, `model` (`ModelRef`), and `suppression_reason`, every figure withheld when suppressed (the reason and the model survive); `MetricKind`, the `ratio` unit, and the `bootstrap` interval method; `MetricDefinitionOut.adjustment`; `/metrics/compare` `sort=ratio`, the default for the kind (still one statement); the provenance body's `model` with the artifact check under the API's snapshot directory; `GET /api/v1/models/{model_id}` (one statement, never `storage_uri`, 404 for an unknown or superseded snapshot's model). Twenty-one OpenAPI paths and nineteen StrictQuery routes (`docs/openapi.json`, `web/lib/api/schema.d.ts` regenerated). Web: `components/adjusted-stat.tsx` (the only renderer of an adjusted figure), the judge page's "Risk-adjusted comparison" panel beside the raw rates with the cohort definition and position, adjusted columns in `CompareTable`, `/models/[modelId]`, and the methodology page's `#adjusted-statistics` section. The Compose `api` service mounts `./data/snapshots` read-only so the provenance artifact check holds in the container. Tests: `test_api_adjusted.py` (now the serving tests), `test_schemas_metrics.py`, `test_openapi.py`, `test_query_counts.py` (model card 1 statement), `test_public_contract.py` (model cards, model hashes allowed), `test_golden_provenance.py` (CLI and endpoint agree on an adjusted chain); Vitest `adjusted-stat`, `compare-table`, `model-page`, `metrics`, `methodology-page`; Playwright `adjusted.spec.ts` beside the unchanged smoke, metrics, and first-milestone suites (25 passed locally over the demo seed). Screenshots: `docs/screenshots/phase04-step5/`. |
@@ -497,11 +505,12 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 
 ## Next milestones
 
-1. **Phase 5 Step 1.** Cook County due diligence, the streamed fetch,
-   and the value-set profile (`/roadmap-step 5 1` in a new
-   conversation); Step 2, the Florida research and the requests, may
-   follow at once and run in parallel with Steps 3–7, because the
-   requests' lead time is the longest in the project.
+1. **Phase 5 Step 2 and Step 3.** Step 2, the Florida research and the
+   requests (`/roadmap-step 5 2`), is recommended next because the
+   requests' lead time is the longest in the project, and it may run in
+   its own worktree and conversation beside Steps 3–7; Step 3, the
+   attribution and mapping tables and case vocabulary 3
+   (`/roadmap-step 5 3`), maps the Step 1 profile.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metrics — the
    judge-attributed sentencing and disposition families and the
