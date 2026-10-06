@@ -33,8 +33,9 @@ it as a term of the agreement (root roadmap §5.5).
 | `fjc`         | Federal Judicial Center, Biographical Directory export   | Federal judge master data, court roster   | verified (2026-09-16)    | 1     | yes (US government work) |
 | `synthetic`   | Deterministic synthetic justice dataset (in-repo generator) | MVP demo data, golden regression fixture | by construction         | 2     | n/a (never a product) |
 | `cook_sao`    | Cook County State's Attorney case-level datasets         | First real state-court corpus             | verified (2026-10-05)    | 5     | unverified (question 2; aggregates yes) |
-| `fl_jdms`     | Florida Courts Judicial Data Management Services / UCR   | Florida court-event structure; credentialed access | unverified; workstream | 5, 7 | unverified; negotiate (question 8) |
-| `fl_clerks`   | Florida county clerks (candidates: Broward, Miami-Dade, others) | Florida pilot criminal case data     | unverified; workstream   | 5, 7  | unverified; negotiate (question 8) |
+| `fl_jdms`     | Florida Courts Judicial Data Management Services / UCR   | Florida court-event structure; reference only | researched (2026-10-05); no non-agency access found | 5, 7 | unverified (question 8) |
+| `fl_cjdt`     | FDLE Criminal Justice Data Transparency (statewide)      | Florida pilot companion: cross-case person key, pretrial, sentences | verified, partial (2026-10-05) | 5, 7 | unverified; requested (question 8) |
+| `fl_clerks`   | Florida county clerks (pilot Hillsborough; fallback Broward, Miami-Dade) | Florida pilot criminal case data | verified, partial (2026-10-05) | 5, 7 | unverified; requested (question 8) |
 | `courtlistener` | CourtListener bulk data and REST API                   | Federal courts, dockets, judges; coverage | verified, partial (2026-09-15) | 7 | bulk yes (Public Domain Mark); API unverified (question 5) |
 | `pacer`       | PACER (federal judiciary)                                | Federal case locator and dockets, metered | unverified; workstream   | 7     | unverified (question 6) |
 | `ny_oca_pretrial` | New York State court system pretrial release data    | Pretrial decisions with judge attribution | unverified; candidate    | 7     | unverified (question 7) |
@@ -448,42 +449,154 @@ it as a term of the agreement (root roadmap §5.5).
 
 ---
 
-## `fl_jdms` and `fl_clerks` — Florida sources
+## Florida sources — `fl_jdms`, `fl_cjdt`, `fl_clerks`
 
-- **Owner:** Florida Office of the State Courts Administrator (OSCA),
-  whose Judicial Data Management Services (JDMS) program owns the
-  Uniform Case Reporting (UCR) specification; individual county clerks
-  of court for case data.
-- **Role:** the brief's pilot jurisdiction and its "State" scaling
-  stage. The UCR specification documents Florida's canonical
-  court-event fields, including judicial officers and case events.
-  Direct web-service access requires coordinated credentials; it is not
-  anonymously readable.
-- **Candidates:** Broward County and Miami-Dade County may be
-  evaluated, but neither is assumed to be the best pilot until current
-  source access is verified; other counties and circuits are in scope.
-- **Selection process (Phase 5 §5.5, from the brief):** evaluate
-  jurisdictions for data accessibility; document available fields and
-  history; confirm judge assignment information; confirm charges and
-  dispositions; confirm defendant matching fields that may lawfully be
-  processed; confirm pretrial and release information; confirm
-  follow-up event feasibility; estimate extraction and maintenance
-  cost; select the jurisdiction with the strongest data rather than by
-  population. Prefer bulk exports, APIs, machine-readable downloads, or
-  public-records requests before any scraping, and never scrape
-  against a site's terms.
-- **Status:** unverified; a Phase 5 research workstream producing
-  `docs/florida-data-inventory.md` and a lawful acquisition plan, with
-  the connector landing in Phase 7 once access is secured.
-- **Redistribution:** aggregates `unverified`; case-level
-  `unverified`; commercial `unverified`. Access is negotiated, so each
-  request and agreement asks for all three explicitly (root roadmap
-  §5.5); the answer is a term of the agreement and is recorded here
-  when it is signed.
-- **Remaining to verify:** JDMS/UCR credential process; each
-  candidate clerk's bulk or API offering; public-records request
-  process and turnaround; cost; terms; fields; history depth;
-  redistribution rights.
+Researched on 2026-10-05 (Phase 5 Step 2). The evidence, with every URL, the
+law that governs these records, the scored selection, and the acquisition plan
+are in [`docs/florida-data-inventory.md`](florida-data-inventory.md); the
+bracketed ids below are its source ids. The selected pilot is Hillsborough
+County, with `fl_cjdt` as its companion; the requests are logged in
+[`docs/ROADMAP.md`](ROADMAP.md) "Florida acquisition requests" (question 8).
+Nothing in a connector may depend on a claim below that is not marked
+verified.
+
+### `fl_jdms` — OSCA's JDMS and the UCR specification
+
+- **Owner:** Florida Office of the State Courts Administrator (OSCA). Clerks
+  must report "the activity of all cases before all courts within the clerk's
+  jurisdiction to the supreme court" (rule 2.245(a)), and a uniform case
+  reporting system is statutory (§25.075) — verified [L17, L9].
+- **Documentation:** unread. Every `flcourts.gov` host serves `User-agent: *` /
+  `Disallow: /` [W2], so the JDMS page, the UCR Data Collection Specification
+  (latest found 1.4.2, November 2020), the UCR web-service specification and
+  FAQ, and AOSC16-15 are known only from search listings [W1, W3–W6].
+- **Access method:** none found for a non-agency requester. UCR is the clerks'
+  submission channel to OSCA, with county credentials issued by OSCA
+  (unverified [W4, W5]); OSCA publishes aggregates only (Trial Court
+  Statistics, January 1986 through June 2025, verified [W8]).
+- **Fields:** reportedly case events and the primary and supporting judicial
+  officers by name, with no numeric judge id (unverified [W3]).
+- **Terms, cost, rate limits, retention:** unverified.
+- **Redistribution:** aggregates `unverified`; case-level `unverified`;
+  commercial `unverified`. No request is planned: the same assignment events
+  originate in the clerk's case system and are requested from the pilot's
+  clerk.
+- **Remaining to verify:** a person reading the specification and any OSCA
+  data-request process in a browser, or a rule 2.420(m) request to OSCA
+  (inventory "Open questions" 1–2).
+
+### `fl_cjdt` — FDLE Criminal Justice Data Transparency
+
+- **Owner:** Florida Department of Law Enforcement (FDLE), from data the
+  clerks, state attorneys, public defenders, regional conflict counsel, the
+  Justice Administrative Commission, county detention facilities, and the
+  Department of Corrections report under §900.05 — verified [W12, L14].
+- **Documentation (verified 2026-10-05):** §900.05 and §943.6871, Fla. Stat.
+  (2026) [L14, L15]; the program and about pages [W12, W13]; the clerk-case
+  report page [W14]; rule 11C-11.001 (the data catalog, published only on
+  CJNet) [L20].
+- **Access method (verified):** dashboards with filtered CSV downloads of up to
+  300,000 rows and "Full Data Download" archives split into files of at most 1M
+  rows, anonymous HTTPS [W14]; the clerk-case archive answered a headers-only
+  request with 394,175,576 bytes, last modified 2026-10-05 [W15]; an API is
+  required by §943.6871(3) [L15] (its documentation is unverified).
+- **Person key (verified, by statute):** FDLE "shall create a unique identifier
+  for each criminal case received from the clerks of court which identifies the
+  person"; it "must be the same for that person in any court case" and is
+  "randomly created and may not include any portion of the person's social
+  security number or date of birth" (§943.6871(1)) [L15]; "The records are
+  linked by a unique identifier" [W13].
+- **Fields (by statute, verified; in the public download, unverified):** case
+  number; charge disposition (including "dismissal by state attorney, dismissal
+  by judge"); disposition date and type; the first-appearance pretrial release
+  determination with its conditions; dates of failures to appear; sentencing;
+  "The sentencing judge or magistrate, or their equivalent" (§900.05(2)(j),
+  (3)(a)) [L14]. No clerk item names the judge of a pretrial release or a
+  disposition.
+- **Update frequency:** monthly reporting and monthly dashboard updates [W13]
+  (the program page says "updated once daily" [W12]; which holds is
+  unverified).
+- **Coverage:** adult and treat-as-adult records only, with "no personal
+  identifying information" [W13]; from 2018 [W12]; every contributor onboarded
+  except some county detention facilities (December 2025) [W16]; per-county
+  completeness unverified.
+- **Terms:** "The department may not require a license or charge a fee to
+  access or receive information from the database" (§943.6871(3)) [L15]; "FDLE
+  does not warrant that the records provided here are comprehensive or
+  complete" [W13].
+- **Cost / rate limits:** free; none stated.
+- **Fields prohibited / sensitive:** the published data carries no personal
+  identifying information [W13]; the identifier is hashed with the pepper like
+  every source identifier; race and ethnicity, if published, go only to the
+  restricted schema.
+- **Retention:** none stated.
+- **Provenance requirements:** each archive stored immutably with its sha256,
+  the page URL, `Last-Modified`, and the retrieval time; the parser version on
+  every derived row.
+- **Redistribution:** aggregates `unverified`; case-level `unverified`;
+  commercial `unverified` — the statute bars a license or a fee for access,
+  which supports all three on its face, and request 2 asks FDLE to confirm each
+  in writing (`docs/florida/requests/florida-fdle.md`).
+- **Remaining to verify:** the public field list (the identifier, the
+  sentencing judge, the first-appearance determination); per-county
+  completeness; the cadence; the API; how sealed and expunged records leave the
+  published data — request 2.
+
+### `fl_clerks` — Florida county clerks of court
+
+- **Owner:** each county's clerk of the circuit court, custodian of the
+  county's and circuit's court records. Court records are governed by rule
+  2.420 (a request "must be in writing", no reason is required, and the
+  custodian decides the form) and the clerks' other records by chapter 119
+  [L17, L19].
+- **Candidates (2026-10-05; weighted scores out of 63 from the inventory's
+  "Selection"):**
+
+  | County (circuit) | Machine-readable route | Judge | Cross-case key | Published use terms | Cost | Score | Role |
+  |---|---|---|---|---|---|---|---|
+  | Hillsborough (13th) | Open weekly criminal name index files since 1988, free, no login (verified [H3, H4]) | "Presiding Court Officer" and division (verified [H6]) | `PID`, stability unverified; date of birth (verified [H5, H6]) | none published [H3] | free | 43 | **pilot** (request 1) |
+  | Broward (17th) | Paid REST API under a notarized agreement (verified [B1, B9]) | judicial officer per hearing, disposition, and sentence (verified names [B5]) | `BCCN`, stability unverified; date of birth [B5] | site disclaimer prohibits republication "except as permitted by law" [B11] | $0.01–$0.10 a unit [B2] | 39 | fallback 1 (request 3) |
+  | Miami-Dade (11th) | Paid daily, weekly, and monthly files kept 30 days; per-case API (verified [M1, M3, M5]) | none in the bulk files; `FiledJudge` in the per-case API [M2, M5] | `CIN` and `IDS` undefined; date of birth [M2] | case search forbids redistribution without written permission [M11] | $110 a folder a month [M1] | 36 | fallback 2 (request 4) |
+  | Alachua (8th) | $30-a-month extract service over plain HTTP; no layout [A2] | undocumented | undocumented | terms "Coming soon." [A3] | $30 a month | 25 | — |
+  | Palm Beach (15th) | Paid Excel and PDF reports; main site unreadable (HTTP 403) [P3, P8] | undocumented | undocumented | no redistribution without permission [P5] | per product | 23 | — |
+  | Duval (4th) | "bulk data reports or recurring data subscriptions" by complex request; no layout [D2] | undocumented | undocumented | site copyright notice [D10] | $35 an hour of programming [D3] | 22 | — |
+  | Pinellas (6th) | unread (Cloudflare challenge) [PI1] | unverified | unverified | unverified | unverified | 21 | — |
+  | Leon (2nd) | $25–$50 monthly reports subscription; contents unverified [LE4] | undocumented | undocumented | not "for commercial or resale purposes" [LE4] | $25–$50 a month | 19 | — |
+  | Orange (9th) | none ("not bulk data") [O3] | undocumented | undocumented | registered users: no commercial or resale use [O5] | per request | 18 | — |
+
+- **Pilot fields (Hillsborough, verified as published layouts [H5, H6]):** the
+  fixed-width readme lists "defendant name/alias, party ID, party code,
+  defendant case number, division, sex, race, date of birth, date of filing,
+  number of count, level of count, charge description, disposition code if
+  available, and disposition date if available"; the pipe-delimited README adds
+  `Uniform Case Number`, `Judge Name`, `Statute Violation`, `Offense Date`, and
+  address and driver-licence fields, and has no party id. Which layout the
+  current files carry is unverified. Sentences, bond, first appearance,
+  pretrial release, and assignment history are in neither layout.
+- **Update frequency (pilot):** weekly ("These files are refreshed weekly")
+  [H3].
+- **Fields prohibited / sensitive (pilot):** the street address and driver
+  licence are never read (the parser projects them away); race and sex go only
+  to the restricted schema; the name, the date of birth, and the `PID` reach the
+  database only as peppered hashes. Confidential values are blank in the files
+  [H6], and "Data purged from the database is also purged from the
+  Circuit/County Criminal Name Index files" [H5], so every refresh retires what
+  a later file no longer carries.
+- **Retention:** none stated.
+- **Provenance requirements:** each weekly file stored immutably with its
+  sha256, the directory URL, the file's listed date, and the retrieval time;
+  the parser version on every derived row.
+- **Redistribution:** aggregates `unverified`; case-level `unverified`;
+  commercial `unverified` for every county. Requests 1, 3, and 4 ask each clerk
+  for the three rights in writing; Hillsborough publishes no use terms, and
+  Broward's, Miami-Dade's, Palm Beach's, Leon's, and Orange's published terms
+  restrict republication or commercial use on their face (inventory
+  "Redistribution").
+- **Remaining to verify:** Hillsborough's current layout, the `PID`'s
+  stability, the layouts of the daily filings and sentencing archives, and the
+  use terms (request 1); Broward's API terms, `BCCN`, and history depth
+  (request 3); Miami-Dade's field definitions, a historical extract, and its
+  terms (request 4); Palm Beach and Pinellas by a person reading their pages.
 
 ---
 

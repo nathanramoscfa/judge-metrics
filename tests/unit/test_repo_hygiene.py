@@ -637,6 +637,7 @@ def test_bandit_configured_to_exclude_tests() -> None:
         ("data/reference/cook_sao/profile.yaml", "# "),
         ("tests/fixtures/golden/README.md", "<!-- "),
         ("docs/SYNTHETIC_DATA.md", "<!-- "),
+        ("docs/florida-data-inventory.md", "<!-- "),
         ("SECURITY.md", "<!-- "),
         ("CODE_OF_CONDUCT.md", "<!-- "),
         (".github/PULL_REQUEST_TEMPLATE.md", "<!-- "),
