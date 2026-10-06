@@ -34,6 +34,9 @@ from judgemetrics.normalization import vocabulary
 
 pytestmark = pytest.mark.unit
 
+# The version-1 fixed levels, in their version-1 order (reference first).
+V1_SEVERITY = ("misdemeanor_b", "misdemeanor_a", "felony_3", "felony_2", "felony_1")
+V1_CATEGORY = ("public_order", "traffic", "drug", "property", "financial", "weapon", "person")
 HISTORY_FEATURES = (
     "prior_cases",
     "prior_convictions",
@@ -58,7 +61,7 @@ def _feature(payload: dict[str, Any], name: str) -> dict[str, Any]:
 
 def test_the_specification_loads_and_validates() -> None:
     spec = load_spec()
-    assert spec.version == 1
+    assert spec.version == 2
     assert spec.model_version == "expected-logit-v1"
     assert [target.name for target in spec.targets] == [
         "pretrial_release",
@@ -81,6 +84,13 @@ def test_the_specification_loads_and_validates() -> None:
     severity = spec.feature("lead_severity")
     assert set(severity.fixed_levels) == set(vocabulary.values("severity"))
     assert severity.reference == "misdemeanor_b"
+    category = spec.feature("lead_category")
+    assert set(category.fixed_levels) == set(vocabulary.values("offense_category"))
+    assert category.reference == "public_order"
+    # Version 2 adds vocabulary 3's levels and keeps every version-1 level in its
+    # version-1 order, so a source without the new levels encodes as before.
+    assert [level for level in severity.fixed_levels if level in V1_SEVERITY] == list(V1_SEVERITY)
+    assert [level for level in category.fixed_levels if level in V1_CATEGORY] == list(V1_CATEGORY)
     assert spec.feature("prior_cases").fixed_levels == ("0", "1", "2", "3+", "unrecorded")
     assert spec.feature("court").data_levels and spec.feature("calendar_year").unseen == "latest"
     # Every restricted attribute is excluded through the vocabulary.

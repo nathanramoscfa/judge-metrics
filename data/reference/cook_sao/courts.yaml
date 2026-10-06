@@ -1,0 +1,177 @@
+# data/reference/cook_sao/courts.yaml
+# The jurisdiction and courts of the Cook County State's Attorney exports, and
+# every court name and courthouse (facility) value of
+# data/reference/cook_sao/profile.yaml mapped to one of them. Loaded and
+# validated by judgemetrics.ingest.cook_sao.rules (yaml.safe_load); versioned
+# in tables.yaml beside its sha256, so an edit bumps `version` there and here
+# and re-derives every row through the connector's parser version.
+#
+# The court is the Circuit Court of Cook County, whose criminal cases the
+# exports place in one of its six municipal districts (the glossary's
+# Disposition_Court_Name and Sentence_Court_Name: "District 1 - Chicago" ...
+# "District 6 - Markham"). Each district is a court here; the circuit court
+# itself is the parent court, which takes a case the exports place in no
+# single district. The facility is kept as an attribute of the row; it never
+# overrides the court name (in this release every facility agrees with the
+# court name it appears beside).
+version: 1
+documentation:
+  glossary: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf
+jurisdiction:
+  key: cook-county-il
+  name: Cook County, Illinois
+  jurisdiction_type: county
+  state_code: IL
+  fips_code: '17031'
+courts:
+  - key: cook-circuit
+    name: Circuit Court of Cook County
+    court_type: circuit
+    district: null
+    seat: null
+    parent: null
+  - key: cook-district-1
+    name: Circuit Court of Cook County, First Municipal District
+    court_type: municipal_district
+    district: 1
+    seat: Chicago
+    parent: cook-circuit
+  - key: cook-district-2
+    name: Circuit Court of Cook County, Second Municipal District
+    court_type: municipal_district
+    district: 2
+    seat: Skokie
+    parent: cook-circuit
+  - key: cook-district-3
+    name: Circuit Court of Cook County, Third Municipal District
+    court_type: municipal_district
+    district: 3
+    seat: Rolling Meadows
+    parent: cook-circuit
+  - key: cook-district-4
+    name: Circuit Court of Cook County, Fourth Municipal District
+    court_type: municipal_district
+    district: 4
+    seat: Maywood
+    parent: cook-circuit
+  - key: cook-district-5
+    name: Circuit Court of Cook County, Fifth Municipal District
+    court_type: municipal_district
+    district: 5
+    seat: Bridgeview
+    parent: cook-circuit
+  - key: cook-district-6
+    name: Circuit Court of Cook County, Sixth Municipal District
+    court_type: municipal_district
+    district: 6
+    seat: Markham
+    parent: cook-circuit
+# The court of one Dispositions or Sentencing row: its court name's.
+court_names:
+  - court_name: District 1 - Chicago
+    court: cook-district-1
+    reason: The glossary's District 1 - Chicago.
+  - court_name: District 2 - Skokie
+    court: cook-district-2
+    reason: The glossary's District 2 - Skokie.
+  - court_name: District 3 - Rolling Meadows
+    court: cook-district-3
+    reason: The glossary's District 3 - Rolling Meadows.
+  - court_name: District 4 - Maywood
+    court: cook-district-4
+    reason: The glossary's District 4 - Maywood.
+  - court_name: District 5 - Bridgeview
+    court: cook-district-5
+    reason: The glossary's District 5 - Bridgeview.
+  - court_name: District 6 - Markham
+    court: cook-district-6
+    reason: The glossary's District 6 - Markham.
+  - court_name: PROMIS
+    court: cook-circuit
+    reason: >-
+      PROMIS names the earlier case-management system the record was converted
+      from, not a district (its rows carry no courthouse either), so the case
+      is placed in no district.
+  - court_name: Traffic
+    court: cook-circuit
+    reason: >-
+      Traffic is not one of the glossary's six districts (19 Dispositions rows,
+      no courthouse), so the case is placed in no district.
+  - court_name: ''
+    court: cook-circuit
+    reason: >-
+      No court name is recorded: a district courthouse on the row decides, and
+      otherwise (no courthouse, or PROMIS, as on every such row in this
+      release) the row is placed in no district.
+# Every courthouse value, kept as an attribute; its district is the one the
+# glossary or the address places it in and agrees with the court name of every
+# row it appears on.
+facilities:
+  - facility: 26TH Street
+    court: cook-district-1
+    reason: >-
+      The George N. Leighton Criminal Court Building at 26th Street and
+      California Avenue, Chicago, one of District 1's courthouses in the
+      glossary.
+  - facility: 3605 W. Fillmore (RJCC)
+    court: cook-district-1
+    reason: >-
+      The Restorative Justice Community Court in North Lawndale, Chicago (the
+      glossary's RJCC).
+  - facility: 51st & Wentworth (Area 1)
+    court: cook-district-1
+    reason: A Chicago branch courthouse at a police area headquarters.
+  - facility: 727 E. 111th Street (Area 2)
+    court: cook-district-1
+    reason: A Chicago branch courthouse at a police area headquarters.
+  - facility: Belmont & Western (Area 3)
+    court: cook-district-1
+    reason: A Chicago branch courthouse at a police area headquarters.
+  - facility: Bridgeview Courthouse
+    court: cook-district-5
+    reason: District 5's courthouse (each of Districts 2-6 has one, the glossary says).
+  - facility: Daley Center
+    court: cook-district-1
+    reason: The Richard J. Daley Center, one of District 1's courthouses in the glossary.
+  - facility: DNU_3605 W. Fillmore St (RJCC)
+    court: cook-district-1
+    reason: >-
+      The same RJCC address under a prefix the documentation does not explain;
+      every row it appears on names District 1.
+  - facility: DV Courthouse
+    court: cook-district-1
+    reason: The Domestic Violence Court, one of District 1's courthouses in the glossary.
+  - facility: Grand & Central (Area 5)
+    court: cook-district-1
+    reason: A Chicago branch courthouse at a police area headquarters.
+  - facility: Harrison & Kedzie (Area 4)
+    court: cook-district-1
+    reason: A Chicago branch courthouse at a police area headquarters.
+  - facility: Markham Courthouse
+    court: cook-district-6
+    reason: District 6's courthouse.
+  - facility: Maywood Courthouse
+    court: cook-district-4
+    reason: District 4's courthouse.
+  - facility: PROMIS
+    court: cook-circuit
+    reason: The earlier case-management system, not a courthouse.
+  - facility: Rolling Meadows Courthouse
+    court: cook-district-3
+    reason: District 3's courthouse.
+  - facility: Skokie Courthouse
+    court: cook-district-2
+    reason: District 2's courthouse.
+  - facility: ''
+    court: null
+    reason: No courthouse is recorded; the court name decides.
+# The court of a case from its rows (Step 4 applies this; the profile shows 35
+# Dispositions cases naming two districts).
+case_court: >-
+  A case's court is the one district its Dispositions and Sentencing rows'
+  court names place it in. A case whose rows name no district takes the
+  parent court; so does a case whose rows name more than one, because the
+  exports do not say which district the case belongs to and choosing one
+  would be a guess. A facility decides only for a row whose court name is
+  blank, and no district-courthouse value appears on such a row in this
+  release.

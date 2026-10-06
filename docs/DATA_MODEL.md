@@ -35,7 +35,13 @@ created by the Alembic revisions under `alembic/versions/`:
 - `0008_restricted_schema` — the PostgreSQL schema `restricted` with
   `restricted.party_attribute` and grants that give the app role no
   `USAGE`, and `case_party.source_row_id` rewritten to the party's ordinal
-  within its case (below, "The restricted schema").
+  within its case (below, "The restricted schema");
+- `0009_outcome_models` — the `outcome_model` catalogue of fitted
+  expected-outcome models (`SELECT` for the app role, DML for the ingest
+  role; "Outcome model specification" below);
+- `0010_adjusted_observations` — `metric_observation.outcome_model_id`,
+  `pooling_weight`, and `suppression_reason` with its two check
+  constraints (the observed-to-expected ratios).
 
 `uv run alembic check` must report no drift between the models and the
 head; `alembic/env.py` sets `include_schemas` (filtered to `public` and
@@ -182,7 +188,7 @@ stay free text until their registries exist; the FJC connector uses:
 ## Vocabularies
 
 The case-level vocabulary is versioned in
-`data/reference/case_vocabulary.yaml` (`version: 2`), loaded once by
+`data/reference/case_vocabulary.yaml` (`version: 3`), loaded once by
 `judgemetrics.normalization.vocabulary` (`yaml.safe_load`) and equal to
 the constants of `judgemetrics.synthetic.vocabulary` (unit test). Every
 connector maps its source values onto these kinds before a draft leaves
@@ -203,11 +209,60 @@ values appear only in the `restricted` schema, are never a model feature
 `restricted_attribute`, so no module under `metrics/` names one), and are
 read only by the aggregate fairness analysis. `unknown` is a listed value
 only where the brief allows an explicit unknown (`actor_type`,
-`judicial_discretion_classification`) and in `age_band`, where it names an
+`judicial_discretion_classification`), in `age_band`, where it names an
 absent age (the synthetic source withholds the age with the date of
-birth); the `unknown_category_measured` check counts it per field.
-`normalization/age_bands.py` maps an age at filing (a bounded integer,
-0-130; anything else rejects the row) onto `age_band`.
+birth), and in `race` and `gender` (version 3), where it names a blank
+source value or the source's own "Unknown"; the `unknown_category_measured`
+check counts it per field. `normalization/age_bands.py` maps an age at
+filing (a bounded integer, 0-130; anything else rejects the row) onto
+`age_band`.
+
+Version 3 (Phase 5 Step 3) adds exactly the canonical values the Cook
+County rule tables (`data/reference/cook_sao/`, docs/ARCHITECTURE.md "Cook
+County source") use, and changes no existing value or order:
+
+- `severity`: the Illinois classes `felony_m` (first-degree murder, the
+  glossary's Class M), `felony_x`, `felony_4`, `misdemeanor_c`,
+  `petty_offense`, and `unclassified` (a class the source does not state or
+  documents nowhere), placed most severe first around the synthetic five,
+  which keep their relative order (`felony_1` is Illinois Class 1);
+- `offense_category`: `other` (the source's own catch-all) and
+  `unclassified` (a case the source never categorized);
+- `charge_disposition`: `superseded` and `transferred`, the two non-final
+  states of a charge that left the case without an outcome on its merits
+  (a charge still open in the case is `pending`); and the new kind
+  `final_charge_disposition` (`dismissed`, `acquitted`, `convicted_plea`,
+  `convicted_verdict`), the dispositions that end a charge on its merits:
+  the disposition distribution lists these alone since this version, and
+  Phase 5 Step 5 makes the disposed-charge and disposed-case populations
+  read them;
+- `event_type`: `preliminary_hearing`, `indictment`, `mistrial`,
+  `transfer`, `appeal`, `diversion_completed`, `diversion_failed`;
+  `decision_type`: `charging` (the State's felony review) and `diversion`;
+- `position`: `unstated`, a judge whose source states no rank;
+- `sentence_component`: `conditional_discharge`, `supervision`, `death`,
+  `treatment`, `program`, `home_detention`; and the new kinds
+  `sentence_phase` (`original`, `probation_violation`, `amended`,
+  `resentenced`, `remanded`) and `sentence_term_flag` (`life`, `death`,
+  `term_unstated`, `unit_not_a_term`, `unparseable_term`, `missing_term`,
+  `implausible_term`), which `sentence_components` carries;
+- the new kinds `charging_outcome` (`approved`, `rejected`, `continued`),
+  `diversion_stage` (`pre_plea`, `post_plea`), and `judicial_ruling`
+  (`suppression_granted`, `no_probable_cause`, `conviction_vacated`,
+  `warrant_quashed`: a court's ruling recorded beside a prosecutor's
+  dismissal, never counted as a judicial dismissal);
+- the restricted kinds `race` and `gender`, joined to
+  `restricted_attribute`: the Cook County source's own labels, letter case
+  and punctuation normalized but not recoded (`ASIAN` and `Asian` are
+  `asian`; `CAUCASIAN` and `White`, `HISPANIC` and `Latinx`, `Unknown
+  Gender` and `Unknown` stay distinct), `unknown` for a blank. A recoding
+  is a methodological choice the Phase 6 legal review owns.
+
+The generator draws, ranks, and codes only the synthetic values
+(`synthetic.vocabulary.SYNTHETIC_SEVERITIES` and the synthetic offense
+table), and the truth's disposition distribution iterates
+`FINAL_CHARGE_DISPOSITIONS`, so the golden fixture and the demo seed are
+byte-identical under versions 2 and 3.
 
 Phase 5's real-source connectors map onto this vocabulary and never
 extend it silently: adding, renaming, or removing a value bumps
@@ -224,17 +279,18 @@ extend it silently: adding, renaming, or removing a value bumps
 | `pretrial_release.release_type`, `.conditions` keys | `release_type`, `release_condition` |
 | `sentence.sentence_components` keys     | `sentence_component`                  |
 | `justice_event.event_type`              | `justice_event_type`                  |
-| `judge_service.position_type` (synthetic) | `position`                          |
+| `judge_service.position_type` (synthetic; Cook County `unstated`) | `position` |
 | `source.observable_outcomes` entries    | `justice_event_type`                  |
 | `restricted.party_attribute.attribute`  | `restricted_attribute`                |
-| `restricted.party_attribute.value`      | the kind the attribute names (`age_band`, `synthetic_group`) |
+| `restricted.party_attribute.value`      | the kind the attribute names (`age_band`, `synthetic_group`, `race`, `gender`) |
 
 ### Metric registry
 
 `data/reference/metric_registry.yaml` (`version: 2`,
-`methodology_version: "0.3"` since Phase 4 Step 3 added the
-observed-to-expected ratios; `0.2` deferred exposure by every
-incarceration term of the person) is the second versioned reference file:
+`methodology_version: "1.0"` since Phase 4 Step 4 published the adjusted
+statistics' methodology; `0.3` added the observed-to-expected ratios,
+`0.2` deferred exposure by every incarceration term of the person) is the
+second versioned reference file:
 the contract every published number is computed against
 (`docs/METHODOLOGY.md` is rendered from it; `docs/ARCHITECTURE.md`
 "Metrics engine"). `judgemetrics.metrics.registry.load_registry` loads it
@@ -275,8 +331,12 @@ Phase 4 Step 5, with their `adjustment` on the definition (docs/API.md
 
 ### Outcome model specification
 
-`data/reference/outcome_model.yaml` (`version: 1`, `model_version:
-expected-logit-v1`, Phase 4 Step 2) is the third versioned reference file:
+`data/reference/outcome_model.yaml` (`version: 2`, `model_version:
+expected-logit-v1`, Phase 4 Step 2; version 2, Phase 5 Step 3, lists case
+vocabulary 3's new severities and offense categories as levels of
+`lead_severity` and `lead_category`, each reference and every earlier
+level's order unchanged, so a source without them encodes as before) is the
+third versioned reference file:
 the contract every risk-adjusted figure is computed against
 (`docs/ARCHITECTURE.md` "Risk adjustment"). `metrics.adjustment.spec.load_spec`
 loads it once with `yaml.safe_load` and validates it: the targets
@@ -416,7 +476,7 @@ scrubber's denylist), and never a model feature. Its one table:
 |--------------------|---------------|-------|
 | `id`               | UUID          | `gen_random_uuid()` |
 | `case_party_id`    | UUID          | → `public.case_party.id`, `ON DELETE CASCADE` |
-| `attribute`        | text          | a `restricted_attribute` value (`age_band`, `synthetic_group`) |
+| `attribute`        | text          | a `restricted_attribute` value (`age_band`, `synthetic_group`; from vocabulary 3 `race`, `gender`) |
 | `value`            | text          | a value of the attribute's kind; the source's raw value (an age, a birth date) never reaches it |
 | `source_record_id` | UUID          | → `source_record.id`; indexed (`ix_party_attribute_source_record_id`) |
 | `created_at`, `updated_at` | timestamptz | server-set |

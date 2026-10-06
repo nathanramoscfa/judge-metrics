@@ -15,8 +15,11 @@ anyway).
    values of the restricted attributes of the decision's defendant case
    party (decision → its case and person → ``case_party`` → the attribute
    rows). A decision whose party carries two different values of one
-   attribute (two merged participants of one case) has none for it.
-2. **Per model and attribute**, the pure ``calibration_cells`` aggregates
+   attribute (two merged participants of one case) has none for it. An
+   attribute no index event has a value of — one the models' source does
+   not record, as the synthetic source records no race or gender — yields
+   no cells at all rather than a withheld cell per vocabulary value.
+2. **Per model and recorded attribute**, the pure ``calibration_cells`` aggregates
    the index events of each vocabulary value: their number, the observed
    outcomes ``O``, the expected count ``E`` (the sum of the predicted
    probabilities from the published coefficients — the model never reads
@@ -277,6 +280,7 @@ def subgroup_calibration(
         for decision_id, attribute, value, distinct_values in result:
             if int(distinct_values) == 1:
                 known[(str(decision_id), str(attribute))] = str(value)
+    recorded = {attribute for _, attribute in known}
     cells: list[SubgroupCell] = []
     for model in models:
         design = model.design
@@ -287,7 +291,7 @@ def subgroup_calibration(
             else None
         )
         draws = [] if predictions is None else list(replicate_draws(design, parameters))
-        for attribute in attributes:
+        for attribute in (name for name in attributes if name in recorded):
             figures = calibration_cells(
                 predictions,
                 design.outcome,

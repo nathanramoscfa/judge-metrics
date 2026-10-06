@@ -1,0 +1,539 @@
+source_string,normalized,status,judge_key,rule,candidates,reason
+Abishi C Cunningham,abishi c cunningham,resolved,abishi-c-cunningham,exact,,
+Adam Donald Bourgeois,adam donald bourgeois,resolved,adam-donald-bourgeois,exact,,
+Adrienne  Davis,adrienne davis,resolved,adrienne-davis,spacing_or_case,,differs from the display name in spacing or letter case only
+Aileen  Bhandari,aileen bhandari,resolved,aileen-bhandari,spacing_or_case,,differs from the display name in spacing or letter case only
+Aleksandra  Gillespie,aleksandra gillespie,resolved,aleksandra-gillespie,spacing_or_case,,differs from the display name in spacing or letter case only
+Alfred L Levinson,alfred l levinson,resolved,alfred-l-levinson,exact,,
+Alfredo  Maldonado,alfredo maldonado,resolved,alfredo-maldonado,spacing_or_case,,differs from the display name in spacing or letter case only
+Allen F Murphy,allen f murphy,resolved,allen-f-murphy,exact,,
+Andreana A Turano,andreana a turano,resolved,andreana-a-turano,exact,,
+Andrew  Berman,andrew berman,resolved,andrew-berman,spacing_or_case,,differs from the display name in spacing or letter case only
+Angela Munari Petrone,angela munari petrone,resolved,angela-munari-petrone,exact,,
+Anita  Rivkin-Carothers,anita rivkin carothers,resolved,anita-rivkin-carothers,spacing_or_case,,differs from the display name in spacing or letter case only
+Anjana  Hansen,anjana hansen,resolved,anjana-hansen,spacing_or_case,,differs from the display name in spacing or letter case only
+Ankur  Srivastava,ankur srivastava,resolved,ankur-srivastava,spacing_or_case,,differs from the display name in spacing or letter case only
+Ann  Houser,ann houser,resolved,ann-houser,spacing_or_case,,differs from the display name in spacing or letter case only
+Anna Helen Demacopoulos,anna helen demacopoulos,resolved,anna-helen-demacopoulos,exact,,
+Anne  Collins,anne collins,resolved,anne-collins,spacing_or_case,,differs from the display name in spacing or letter case only
+Annie  ODONNELL,annie odonnell,resolved,annie-odonnell,spacing_or_case,,differs from the display name in spacing or letter case only
+Anthony A Iosco,anthony a iosco,resolved,anthony-a-iosco,exact,,
+Anthony C Kyriakopoulos,anthony c kyriakopoulos,resolved,anthony-c-kyriakopoulos,exact,,
+Anthony John Calabrese,anthony john calabrese,resolved,anthony-john-calabrese,exact,,
+Anthony L Burrell,anthony l burrell,resolved,anthony-l-burrell,exact,,
+"Araujo, Mauricio",araujo mauricio,resolved,mauricio-araujo,family_given_order,,"the source writes the family name first, after a comma"
+Arnette R Hubbard,arnette r hubbard,resolved,arnette-r-hubbard,exact,,
+Arthur C Perivolidis,arthur c perivolidis,resolved,arthur-c-perivolidis,exact,,
+Arthur F Hill,arthur f hill,resolved,arthur-f-hill,exact,,
+Arthur Wesley Willis,arthur wesley willis,resolved,arthur-wesley-willis,exact,,
+Barbara Lynette Dawkins,barbara lynette dawkins,resolved,barbara-lynette-dawkins,exact,,
+Beatriz  Santiago,beatriz santiago,resolved,beatriz-santiago,spacing_or_case,,differs from the display name in spacing or letter case only
+Bertina E Lampkin,bertina e lampkin,resolved,bertina-e-lampkin,exact,,
+Bettina M Gembala,bettina m gembala,resolved,bettina-m-gembala,exact,,
+Brian K Flaherty,brian k flaherty,resolved,brian-k-flaherty,exact,,
+Bridget Jane Hughes,bridget jane hughes,resolved,bridget-jane-hughes,exact,,
+Brigid Mary McGrath,brigid mary mcgrath,resolved,brigid-mary-mcgrath,exact,,
+"Byrne, Thomas",byrne thomas,resolved,thomas-byrne,family_given_order,,"the source writes the family name first, after a comma"
+C  Mc Sweeney-Moore,c mc sweeney moore,unresolved,,given_initial_only,colleen-mcsweeney-moore,"the given name is an initial, which no allowed rule resolves; the candidate shares the family name and the initial"
+Callie Lynn Baird,callie lynn baird,resolved,callie-lynn-baird,exact,,
+Camille E Willis,camille e willis,resolved,camille-e-willis,exact,,
+Candace Jean Fabri,candace jean fabri,resolved,candace-jean-fabri,exact,,
+Carl Anthony Walker,carl anthony walker,resolved,carl-anthony-walker,exact,,
+Carl B Boyd,carl b boyd,resolved,carl-b-boyd,exact,,
+Carmen  Aguilar,carmen aguilar,resolved,carmen-aguilar,spacing_or_case,,differs from the display name in spacing or letter case only
+Carol A Kelly,carol a kelly,resolved,carol-a-kelly,exact,,
+Carol A Kipperman,carol a kipperman,resolved,carol-a-kipperman,exact,,
+Carol M Howard,carol m howard,resolved,carol-m-howard,exact,,
+Carol Pearce McCarthy,carol pearce mccarthy,resolved,carol-pearce-mccarthy,exact,,
+Caroline  Glennon-Goodman,caroline glennon goodman,resolved,caroline-glennon-goodman,spacing_or_case,,differs from the display name in spacing or letter case only
+Carolyn  Quinn,carolyn quinn,resolved,carolyn-quinn,spacing_or_case,,differs from the display name in spacing or letter case only
+Casandra  Lewis,casandra lewis,resolved,casandra-lewis,spacing_or_case,,differs from the display name in spacing or letter case only
+Catherine Marie Haberkorn,catherine marie haberkorn,resolved,catherine-marie-haberkorn,exact,,
+Charles  Beach,charles beach,resolved,charles-beach,spacing_or_case,,differs from the display name in spacing or letter case only
+Charles M Loverde,charles m loverde,resolved,charles-m-loverde,exact,,
+Charles P Burns,charles p burns,resolved,charles-p-burns,exact,,
+Cheryl D Cesario,cheryl d cesario,resolved,cheryl-d-cesario,exact,,
+Cheyrl D Ingram,cheyrl d ingram,resolved,cheyrl-d-ingram,exact,,
+Christopher J Donnelly,christopher j donnelly,resolved,christopher-j-donnelly,exact,,
+Christy S Berkos,christy s berkos,resolved,christy-s-berkos,exact,,
+Claudia Grace Conlon,claudia grace conlon,resolved,claudia-grace-conlon,exact,,
+Clayton Jay Crane,clayton jay crane,resolved,clayton-jay-crane,exact,,
+Colleen Ann Hyland,colleen ann hyland,resolved,colleen-ann-hyland,exact,,
+Colleen F Sheehan,colleen f sheehan,resolved,colleen-f-sheehan,exact,,
+Colleen Mcsweeney Moore,colleen mcsweeney moore,resolved,colleen-mcsweeney-moore,exact,,
+Curtis  Heaston,curtis heaston,resolved,curtis-heaston,spacing_or_case,,differs from the display name in spacing or letter case only
+Cynthia  Ramirez,cynthia ramirez,resolved,cynthia-ramirez,spacing_or_case,,differs from the display name in spacing or letter case only
+Cyril  Watson,cyril watson,resolved,cyril-watson,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel  Darcy,daniel darcy,resolved,daniel-darcy,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel  Gallagher,daniel gallagher,resolved,daniel-gallagher,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel  Kelley,daniel kelley,resolved,daniel-kelley,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel  Peters,daniel peters,resolved,daniel-peters,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel  Tiernan,daniel tiernan,resolved,daniel-tiernan,spacing_or_case,,differs from the display name in spacing or letter case only
+Daniel E Jordan,daniel e jordan,resolved,daniel-e-jordan,exact,,
+Daniel E Maloney,daniel e maloney,resolved,daniel-e-maloney,exact,,
+Daniel J O'Brien,daniel j o brien,resolved,daniel-j-o-brien,exact,,
+Daniel J Pierce,daniel j pierce,resolved,daniel-j-pierce,exact,,
+Daniel J Sullivan,daniel j sullivan,resolved,daniel-j-sullivan,exact,,
+Daniel Joseph Lynch,daniel joseph lynch,resolved,daniel-joseph-lynch,exact,,
+Daniel Patrick Brennan,daniel patrick brennan,resolved,daniel-patrick-brennan,exact,,
+Daniel S Weber,daniel s weber,resolved,daniel-s-weber,exact,,
+Daniel T Gillespie,daniel t gillespie,resolved,daniel-t-gillespie,exact,,
+Darren  Bowden,darren bowden,unresolved,,given_name_variant,darron-edward-bowden,the given name 'Darren' differs from 'Darron' of 'Darron Edward Bowden'; conflicting given names are never merged
+Darron Edward Bowden,darron edward bowden,resolved,darron-edward-bowden,exact,,
+Darryl B Simko,darryl b simko,resolved,darryl-b-simko,exact,,
+Daryl  Jones,daryl jones,resolved,daryl-jones,spacing_or_case,,differs from the display name in spacing or letter case only
+David  Delgado,david delgado,resolved,david-delgado,spacing_or_case,,differs from the display name in spacing or letter case only
+David  Erickson,david erickson,resolved,david-erickson,spacing_or_case,,differs from the display name in spacing or letter case only
+David  Kelly,david kelly,resolved,david-kelly,spacing_or_case,,differs from the display name in spacing or letter case only
+David  Linn,david linn,resolved,david-linn,spacing_or_case,,differs from the display name in spacing or letter case only
+David  Navarro,david navarro,resolved,david-navarro,spacing_or_case,,differs from the display name in spacing or letter case only
+David A Skryd,david a skryd,resolved,david-a-skryd,exact,,
+David P Sterba,david p sterba,resolved,david-p-sterba,exact,,
+Deborah Mary Dooling,deborah mary dooling,resolved,deborah-mary-dooling,exact,,
+Debra Ann Seaton,debra ann seaton,resolved,debra-ann-seaton,exact,,
+Deidre  Dyer,deidre dyer,resolved,deidre-dyer,spacing_or_case,,differs from the display name in spacing or letter case only
+Demetrios G Kottaras,demetrios g kottaras,resolved,demetrios-g-kottaras,exact,,
+Denise Kathleen Filan,denise kathleen filan,resolved,denise-kathleen-filan,exact,,
+Dennis A Dernbach,dennis a dernbach,resolved,dennis-a-dernbach,exact,,
+Dennis J Porter,dennis j porter,resolved,dennis-j-porter,exact,,
+Diane Gordon Cannon,diane gordon cannon,resolved,diane-gordon-cannon,exact,,
+Domenica A Stephenson,domenica a stephenson,resolved,domenica-a-stephenson,exact,,
+Donald  Lowery,donald lowery,resolved,donald-lowery,spacing_or_case,,differs from the display name in spacing or letter case only
+Donald D Panarese,donald d panarese,resolved,donald-d-panarese,exact,,
+Donald E Joyce,donald e joyce,resolved,donald-e-joyce,exact,,
+Donald J O'Brien,donald j o brien,resolved,donald-j-o-brien,exact,,
+Donald R Havis,donald r havis,resolved,donald-r-havis,exact,,
+Donna  Phelps Felton,donna phelps felton,resolved,donna-phelps-felton,spacing_or_case,,differs from the display name in spacing or letter case only
+Donnelly,donnelly,ambiguous,,family_name_only,christopher-j-donnelly;thomas-more-donnelly,"the source gives a family name only, which no allowed rule resolves; more than one judge shares it"
+Dorothy F Jones,dorothy f jones,resolved,dorothy-f-jones,exact,,
+Dorothy Kirie Kinnaird,dorothy kirie kinnaird,resolved,dorothy-kirie-kinnaird,exact,,
+Doug  Simpson,doug simpson,resolved,doug-simpson,spacing_or_case,,differs from the display name in spacing or letter case only
+Douglas J Simpson,douglas j simpson,unresolved,,given_name_variant,doug-simpson,the given name 'Douglas' differs from 'Doug' of 'Doug Simpson'; conflicting given names are never merged
+ELLEN  MANDELTORT,ellen mandeltort,resolved,ellen-mandeltort,spacing_or_case,,differs from the display name in spacing or letter case only
+Earl  Strayhorn,earl strayhorn,resolved,earl-strayhorn,spacing_or_case,,differs from the display name in spacing or letter case only
+Earl B Hoffenberg,earl b hoffenberg,resolved,earl-b-hoffenberg,exact,,
+Eddie  Stephens,eddie stephens,resolved,eddie-stephens,spacing_or_case,,differs from the display name in spacing or letter case only
+Edmund  Ponce De Leon,edmund ponce de leon,resolved,edmund-ponce-de-leon,spacing_or_case,,differs from the display name in spacing or letter case only
+Edward A Antonietti,edward a antonietti,resolved,edward-a-antonietti,exact,,
+Edward James Maloney,edward james maloney,resolved,edward-james-maloney,exact,,
+Edward M Fiala,edward m fiala,resolved,edward-m-fiala,exact,,
+Edward N Pietrucha,edward n pietrucha,resolved,edward-n-pietrucha,exact,,
+Edward S Harmening,edward s harmening,resolved,edward-s-harmening,exact,,
+Edwin A Gausselin,edwin a gausselin,resolved,edwin-a-gausselin,exact,,
+Eileen  O'Neill Burke,eileen o neill burke,resolved,eileen-o-neill-burke,spacing_or_case,,differs from the display name in spacing or letter case only
+Eileen M Brewer,eileen m brewer,resolved,eileen-m-brewer,exact,,
+Elizabeth  Ciaccia-Lezza,elizabeth ciaccia lezza,resolved,elizabeth-ciaccia-lezza,spacing_or_case,,differs from the display name in spacing or letter case only
+Elizabeth  Hayes,elizabeth hayes,resolved,elizabeth-hayes,spacing_or_case,,differs from the display name in spacing or letter case only
+Elizabeth Loredo Rivera,elizabeth loredo rivera,resolved,elizabeth-loredo-rivera,exact,,
+Eric M Sauceda,eric m sauceda,resolved,eric-m-sauceda,exact,,
+Erica L Reddick,erica l reddick,resolved,erica-l-reddick,exact,,
+Erika  Orr,erika orr,resolved,erika-orr,spacing_or_case,,differs from the display name in spacing or letter case only
+Erin Haggerty Antonietti,erin haggerty antonietti,resolved,erin-haggerty-antonietti,exact,,
+Eulalia V. De La Rosa,eulalia v de la rosa,resolved,eulalia-v-de-la-rosa,exact,,
+Evelyn B Clay,evelyn b clay,resolved,evelyn-b-clay,exact,,
+F E Morrissey,f e morrissey,unresolved,,given_initial_only,,"the given name is an initial, which no allowed rule resolves; no judge shares the family name and the initial"
+FLOOD,flood,unresolved,,family_name_only,lawrence-edward-flood,"the source gives a family name only, which no allowed rule resolves"
+Francis  Mahon,francis mahon,resolved,francis-mahon,spacing_or_case,,differs from the display name in spacing or letter case only
+Francis X Golniewicz,francis x golniewicz,resolved,francis-x-golniewicz,exact,,
+Frank  Castiglione,frank castiglione,resolved,frank-castiglione,spacing_or_case,,differs from the display name in spacing or letter case only
+Frank  Deboni,frank deboni,resolved,frank-deboni,spacing_or_case,,differs from the display name in spacing or letter case only
+Frank  Petrone,frank petrone,resolved,frank-petrone,spacing_or_case,,differs from the display name in spacing or letter case only
+Frank G Zelezinski,frank g zelezinski,resolved,frank-g-zelezinski,exact,,
+Frank John Andreou,frank john andreou,resolved,frank-john-andreou,exact,,
+Frank W Meekins,frank w meekins,resolved,frank-w-meekins,exact,,
+Fred  Suria,fred suria,resolved,fred-suria,spacing_or_case,,differs from the display name in spacing or letter case only
+Garritt E Howard,garritt e howard,resolved,garritt-e-howard,exact,,
+Gary  Howard,gary howard,resolved,gary-howard,spacing_or_case,,differs from the display name in spacing or letter case only
+Gary L Brownfield,gary l brownfield,resolved,gary-l-brownfield,exact,,
+Geary W Kull,geary w kull,resolved,geary-w-kull,exact,,
+George A Higgins,george a higgins,resolved,george-a-higgins,exact,,
+Gerald T Rohrer,gerald t rohrer,resolved,gerald-t-rohrer,exact,,
+Geraldine A D'Souza,geraldine a d souza,resolved,geraldine-a-d-souza,exact,,
+Gerardo  Tristan,gerardo tristan,resolved,gerardo-tristan,spacing_or_case,,differs from the display name in spacing or letter case only
+Gilbert J Grossi,gilbert j grossi,resolved,gilbert-j-grossi,exact,,
+Gloria  Chevere,gloria chevere,resolved,gloria-chevere,spacing_or_case,,differs from the display name in spacing or letter case only
+Grace G Dickler,grace g dickler,resolved,grace-g-dickler,exact,,
+Gregory J Wojkowski,gregory j wojkowski,resolved,gregory-j-wojkowski,exact,,
+Gregory M O'Brien,gregory m o brien,resolved,gregory-m-o-brien,exact,,
+Gregory Paul Vazquez,gregory paul vazquez,resolved,gregory-paul-vazquez,exact,,
+Gregory Robert Ginex,gregory robert ginex,resolved,gregory-robert-ginex,exact,,
+Gunning  Hobart,gunning hobart,resolved,gunning-hobart,spacing_or_case,,differs from the display name in spacing or letter case only
+Henry R Simmons,henry r simmons,resolved,henry-r-simmons,exact,,
+Howard L Fink,howard l fink,resolved,howard-l-fink,exact,,
+Hyman I Riebman,hyman i riebman,resolved,hyman-i-riebman,exact,,
+Israel A Desierto,israel a desierto,resolved,israel-a-desierto,exact,,
+J  HYNES,j hynes,unresolved,,given_initial_only,john-joseph-hynes,"the given name is an initial, which no allowed rule resolves; the candidate shares the family name and the initial"
+Jack  Hagerty,jack hagerty,resolved,jack-hagerty,spacing_or_case,,differs from the display name in spacing or letter case only
+Jackie  Portman,jackie portman,resolved,jackie-portman,spacing_or_case,,differs from the display name in spacing or letter case only
+James  Moran,james moran,resolved,james-moran,spacing_or_case,,differs from the display name in spacing or letter case only
+James  Novy,james novy,resolved,james-novy,spacing_or_case,,differs from the display name in spacing or letter case only
+James A Condon,james a condon,resolved,james-a-condon,exact,,
+James A Shapiro,james a shapiro,resolved,james-a-shapiro,exact,,
+James A Zafiratos,james a zafiratos,resolved,james-a-zafiratos,exact,,
+James B Linn,james b linn,resolved,james-b-linn,exact,,
+James C Murray,james c murray,resolved,james-c-murray,exact,,
+James D Egan,james d egan,resolved,james-d-egan,exact,,
+James J Gavin,james j gavin,resolved,james-j-gavin,exact,,
+James J Heyda,james j heyda,resolved,james-j-heyda,exact,,
+James L Henry,james l henry,resolved,james-l-henry,exact,,
+James L Rhodes,james l rhodes,resolved,james-l-rhodes,exact,,
+James M Schreier,james m schreier,resolved,james-m-schreier,exact,,
+James Michael Obbish,james michael obbish,resolved,james-michael-obbish,exact,,
+James N Karahalios,james n karahalios,resolved,james-n-karahalios,exact,,
+James N O'Hara,james n o hara,resolved,james-n-o-hara,exact,,
+James P Etchingham,james p etchingham,resolved,james-p-etchingham,exact,,
+James P Flannery,james p flannery,resolved,james-p-flannery,exact,,
+James P McCarthy,james p mccarthy,resolved,james-p-mccarthy,exact,,
+James P Mccourt,james p mccourt,resolved,james-p-mccourt,exact,,
+James P O'Malley,james p o malley,resolved,james-p-o-malley,exact,,
+James Patrick Murphy,james patrick murphy,resolved,james-patrick-murphy,exact,,
+James R Brown,james r brown,resolved,james-r-brown,exact,,
+James R Carroll,james r carroll,resolved,james-r-carroll,exact,,
+James R Epstein,james r epstein,resolved,james-r-epstein,exact,,
+James W Kennedy,james w kennedy,resolved,james-w-kennedy,exact,,
+Jamie G Dickler,jamie g dickler,resolved,jamie-g-dickler,exact,,
+Janet Adams Brosnahan,janet adams brosnahan,resolved,janet-adams-brosnahan,exact,,
+Jeanine  Wrenn,jeanine wrenn,resolved,jeanine-wrenn,spacing_or_case,,differs from the display name in spacing or letter case only
+Jeanne Marie Reynolds,jeanne marie reynolds,resolved,jeanne-marie-reynolds,exact,,
+Jeffery G Chrones,jeffery g chrones,resolved,jeffery-g-chrones,exact,,
+Jeffrey A Malak,jeffrey a malak,resolved,jeffrey-a-malak,exact,,
+Jeffrey L Warnick,jeffrey l warnick,resolved,jeffrey-l-warnick,exact,,
+Jennifer  Duncan-Brice,jennifer duncan brice,resolved,jennifer-duncan-brice,spacing_or_case,,differs from the display name in spacing or letter case only
+Jennifer Frances Coleman,jennifer frances coleman,resolved,jennifer-frances-coleman,exact,,
+Jerome Celis Barrido,jerome celis barrido,resolved,jerome-celis-barrido,exact,,
+Jesse  Outlaw,jesse outlaw,resolved,jesse-outlaw,spacing_or_case,,differs from the display name in spacing or letter case only
+Jill  Marisie,jill marisie,resolved,jill-marisie,spacing_or_case,,differs from the display name in spacing or letter case only
+Jim  Ryan,jim ryan,resolved,jim-ryan,spacing_or_case,,differs from the display name in spacing or letter case only
+Joan  Corboy,joan corboy,resolved,joan-corboy,spacing_or_case,,differs from the display name in spacing or letter case only
+Joan Margaret O'Brien,joan margaret o brien,resolved,joan-margaret-o-brien,exact,,
+Joanne  Rosado,joanne rosado,resolved,joanne-rosado,spacing_or_case,,differs from the display name in spacing or letter case only
+Joel L Greenblatt,joel l greenblatt,resolved,joel-l-greenblatt,exact,,
+John  Brady,john brady,resolved,john-brady,spacing_or_case,,differs from the display name in spacing or letter case only
+John  Fairman,john fairman,resolved,john-fairman,spacing_or_case,,differs from the display name in spacing or letter case only
+John  Fotopoulos,john fotopoulos,resolved,john-fotopoulos,spacing_or_case,,differs from the display name in spacing or letter case only
+John  Mahoney,john mahoney,resolved,john-mahoney,spacing_or_case,,differs from the display name in spacing or letter case only
+John  Mannion,john mannion,resolved,john-mannion,spacing_or_case,,differs from the display name in spacing or letter case only
+John  Morrissey,john morrissey,resolved,john-morrissey,spacing_or_case,,differs from the display name in spacing or letter case only
+John A Wasilewski,john a wasilewski,resolved,john-a-wasilewski,exact,,
+John B Grogan,john b grogan,resolved,john-b-grogan,exact,,
+John C Griffin,john c griffin,resolved,john-c-griffin,exact,,
+John D Tourtelot,john d tourtelot,resolved,john-d-tourtelot,exact,,
+John D Turner,john d turner,resolved,john-d-turner,exact,,
+John F Lyke,john f lyke,resolved,john-f-lyke,exact,,
+John J Fleming,john j fleming,resolved,john-j-fleming,exact,,
+John J Moran,john j moran,resolved,john-j-moran,exact,,
+John J Scotillo,john j scotillo,resolved,john-j-scotillo,exact,,
+John Joseph Hynes,john joseph hynes,resolved,john-joseph-hynes,exact,,
+John K Madden,john k madden,resolved,john-k-madden,exact,,
+John Owen Steele,john owen steele,resolved,john-owen-steele,exact,,
+John P Kirby,john p kirby,resolved,john-p-kirby,exact,,
+John T Doody,john t doody,resolved,john-t-doody,exact,,
+John Wellington Wilson,john wellington wilson,resolved,john-wellington-wilson,exact,,
+Jorge Luis Alonso,jorge luis alonso,resolved,jorge-luis-alonso,exact,,
+Joseph  Cataldo,joseph cataldo,resolved,joseph-cataldo,spacing_or_case,,differs from the display name in spacing or letter case only
+Joseph  Romano,joseph romano,resolved,joseph-romano,spacing_or_case,,differs from the display name in spacing or letter case only
+Joseph  Schwaba,joseph schwaba,resolved,joseph-schwaba,spacing_or_case,,differs from the display name in spacing or letter case only
+Joseph D Panarese,joseph d panarese,resolved,joseph-d-panarese,exact,,
+Joseph G Kazmierski,joseph g kazmierski,resolved,joseph-g-kazmierski,exact,,
+Joseph J Urso,joseph j urso,resolved,joseph-j-urso,exact,,
+Joseph M Gump,joseph m gump,resolved,joseph-m-gump,exact,,
+Joseph M Macellaio,joseph m macellaio,resolved,joseph-m-macellaio,exact,,
+Joseph M Sconza,joseph m sconza,resolved,joseph-m-sconza,exact,,
+Joseph Michael Claps,joseph michael claps,resolved,joseph-michael-claps,exact,,
+Joy Viriginia Cunningham,joy viriginia cunningham,resolved,joy-viriginia-cunningham,exact,,
+Joyce Marie Murphy Gorman,joyce marie murphy gorman,resolved,joyce-marie-murphy-gorman,exact,,
+Judy  Mitchell-Davis,judy mitchell davis,resolved,judy-mitchell-davis,spacing_or_case,,differs from the display name in spacing or letter case only
+Karen  Tobin,karen tobin,resolved,karen-tobin,spacing_or_case,,differs from the display name in spacing or letter case only
+Karen J Bowes,karen j bowes,resolved,karen-j-bowes,exact,,
+Karen L O'Malley,karen l o malley,resolved,karen-l-o-malley,exact,,
+Kate  Moreland,kate moreland,resolved,kate-moreland,spacing_or_case,,differs from the display name in spacing or letter case only
+Kathaleen  Lanahan,kathaleen lanahan,resolved,kathaleen-lanahan,spacing_or_case,,differs from the display name in spacing or letter case only
+Kathleen Ann Panozzo,kathleen ann panozzo,resolved,kathleen-ann-panozzo,exact,,
+Kathleen G Kennedy,kathleen g kennedy,resolved,kathleen-g-kennedy,exact,,
+Kathleen M McGury,kathleen m mcgury,resolved,kathleen-m-mcgury,exact,,
+Kathleen M Pantle,kathleen m pantle,resolved,kathleen-m-pantle,exact,,
+Kathleen Marie Burke,kathleen marie burke,resolved,kathleen-marie-burke,exact,,
+Kay M Hanlon,kay m hanlon,resolved,kay-m-hanlon,exact,,
+Kelly Marie McCarthy,kelly marie mccarthy,resolved,kelly-marie-mccarthy,exact,,
+Kenneth J Wadas,kenneth j wadas,resolved,kenneth-j-wadas,exact,,
+Kenneth L Fletcher,kenneth l fletcher,resolved,kenneth-l-fletcher,exact,,
+"Kenworthy, Diana",kenworthy diana,resolved,diana-kenworthy,family_given_order,,"the source writes the family name first, after a comma"
+Kerry M Kennedy,kerry m kennedy,resolved,kerry-m-kennedy,exact,,
+Ketki  Steffan,ketki steffan,resolved,ketki-steffan,spacing_or_case,,differs from the display name in spacing or letter case only
+Kevin M Sheehan,kevin m sheehan,resolved,kevin-m-sheehan,exact,,
+Kevin P Cunningham,kevin p cunningham,resolved,kevin-p-cunningham,exact,,
+Kevin T Lee,kevin t lee,resolved,kevin-t-lee,exact,,
+Kristyna C Ryan,kristyna c ryan,resolved,kristyna-c-ryan,exact,,
+L  Terrell,l terrell,unresolved,,given_initial_only,,"the given name is an initial, which no allowed rule resolves; no judge shares the family name and the initial"
+Laguina  Clay-Clark,laguina clay clark,resolved,laguina-clay-clark,spacing_or_case,,differs from the display name in spacing or letter case only
+Lakshmi Elkhanialy Jha,lakshmi elkhanialy jha,resolved,lakshmi-elkhanialy-jha,exact,,
+Lana C Johnson,lana c johnson,resolved,lana-c-johnson,exact,,
+Larry G Axelrood,larry g axelrood,resolved,larry-g-axelrood,exact,,
+Laura  Ayala-Gonzalez,laura ayala gonzalez,resolved,laura-ayala-gonzalez,spacing_or_case,,differs from the display name in spacing or letter case only
+Laura  Bertucci Smith,laura bertucci smith,resolved,laura-bertucci-smith,spacing_or_case,,differs from the display name in spacing or letter case only
+Laura M Sullivan,laura m sullivan,resolved,laura-m-sullivan,exact,,
+Lauren Gottainer Edidin,lauren gottainer edidin,resolved,lauren-gottainer-edidin,exact,,
+Laurence J Dunford,laurence j dunford,resolved,laurence-j-dunford,exact,,
+Lawrence Edward Flood,lawrence edward flood,resolved,lawrence-edward-flood,exact,,
+Lawrence P Fox,lawrence p fox,resolved,lawrence-p-fox,exact,,
+Lee  Preston,lee preston,resolved,lee-preston,spacing_or_case,,differs from the display name in spacing or letter case only
+Leo  Holt,leo holt,resolved,leo-holt,spacing_or_case,,differs from the display name in spacing or letter case only
+Leonard  Murray,leonard murray,resolved,leonard-murray,spacing_or_case,,differs from the display name in spacing or letter case only
+Leroy K Martin,leroy k martin,resolved,leroy-k-martin,exact,,
+Lester  Mc Currie,lester mc currie,resolved,lester-mc-currie,spacing_or_case,,differs from the display name in spacing or letter case only
+Lindsay  Huge,lindsay huge,resolved,lindsay-huge,spacing_or_case,,differs from the display name in spacing or letter case only
+Linzey  Jones,linzey jones,resolved,linzey-jones,spacing_or_case,,differs from the display name in spacing or letter case only
+Lisa R Curcio,lisa r curcio,resolved,lisa-r-curcio,exact,,
+Lisette Catherine Mojica,lisette catherine mojica,resolved,lisette-catherine-mojica,exact,,
+Litricia P Payne,litricia p payne,resolved,litricia-p-payne,exact,,
+Lon William Shultz,lon william shultz,resolved,lon-william-shultz,exact,,
+Loretta  Douglas,loretta douglas,resolved,loretta-douglas,spacing_or_case,,differs from the display name in spacing or letter case only
+Loretta  Eadie-Daniels,loretta eadie daniels,resolved,loretta-eadie-daniels,spacing_or_case,,differs from the display name in spacing or letter case only
+Loretta  Morgan,loretta morgan,resolved,loretta-morgan,spacing_or_case,,differs from the display name in spacing or letter case only
+Lorraine Mary Murphy,lorraine mary murphy,resolved,lorraine-mary-murphy,exact,,
+Luciano  Panici,luciano panici,resolved,luciano-panici,spacing_or_case,,differs from the display name in spacing or letter case only
+M  Kuriakos-Ciesil,m kuriakos ciesil,unresolved,,given_initial_only,maria-kuriakos-ciesil,"the given name is an initial, which no allowed rule resolves; the candidate shares the family name and the initial"
+Marc W Martin,marc w martin,resolved,marc-w-martin,exact,,
+Marcia  Maras,marcia maras,resolved,marcia-maras,spacing_or_case,,differs from the display name in spacing or letter case only
+Marcia B Orr,marcia b orr,resolved,marcia-b-orr,exact,,
+Marcus R Salone,marcus r salone,resolved,marcus-r-salone,exact,,
+Margaret  Ogarek,margaret ogarek,resolved,margaret-ogarek,spacing_or_case,,differs from the display name in spacing or letter case only
+Margaret A Brennan,margaret a brennan,resolved,margaret-a-brennan,exact,,
+Margaret O'Mara Frossard,margaret o mara frossard,resolved,margaret-o-mara-frossard,exact,,
+Margarita T Kulys Hoffman,margarita t kulys hoffman,resolved,margarita-t-kulys-hoffman,exact,,
+Maria  Kuriakos Ciesil,maria kuriakos ciesil,resolved,maria-kuriakos-ciesil,spacing_or_case,,differs from the display name in spacing or letter case only
+Marianne  Jackson,marianne jackson,resolved,marianne-jackson,spacing_or_case,,differs from the display name in spacing or letter case only
+Mariano Ricardo Reyna,mariano ricardo reyna,resolved,mariano-ricardo-reyna,exact,,
+Maritza  Martinez,maritza martinez,resolved,maritza-martinez,spacing_or_case,,differs from the display name in spacing or letter case only
+Marjorie C Laws,marjorie c laws,resolved,marjorie-c-laws,exact,,
+Marsha D Hayes,marsha d hayes,resolved,marsha-d-hayes,exact,,
+Martin C Kelley,martin c kelley,resolved,martin-c-kelley,exact,,
+Martin D Coghlan,martin d coghlan,resolved,martin-d-coghlan,exact,,
+Martin J Berry,martin j berry,resolved,martin-j-berry,exact,,
+Martin Paul Moltz,martin paul moltz,resolved,martin-paul-moltz,exact,,
+Martin S Agran,martin s agran,resolved,martin-s-agran,exact,,
+Marvin P Luckman,marvin p luckman,resolved,marvin-p-luckman,exact,,
+Mary  Sevandal-Cohen,mary sevandal cohen,resolved,mary-sevandal-cohen,spacing_or_case,,differs from the display name in spacing or letter case only
+Mary Anna Planey,mary anna planey,resolved,mary-anna-planey,exact,,
+Mary C Marubio,mary c marubio,resolved,mary-c-marubio,exact,,
+Mary C Roberts,mary c roberts,resolved,mary-c-roberts,exact,,
+Mary Ellen Coghlan,mary ellen coghlan,resolved,mary-ellen-coghlan,exact,,
+Mary Jane Theis,mary jane theis,resolved,mary-jane-theis,exact,,
+Mary L Mikva,mary l mikva,resolved,mary-l-mikva,exact,,
+Mary Margaret Brosnahan,mary margaret brosnahan,resolved,mary-margaret-brosnahan,exact,,
+Mary Maxwell Thomas,mary maxwell thomas,resolved,mary-maxwell-thomas,exact,,
+Marya  Nega,marya nega,resolved,marya-nega,spacing_or_case,,differs from the display name in spacing or letter case only
+Maryam  Ahmad,maryam ahmad,resolved,maryam-ahmad,spacing_or_case,,differs from the display name in spacing or letter case only
+Matthew  Carmody,matthew carmody,resolved,matthew-carmody,spacing_or_case,,differs from the display name in spacing or letter case only
+Matthew  Coghlin,matthew coghlin,unresolved,,family_name_variant,matthew-e-coghlan,the family name 'Coghlin' differs from 'Coghlan' of 'Matthew E Coghlan'; a family-name variant is not an allowed rule
+Matthew E Coghlan,matthew e coghlan,resolved,matthew-e-coghlan,exact,,
+Maura  Boyle,maura boyle,resolved,maura-slattery-boyle,middle_present_or_absent,,the middle name 'Slattery' of 'Maura Slattery Boyle' is absent; no other judge shares the given and family names
+Maura  Slattery Boyle,maura slattery boyle,resolved,maura-slattery-boyle,spacing_or_case,,differs from the display name in spacing or letter case only
+Maureen E Connors,maureen e connors,resolved,maureen-e-connors,exact,,
+Maureen P Feerick,maureen p feerick,resolved,maureen-p-feerick,exact,,
+Maurice  Pompey,maurice pompey,resolved,maurice-pompey,spacing_or_case,,differs from the display name in spacing or letter case only
+Megan  Goldish,megan goldish,resolved,megan-goldish,spacing_or_case,,differs from the display name in spacing or letter case only
+Melvin J Cole,melvin j cole,resolved,melvin-j-cole,exact,,
+Michael  Brown,michael brown,resolved,michael-brown,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Clancy,michael clancy,resolved,michael-clancy,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Getty,michael getty,resolved,michael-getty,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Hogan,michael hogan,resolved,michael-hogan,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Kane,michael kane,resolved,michael-kane,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Mullen,michael mullen,resolved,michael-mullen,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael  Murray,michael murray,resolved,michael-murray,spacing_or_case,,differs from the display name in spacing or letter case only
+Michael B Bolan,michael b bolan,resolved,michael-b-bolan,exact,,
+Michael B Hyman,michael b hyman,resolved,michael-b-hyman,exact,,
+Michael B McHale,michael b mchale,resolved,michael-b-mchale,exact,,
+Michael C Close,michael c close,resolved,michael-c-close,exact,,
+Michael J Gallagher,michael j gallagher,resolved,michael-j-gallagher,exact,,
+Michael J Hood,michael j hood,resolved,michael-j-hood,exact,,
+Michael J Howlett,michael j howlett,resolved,michael-j-howlett,exact,,
+Michael Nando Pattarozzi,michael nando pattarozzi,resolved,michael-nando-pattarozzi,exact,,
+Michael P Gerber,michael p gerber,resolved,michael-p-gerber,exact,,
+Michael P Toomin,michael p toomin,resolved,michael-p-toomin,exact,,
+Michele Ann Gemskie,michele ann gemskie,resolved,michele-ann-gemskie,exact,,
+Michele M Pitman,michele m pitman,resolved,michele-m-pitman,exact,,
+Michelle D Jordan,michelle d jordan,resolved,michelle-d-jordan,exact,,
+Mohammad Adbelal Ahmad,mohammad adbelal ahmad,resolved,mohammad-adbelal-ahmad,exact,,
+Mohammed  Ghouse,mohammed ghouse,resolved,mohammed-ghouse,spacing_or_case,,differs from the display name in spacing or letter case only
+Nancy D Sheehan,nancy d sheehan,resolved,nancy-d-sheehan,exact,,
+Nancy J Arnold,nancy j arnold,resolved,nancy-j-arnold,exact,,
+Natosha Cuyler Toller,natosha cuyler toller,resolved,natosha-cuyler-toller,exact,,
+Neera  Walsh,neera walsh,resolved,neera-walsh,spacing_or_case,,differs from the display name in spacing or letter case only
+Neil  Cohen,neil cohen,resolved,neil-cohen,spacing_or_case,,differs from the display name in spacing or letter case only
+Neil J Linehan,neil j linehan,resolved,neil-j-linehan,exact,,
+Nicholas  Kantas,nicholas kantas,resolved,nicholas-kantas,spacing_or_case,,differs from the display name in spacing or letter case only
+Nicholas  Pomaro,nicholas pomaro,resolved,nicholas-pomaro,spacing_or_case,,differs from the display name in spacing or letter case only
+Nicholas R Ford,nicholas r ford,resolved,nicholas-r-ford,exact,,
+Noreen Valeria Love,noreen valeria love,resolved,noreen-valeria-love,exact,,
+Pamela A Leeming,pamela a leeming,resolved,pamela-a-leeming,exact,,
+Pamela E. Hill Veal,pamela e hill veal,resolved,pamela-e-hill-veal,exact,,
+Pamela G Karahalios,pamela g karahalios,resolved,pamela-g-karahalios,exact,,
+Pamela Hughes Gillespie,pamela hughes gillespie,resolved,pamela-hughes-gillespie,exact,,
+Pamela J Stratigakis,pamela j stratigakis,resolved,pamela-j-stratigakis,exact,,
+Patricia M Martin,patricia m martin,resolved,patricia-m-martin,exact,,
+Patrick  Coughlin,patrick coughlin,resolved,patrick-coughlin,spacing_or_case,,differs from the display name in spacing or letter case only
+Patrick  Morse,patrick morse,resolved,patrick-morse,spacing_or_case,,differs from the display name in spacing or letter case only
+Patrick  Rogers,patrick rogers,resolved,patrick-rogers,spacing_or_case,,differs from the display name in spacing or letter case only
+Patrick Foran Lustig,patrick foran lustig,resolved,patrick-foran-lustig,exact,,
+Patrick M Burns,patrick m burns,resolved,patrick-m-burns,exact,,
+Patrick S Grossi,patrick s grossi,resolved,patrick-s-grossi,exact,,
+Patrick W O'Brien,patrick w o brien,resolved,patrick-w-o-brien,exact,,
+Paul  Stralka,paul stralka,resolved,paul-stralka,spacing_or_case,,differs from the display name in spacing or letter case only
+Paul J Nealis,paul j nealis,resolved,paul-j-nealis,exact,,
+Paul P Biebel,paul p biebel,resolved,paul-p-biebel,exact,,
+Paul S Pavlus,paul s pavlus,resolved,paul-s-pavlus,exact,,
+Paula M Daleo,paula m daleo,resolved,paula-m-daleo,exact,,
+Peggy  Chiampas,peggy chiampas,resolved,peggy-chiampas,spacing_or_case,,differs from the display name in spacing or letter case only
+Peter  Flynn,peter flynn,resolved,peter-flynn,spacing_or_case,,differs from the display name in spacing or letter case only
+Peter A Felice,peter a felice,resolved,peter-a-felice,exact,,
+Peter J Vilkelis,peter j vilkelis,resolved,peter-j-vilkelis,exact,,
+Peter M. Gonzalez,peter m gonzalez,resolved,peter-m-gonzalez,exact,,
+Phillip  Carey,phillip carey,resolved,phillip-carey,spacing_or_case,,differs from the display name in spacing or letter case only
+Preston  Bowie,preston bowie,resolved,preston-bowie,spacing_or_case,,differs from the display name in spacing or letter case only
+Preston  Jones,preston jones,resolved,preston-jones,spacing_or_case,,differs from the display name in spacing or letter case only
+R  OCASIO,r ocasio,unresolved,,given_initial_only,ramon-ocasio,"the given name is an initial, which no allowed rule resolves; the candidate shares the family name and the initial"
+Ralph  Reyna,ralph reyna,resolved,ralph-reyna,spacing_or_case,,differs from the display name in spacing or letter case only
+Ramon  Ocasio,ramon ocasio,resolved,ramon-ocasio,spacing_or_case,,differs from the display name in spacing or letter case only
+Raul  Vega,raul vega,resolved,raul-vega,spacing_or_case,,differs from the display name in spacing or letter case only
+Ray  Jagielski,ray jagielski,unresolved,,given_name_variant,raymond-l-jagielski,the given name 'Ray' differs from 'Raymond' of 'Raymond L Jagielski'; conflicting given names are never merged
+Raymond  Myles,raymond myles,resolved,raymond-myles,spacing_or_case,,differs from the display name in spacing or letter case only
+Raymond L Jagielski,raymond l jagielski,resolved,raymond-l-jagielski,exact,,
+Regina  Mescall,regina mescall,resolved,regina-mescall,spacing_or_case,,differs from the display name in spacing or letter case only
+Reginald H Baker,reginald h baker,resolved,reginald-h-baker,exact,,
+Richard  Fitzgerald,richard fitzgerald,resolved,richard-fitzgerald,spacing_or_case,,differs from the display name in spacing or letter case only
+Richard  Neville,richard neville,resolved,richard-neville,spacing_or_case,,differs from the display name in spacing or letter case only
+Richard  Samuels,richard samuels,resolved,richard-samuels,spacing_or_case,,differs from the display name in spacing or letter case only
+Richard A Kavitt,richard a kavitt,resolved,richard-a-kavitt,exact,,
+Richard A Lacien,richard a lacien,resolved,richard-a-lacien,exact,,
+Richard Anthony Stevens,richard anthony stevens,resolved,richard-anthony-stevens,exact,,
+Richard E Schwind,richard e schwind,resolved,richard-e-schwind,exact,,
+Richard F Walsh,richard f walsh,resolved,richard-f-walsh,exact,,
+Richard J Billik,richard j billik,resolved,richard-j-billik,exact,,
+Rickey  Jones,rickey jones,resolved,rickey-jones,spacing_or_case,,differs from the display name in spacing or letter case only
+Ricky  Jones,ricky jones,unresolved,,given_name_variant,rickey-jones,the given name 'Ricky' differs from 'Rickey' of 'Rickey Jones'; conflicting given names are never merged
+Rita M Novak,rita m novak,resolved,rita-m-novak,exact,,
+Robert  Bastone,robert bastone,resolved,robert-bastone,spacing_or_case,,differs from the display name in spacing or letter case only
+Robert  Cahill,robert cahill,resolved,robert-cahill,spacing_or_case,,differs from the display name in spacing or letter case only
+Robert  Krop,robert krop,resolved,robert-krop,spacing_or_case,,differs from the display name in spacing or letter case only
+Robert  Kuzas,robert kuzas,resolved,robert-kuzas,spacing_or_case,,differs from the display name in spacing or letter case only
+Robert E Senechalle,robert e senechalle,resolved,robert-e-senechalle,exact,,
+Robert F Nix,robert f nix,resolved,robert-f-nix,exact,,
+Robert J Clifford,robert j clifford,resolved,robert-j-clifford,exact,,
+Robert M Smierciak,robert m smierciak,resolved,robert-m-smierciak,exact,,
+Robert W Bertucci,robert w bertucci,resolved,robert-w-bertucci,exact,,
+Robert W Cushing,robert w cushing,resolved,robert-w-cushing,exact,,
+Robert W. Johnson,robert w johnson,resolved,robert-w-johnson,exact,,
+Rodolfo  Garcia,rodolfo garcia,resolved,rodolfo-garcia,spacing_or_case,,differs from the display name in spacing or letter case only
+Roger G Fein,roger g fein,resolved,roger-g-fein,exact,,
+Romie  Palmer,romie palmer,resolved,romie-palmer,spacing_or_case,,differs from the display name in spacing or letter case only
+Ronald  Himel,ronald himel,resolved,ronald-himel,spacing_or_case,,differs from the display name in spacing or letter case only
+Ronald J Crane,ronald j crane,resolved,ronald-j-crane,exact,,
+Ronald S Davis,ronald s davis,resolved,ronald-s-davis,exact,,
+Rosa M Silva,rosa m silva,resolved,rosa-m-silva,exact,,
+Rosemary Grant Higgins,rosemary grant higgins,resolved,rosemary-grant-higgins,exact,,
+Rouhy J Shalabi,rouhy j shalabi,resolved,rouhy-j-shalabi,exact,,
+Ruth  Gudino,ruth gudino,resolved,ruth-gudino,spacing_or_case,,differs from the display name in spacing or letter case only
+S  GOEBEL,s goebel,unresolved,,given_initial_only,steven-j-goebel,"the given name is an initial, which no allowed rule resolves; the candidate shares the family name and the initial"
+Samuel B Epstein,samuel b epstein,resolved,samuel-b-epstein,exact,,
+Samuel J Betar,samuel j betar,resolved,samuel-j-betar,exact,,
+Sandi G Johnson-Spe,sandi g johnson spe,resolved,sandi-g-johnson-spe,exact,,
+Sandra  Ramos,sandra ramos,resolved,sandra-ramos,spacing_or_case,,differs from the display name in spacing or letter case only
+Sanjay T Tailor,sanjay t tailor,resolved,sanjay-t-tailor,exact,,
+Sebastian T Patti,sebastian t patti,resolved,sebastian-t-patti,exact,,
+Sharon Arnold Kanter,sharon arnold kanter,resolved,sharon-arnold-kanter,exact,,
+Sharon M Sullivan,sharon m sullivan,resolved,sharon-m-sullivan,exact,,
+Shauna L Boliker,shauna l boliker,resolved,shauna-l-boliker,exact,,
+Sheila  McGinnis,sheila mcginnis,resolved,sheila-mcginnis,spacing_or_case,,differs from the display name in spacing or letter case only
+Sheila M O'Brien,sheila m o brien,resolved,sheila-m-o-brien,exact,,
+Sheldon  Gardner,sheldon gardner,resolved,sheldon-gardner,spacing_or_case,,differs from the display name in spacing or letter case only
+Sheldon C Garber,sheldon c garber,resolved,sheldon-c-garber,exact,,
+Sheldon L Brown,sheldon l brown,resolved,sheldon-l-brown,exact,,
+Shelley  Sutker,shelley sutker,unresolved,,family_name_variant,shelley-sutker-dermer,the family name 'Sutker' differs from 'Sutker-Dermer' of 'Shelley Sutker-Dermer'; a family-name variant is not an allowed rule
+Shelley  Sutker-Dermer,shelley sutker dermer,resolved,shelley-sutker-dermer,spacing_or_case,,differs from the display name in spacing or letter case only
+Shelli D Williams-Hayes,shelli d williams hayes,resolved,shelli-d-williams-hayes,exact,,
+Shelvin  Singer,shelvin singer,resolved,shelvin-singer,spacing_or_case,,differs from the display name in spacing or letter case only
+Sheree D Henry,sheree d henry,resolved,sheree-d-henry,exact,,
+Sidney A Jones,sidney a jones,resolved,sidney-a-jones,exact,,
+Sophia  Atcherson,sophia atcherson,resolved,sophia-atcherson,spacing_or_case,,differs from the display name in spacing or letter case only
+Stanley  Hill,stanley hill,resolved,stanley-hill,spacing_or_case,,differs from the display name in spacing or letter case only
+Stanley  Sacks,stanley sacks,resolved,stanley-sacks,spacing_or_case,,differs from the display name in spacing or letter case only
+Stephanie  Miller,stephanie miller,resolved,stephanie-miller,spacing_or_case,,differs from the display name in spacing or letter case only
+Stephanie D Saltouros,stephanie d saltouros,resolved,stephanie-d-saltouros,exact,,
+Stephen  Schiller,stephen schiller,resolved,stephen-schiller,spacing_or_case,,differs from the display name in spacing or letter case only
+Stephen J Connolly,stephen j connolly,resolved,stephen-j-connolly,exact,,
+Steven G Watkins,steven g watkins,resolved,steven-g-watkins,exact,,
+Steven J Goebel,steven j goebel,resolved,steven-j-goebel,exact,,
+Steven J Rosenblum,steven j rosenblum,resolved,steven-j-rosenblum,exact,,
+Steven M Wagner,steven m wagner,resolved,steven-m-wagner,exact,,
+Stuart E Palmer,stuart e palmer,resolved,stuart-e-palmer,exact,,
+Susan  Sullivan,susan sullivan,resolved,susan-sullivan,spacing_or_case,,differs from the display name in spacing or letter case only
+Susan J McDunn,susan j mcdunn,resolved,susan-j-mcdunn,exact,,
+Susana L Ortiz,susana l ortiz,resolved,susana-l-ortiz,exact,,
+Terence  MacCarthy,terence maccarthy,resolved,terence-maccarthy,spacing_or_case,,differs from the display name in spacing or letter case only
+Terence Blair Smith,terence blair smith,resolved,terence-blair-smith,exact,,
+Teresa  Molina,teresa molina,resolved,teresa-molina,spacing_or_case,,differs from the display name in spacing or letter case only
+Terry  Gallagher,terry gallagher,resolved,terry-gallagher,spacing_or_case,,differs from the display name in spacing or letter case only
+Thaddeus L Wilson,thaddeus l wilson,resolved,thaddeus-l-wilson,exact,,
+Thaddeus V Adesko,thaddeus v adesko,resolved,thaddeus-v-adesko,exact,,
+Themis N Karnezis,themis n karnezis,resolved,themis-n-karnezis,exact,,
+Thomas  Carmody,thomas carmody,resolved,thomas-carmody,spacing_or_case,,differs from the display name in spacing or letter case only
+Thomas  Dwyer,thomas dwyer,resolved,thomas-dwyer,spacing_or_case,,differs from the display name in spacing or letter case only
+Thomas  Maloney,thomas maloney,resolved,thomas-maloney,spacing_or_case,,differs from the display name in spacing or letter case only
+Thomas  Moran,thomas moran,resolved,thomas-moran,spacing_or_case,,differs from the display name in spacing or letter case only
+Thomas  Nowinski,thomas nowinski,resolved,thomas-nowinski,spacing_or_case,,differs from the display name in spacing or letter case only
+Thomas A Hett,thomas a hett,resolved,thomas-a-hett,exact,,
+Thomas F McGuire,thomas f mcguire,resolved,thomas-f-mcguire,exact,,
+Thomas H Fitzgerald,thomas h fitzgerald,resolved,thomas-h-fitzgerald,exact,,
+Thomas J Carroll,thomas j carroll,resolved,thomas-j-carroll,exact,,
+Thomas J Condon,thomas j condon,resolved,thomas-j-condon,exact,,
+Thomas J Hennelly,thomas j hennelly,resolved,thomas-j-hennelly,exact,,
+Thomas J Kelley,thomas j kelley,resolved,thomas-j-kelley,exact,,
+Thomas J O'Hara,thomas j o hara,resolved,thomas-j-o-hara,exact,,
+Thomas M Davy,thomas m davy,resolved,thomas-m-davy,exact,,
+Thomas M Tucker,thomas m tucker,resolved,thomas-m-tucker,exact,,
+Thomas More Donnelly,thomas more donnelly,resolved,thomas-more-donnelly,exact,,
+Thomas P Cawley,thomas p cawley,resolved,thomas-p-cawley,exact,,
+Thomas P Durkin,thomas p durkin,resolved,thomas-p-durkin,exact,,
+Thomas P Fecarotta,thomas p fecarotta,resolved,thomas-p-fecarotta,exact,,
+Thomas Paul Panichi,thomas paul panichi,resolved,thomas-paul-panichi,exact,,
+Thomas R Sumner,thomas r sumner,resolved,thomas-r-sumner,exact,,
+Thomas V Gainer,thomas v gainer,resolved,thomas-v-gainer,exact,,
+Thomas V Lyons,thomas v lyons,resolved,thomas-v-lyons,exact,,
+Thomas W Murphy,thomas w murphy,resolved,thomas-w-murphy,exact,,
+Tiana  Blakely,tiana blakely,resolved,tiana-blakely,spacing_or_case,,differs from the display name in spacing or letter case only
+Timothy J Chambers,timothy j chambers,resolved,timothy-j-chambers,exact,,
+Timothy Joseph Joyce,timothy joseph joyce,resolved,timothy-joseph-joyce,exact,,
+Tommy  Brewer,tommy brewer,resolved,tommy-brewer,spacing_or_case,,differs from the display name in spacing or letter case only
+Torrie Luciana Corbin,torrie luciana corbin,resolved,torrie-luciana-corbin,exact,,
+Travis  Richardson,travis richardson,resolved,travis-richardson,spacing_or_case,,differs from the display name in spacing or letter case only
+Tyria B Walton,tyria b walton,resolved,tyria-b-walton,exact,,
+URSULA  WALOWSKI,ursula walowski,resolved,ursula-walowski,spacing_or_case,,differs from the display name in spacing or letter case only
+Unknown  Buoscio,unknown buoscio,resolved,unknown-buoscio,spacing_or_case,,differs from the display name in spacing or letter case only
+Vanessa A Hopkins,vanessa a hopkins,resolved,vanessa-a-hopkins,exact,,
+Victoria A Stewart,victoria a stewart,resolved,victoria-a-stewart,exact,,
+Vincent  Bentivenga,vincent bentivenga,resolved,vincent-bentivenga,spacing_or_case,,differs from the display name in spacing or letter case only
+Vincent M Gaughan,vincent m gaughan,resolved,vincent-m-gaughan,exact,,
+Vincenzo  Chimera,vincenzo chimera,resolved,vincenzo-chimera,spacing_or_case,,differs from the display name in spacing or letter case only
+Walter  Williams,walter williams,resolved,walter-williams,spacing_or_case,,differs from the display name in spacing or letter case only
+Wilbur  Crooks,wilbur crooks,resolved,wilbur-crooks,spacing_or_case,,differs from the display name in spacing or letter case only
+Will E Gierach,will e gierach,resolved,will-e-gierach,exact,,
+William  Aukstik,william aukstik,resolved,william-aukstik,spacing_or_case,,differs from the display name in spacing or letter case only
+William  Prendergast,william prendergast,resolved,william-prendergast,spacing_or_case,,differs from the display name in spacing or letter case only
+William  Raines,william raines,resolved,william-b-raines,middle_present_or_absent,,the middle name 'B' of 'William B Raines' is absent; no other judge shares the given and family names
+William  Wood,william wood,resolved,william-wood,spacing_or_case,,differs from the display name in spacing or letter case only
+William B Raines,william b raines,resolved,william-b-raines,exact,,
+William D O'Neal,william d o neal,resolved,william-d-o-neal,exact,,
+William G Gamboney,william g gamboney,resolved,william-g-gamboney,exact,,
+William G Lacy,william g lacy,resolved,william-g-lacy,exact,,
+William G Pileggi,william g pileggi,resolved,william-g-pileggi,exact,,
+William H Hooks,william h hooks,resolved,william-h-hooks,exact,,
+William H Wise,william h wise,resolved,william-h-wise,exact,,
+William J Kunkle,william j kunkle,resolved,william-j-kunkle,exact,,
+William Nicholas Fahy,william nicholas fahy,resolved,william-nicholas-fahy,exact,,
+William O Maki,william o maki,resolved,william-o-maki,exact,,
+William P O'Malley,william p o malley,resolved,william-p-o-malley,exact,,
+William Stewart Boyd,william stewart boyd,resolved,william-stewart-boyd,exact,,
+William T O'Brien,william t o brien,resolved,william-t-o-brien,exact,,
+Willie  Wright,willie wright,resolved,willie-wright,spacing_or_case,,differs from the display name in spacing or letter case only
+Yolande M Bourgeois,yolande m bourgeois,resolved,yolande-m-bourgeois,exact,,

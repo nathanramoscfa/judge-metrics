@@ -55,7 +55,7 @@ from judgemetrics.synthetic.effects import (
 )
 from judgemetrics.synthetic.effects import home_court as judge_home_court
 from judgemetrics.synthetic.model import Case, Charge, Decision, Draws, Judge, Sentence, World
-from judgemetrics.synthetic.vocabulary import CHARGE_DISPOSITIONS, SYNTHETIC_GROUPS
+from judgemetrics.synthetic.vocabulary import FINAL_CHARGE_DISPOSITIONS, SYNTHETIC_GROUPS
 from judgemetrics.synthetic.world import GenerationError
 from judgemetrics.synthetic.writer import fmt_ts, write_csv, write_json, write_text
 
@@ -635,8 +635,7 @@ def _subject_metrics(
     )
     distribution = {
         value: sum(1 for _, charge in disposed_charges if charge.disposition == value)
-        for value in CHARGE_DISPOSITIONS
-        if value != "pending"
+        for value in FINAL_CHARGE_DISPOSITIONS
     }
     days_to_disposition: list[int] = []
     for case in world.cases:

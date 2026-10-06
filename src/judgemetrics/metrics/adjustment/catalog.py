@@ -163,6 +163,10 @@ class VerifyResult:
     models: int = 0
     verified: int = 0
     refitted: int = 0
+    # Models fitted under an earlier specification version: their artifacts are
+    # checked against their rows, but no refit can reproduce them under the
+    # current file (the metrics verify's `unverifiable`, for a retired registry).
+    unverifiable: int = 0
     problems: list[Problem] = field(default_factory=list)
 
     @property
@@ -174,6 +178,7 @@ class VerifyResult:
             "models": self.models,
             "verified": self.verified,
             "refitted": self.refitted,
+            "unverifiable": self.unverifiable,
             "ok": self.ok,
             "problems": [problem.as_dict() for problem in self.problems],
         }
@@ -536,7 +541,14 @@ def verify_models(
     refit: bool = False,
     spec: OutcomeModelSpec | None = None,
 ) -> VerifyResult:
-    """Check every model's artifact (and, with ``refit``, reproduce it byte for byte)."""
+    """Check every model's artifact (and, with ``refit``, reproduce it byte for byte).
+
+    A model fitted under an earlier specification version than the file's is
+    checked against its row but not refitted: it counts as ``unverifiable``,
+    never as a mismatch, because the file no longer states the specification
+    it was fitted under (a specification bump keeps the old models as the
+    history the superseded observations cite).
+    """
     spec = spec or load_spec()
     stmt = (
         select(OutcomeModel, Source.name, MetricSnapshot.content_hash)
@@ -557,6 +569,9 @@ def verify_models(
         return result
     groups: dict[tuple[str, str, int, int], list[tuple[OutcomeModel, str]]] = defaultdict(list)
     for model, source, snapshot in rows:
+        if model.spec_version < spec.version:
+            result.unverifiable += 1
+            continue
         if model.spec_version != spec.version:
             result.problems.append(
                 Problem(

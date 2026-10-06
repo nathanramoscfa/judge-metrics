@@ -487,10 +487,19 @@ fixture untouched.
 ## Vocabulary
 
 `synthetic/vocabulary.py` fixes the values (`CASE_VOCABULARY_VERSION =
-2` since Phase 4 Step 1 added the restricted vocabularies); Phase 2
-Step 2 writes the same values to
-`data/reference/case_vocabulary.yaml`, which must equal these
-constants, and Phase 5's real connectors map onto them.
+3` since Phase 5 Step 3 added the Cook County values; 2 since Phase 4
+Step 1 added the restricted vocabularies); Phase 2 Step 2 writes the
+same values to `data/reference/case_vocabulary.yaml`, which must equal
+these constants, and Phase 5's real connectors map onto them. The table
+lists the values the synthetic world uses; version 3's additions (the
+Illinois classes, `other` and `unclassified` categories, the non-final
+`superseded` and `transferred`, and the Cook County events, decisions,
+sentence values, `unstated` position, and the restricted `race` and
+`gender`) are in docs/DATA_MODEL.md "Vocabularies". The generator draws,
+ranks, and codes only `SYNTHETIC_SEVERITIES` (the five below) and the
+offense table's categories, and the truth's disposition distribution
+iterates `FINAL_CHARGE_DISPOSITIONS`, so a value added for a real source
+moves no draw and leaves the golden fixture byte for byte.
 
 | Kind                                 | Values |
 |--------------------------------------|--------|

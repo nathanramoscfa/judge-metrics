@@ -28,7 +28,7 @@ must not be described as proof that the judge caused the difference.
 - Rows in the snapshot's frame of `synthetic`: cases 5200, charges 8335,
   assignments 6142, decisions 14168, sentences 3241, events 22229,
   justice_events 14894, persons 3200, courts 5.
-- Outcome model specification version 1 (`expected-logit-v1`); metric registry
+- Outcome model specification version 2 (`expected-logit-v1`); metric registry
   version 2; methodology version 1.0.
 - Thresholds: a model is fitted when its limiting class has at least 5 events
   per design column; a judge's ratio and a subgroup cell are published with at

@@ -140,7 +140,7 @@ A regularized logistic regression (L2 penalty, lambda 1.0, the intercept
 unpenalized), fitted by Newton-Raphson (at most 50 iterations, gradient
 tolerance 1e-8): one model per source, target, and window over every eligible
 index event of the source, so every judge of the source is scored by the same
-model. The judge is never a term of the model. Specification version 1, model
+model. The judge is never a term of the model. Specification version 2, model
 version expected-logit-v1.
 
 ### Targets
@@ -158,19 +158,21 @@ version expected-logit-v1.
 
 - `lead_severity`: The most severe charge of the index case against the person,
   by the vocabulary's severity order. Levels: misdemeanor_b (reference),
-  misdemeanor_a, felony_3, felony_2, felony_1. Known at: the pretrial decision:
-  only the index case's charges filed strictly before it are read. Missing: an
-  index event without a value is excluded from the model. Leakage: Read from the
-  index case's charges filed strictly before the pretrial decision, which the
-  judge has in front of them; a later charge, a disposition, or a sentence is
-  never read.
+  unclassified, petty_offense, misdemeanor_c, misdemeanor_a, felony_4, felony_3,
+  felony_2, felony_1, felony_x, felony_m. Known at: the pretrial decision: only
+  the index case's charges filed strictly before it are read. Missing: an index
+  event without a value is excluded from the model. Leakage: Read from the index
+  case's charges filed strictly before the pretrial decision, which the judge
+  has in front of them; a later charge, a disposition, or a sentence is never
+  read.
 - `lead_category`: The offense category of that lead charge; charges tied on
   severity are ordered by the source's own charge id. Levels: public_order
-  (reference), traffic, drug, property, financial, weapon, person. Known at: the
-  pretrial decision: only the index case's charges filed strictly before it are
-  read. Missing: an index event without a value is excluded from the model.
-  Leakage: The category of the charges filed strictly before the pretrial
-  decision; the tie-break reads the source's charge id, never an outcome.
+  (reference), traffic, drug, property, financial, weapon, person, other,
+  unclassified. Known at: the pretrial decision: only the index case's charges
+  filed strictly before it are read. Missing: an index event without a value is
+  excluded from the model. Leakage: The category of the charges filed strictly
+  before the pretrial decision; the tie-break reads the source's charge id,
+  never an outcome.
 - `charge_count`: The number of charges of the index case against the person: 1,
   2, 3 or more. Levels: 1 (reference), 2, 3+. Known at: the pretrial decision:
   only the index case's charges filed strictly before it are read. Missing: an

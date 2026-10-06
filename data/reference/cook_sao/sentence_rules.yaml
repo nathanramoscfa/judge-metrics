@@ -1,0 +1,413 @@
+# data/reference/cook_sao/sentence_rules.yaml
+# The sentence semantics of the Cook County State's Attorney Sentencing export:
+# the canonical grain, currency and superseding, and every sentence phase,
+# sentence type, commitment type, and commitment unit of
+# data/reference/cook_sao/profile.yaml mapped to sentence components and terms
+# in days. Loaded and validated by judgemetrics.ingest.cook_sao.rules
+# (yaml.safe_load); versioned in tables.yaml beside its sha256, so an edit
+# bumps `version` there and here and re-derives every row through the
+# connector's parser version.
+version: 1
+documentation:
+  glossary: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf
+# The grain, decided from the export's rows (Step 1 profile, measured
+# 2026-10-05): a Sentencing row is one charge version of one participant at
+# one sentencing (305,884 rows; 285,620 of the 305,884 participant-version
+# keys have one row, the rest a later phase or a second row at the same
+# hearing), and a participant's rows at one date and phase share one judge
+# and one court (273,741 such groups; 19 name two judges).
+grain: >-
+  One canonical sentence per (CASE_PARTICIPANT_ID, SENTENCE_DATE,
+  SENTENCE_PHASE): a sentencing of one defendant at one hearing, whose
+  Sentencing rows (one per charge version, sometimes two for one charge, such
+  as a jail term and a probation term) are its components. A sentence is
+  pronounced on the defendant for every count at once; one sentence per row
+  would count a defendant sentenced on five counts as five sentences.
+# How a sentence's day columns are formed from its components.
+terms: >-
+  incarceration_days is the longest finite incarceration term among the
+  sentence's current rows (every row when none is current), and
+  probation_days the longest probation term: the exports carry no
+  consecutive-sentence field, so the terms are taken as concurrent, the lower
+  bound of the time imposed. Every row's components, terms, flags, charge,
+  and currency go to sentence_components, so nothing is dropped. A row's
+  term belongs to its commitment type's component (the glossary's "more
+  specific type of sentence issued") or, without one, its sentence type's;
+  when the two differ the sentence type's component is listed too, without a
+  term (a probation with a jail term as its condition lists both).
+# What CURRENT_SENTENCE_FLAG means (exported true/false; the glossary's 1/0).
+current: >-
+  The source's own statement that the row is the sentence in force on the
+  charge at the export ("1: Current sentence, 0: Non-current sentence"). It
+  is kept as recorded. A sentence (participant, date, phase) is current when
+  any of its rows is; a later sentence of the same participant and charge
+  version supersedes an earlier one whatever their flags, and a
+  non-current row beside a current one at the same hearing was replaced that
+  day (a corrected entry).
+supersedes: >-
+  Within a participant and charge version, sentences are ordered by date and
+  then by phase (original, probation_violation, amended, resentenced,
+  remanded); every sentence supersedes the earlier ones it follows.
+# Converting COMMITMENT_TERM and COMMITMENT_UNIT to days: the term is a
+# decimal number (3.5 years is allowed); days = term x days_per_unit, rounded
+# half up to a whole day. A term that is not a plain number (the profile's
+# "18 months", "24 wrap", "two") gets no day count and the flag
+# unparseable_term; a blank term or unit gets missing_term; a converted term
+# over maximum_days gets implausible_term and no day count.
+rounding: half_up
+maximum_days: 36525
+maximum_days_reason: >-
+  100 years, the longest finite term Illinois law sets for one count (the
+  extended term for first-degree murder, 730 ILCS 5/5-4.5-20(a)); a longer
+  term on one row (the profile's maximum is 7,122,023) is a recording error.
+units:
+  - commitment_unit: Days
+    days_per_unit: '1'
+    flag: null
+    reason: A day.
+  - commitment_unit: Weeks
+    days_per_unit: '7'
+    flag: null
+    reason: Seven days.
+  - commitment_unit: Months
+    days_per_unit: '30.4375'
+    flag: null
+    reason: A twelfth of 365.25 days, so twelve months equal one year.
+  - commitment_unit: Year(s)
+    days_per_unit: '365.25'
+    flag: null
+    reason: The mean calendar year, leap years included.
+  - commitment_unit: Natural Life
+    days_per_unit: null
+    flag: life
+    reason: >-
+      Natural life imprisonment has no finite day count; the number beside it
+      (1, 0, 30, 100 in the profile) is not a term.
+  - commitment_unit: Term
+    days_per_unit: null
+    flag: term_unstated
+    reason: >-
+      A sentence to a program's own term (mostly the boot camp and the impact
+      incarceration program), whose length the export does not state.
+  - commitment_unit: Hours
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: >-
+      The export pairs hours with probation, conditional discharge, and
+      custody alike (community-service hours or jail hours), so the unit alone
+      does not say what is counted.
+  - commitment_unit: Dollars
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: >-
+      A money amount, never a duration; the export pairs it with custody and
+      probation types and day-like numbers (364, 180, 90), so it is not read as
+      a fine either.
+  - commitment_unit: Pounds
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: A weight (a drug quantity recorded in the unit column), not a term.
+  - commitment_unit: Grams
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: A weight, not a term.
+  - commitment_unit: Kilos
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: A weight, not a term.
+  - commitment_unit: Ounces
+    days_per_unit: null
+    flag: unit_not_a_term
+    reason: A weight, not a term.
+phases:
+  - sentence_phase: Original Sentencing
+    phase: original
+    ignored: false
+    supersedes_earlier: false
+    revocation: false
+    rationale: >-
+      The glossary: "The original decision at the sentencing hearing."
+  - sentence_phase: Probation Violation Sentencing
+    phase: probation_violation
+    ignored: false
+    supersedes_earlier: true
+    revocation: true
+    rationale: >-
+      The glossary: "This sentencing was triggered by a violation of probation
+      conditions." It supersedes the earlier sentence, and its date is a
+      within-case revocation justice event (the case's own), except where
+      every row of it is "Probation Terminated Satisfactorily", which ends the
+      probation as successful.
+  - sentence_phase: Amended/Corrected Sentencing
+    phase: amended
+    ignored: false
+    supersedes_earlier: true
+    revocation: false
+    rationale: >-
+      The glossary groups it with resentencing ("Cases can be resentenced for
+      a variety of reasons"); an amended or corrected sentence replaces the
+      earlier one.
+  - sentence_phase: Resentenced
+    phase: resentenced
+    ignored: false
+    supersedes_earlier: true
+    revocation: false
+    rationale: >-
+      The glossary: "Cases can be resentenced for a variety of reasons
+      including, sentence of Department of Corrections on a violation of
+      probation or a higher court ordering a new sentencing"; the new sentence
+      replaces the earlier one, and no revocation is read from it because the
+      reason is not recorded.
+  - sentence_phase: Remanded Sentencing
+    phase: remanded
+    ignored: false
+    supersedes_earlier: true
+    revocation: false
+    rationale: >-
+      A sentencing after a higher court's remand (the glossary: "a higher
+      court ordering a new sentencing based on a change in the law or error by
+      a lower court"); it replaces the earlier sentence.
+  - sentence_phase: Summary Charge Info
+    phase: null
+    ignored: true
+    supersedes_earlier: false
+    revocation: false
+    rationale: >-
+      Not a phase the glossary lists, and its six rows do not say which
+      sentencing they summarize (four are their participant's only Sentencing
+      row), so they draft no sentence; the connector counts them in a
+      data-quality issue.
+# SENTENCE_TYPE, the glossary's "Broad type of sentence issued". A type with
+# `terminates_probation` records the end of an earlier probation, not a new
+# sentence: it adds no component, and its commitment type names the
+# probation that ended.
+sentence_types:
+  - sentence_type: 2nd Chance Probation
+    component: probation
+    flag: null
+    terminates_probation: null
+    reason: Second Chance probation for a first offense (730 ILCS 5/5-6-3.4), a probation.
+  - sentence_type: Conditional Discharge
+    component: conditional_discharge
+    flag: null
+    terminates_probation: null
+    reason: >-
+      The glossary: "Conditional and revocable release without probationary
+      supervision but with conditions imposed by the court."
+  - sentence_type: Conditional Release
+    component: conditional_discharge
+    flag: null
+    terminates_probation: null
+    reason: >-
+      Not in the glossary; Illinois law defines conditional discharge as a
+      "conditional and revocable release without probationary supervision"
+      (730 ILCS 5/5-1-4), which the value names.
+  - sentence_type: Conversion
+    component: null
+    flag: null
+    terminates_probation: null
+    reason: >-
+      Not a type of sentence: it marks a record converted from an earlier
+      system, and its commitment type (always present in the profile) states
+      the sentence.
+  - sentence_type: Cook County Boot Camp
+    component: incarceration
+    flag: null
+    terminates_probation: null
+    reason: >-
+      The glossary: "Correctional boot camp", a custodial program.
+  - sentence_type: Death
+    component: death
+    flag: death
+    terminates_probation: null
+    reason: >-
+      A sentence of death, which has no finite day count (Illinois abolished
+      the death penalty in 2011; the rows are kept as recorded).
+  - sentence_type: Inpatient Mental Health Services
+    component: treatment
+    flag: null
+    terminates_probation: null
+    reason: Court-ordered inpatient treatment, not a prison or jail term.
+  - sentence_type: Jail
+    component: incarceration
+    flag: null
+    terminates_probation: null
+    reason: Custody in a jail.
+  - sentence_type: Prison
+    component: incarceration
+    flag: null
+    terminates_probation: null
+    reason: Custody in a prison.
+  - sentence_type: Probation
+    component: probation
+    flag: null
+    terminates_probation: null
+    reason: >-
+      The glossary: "Sentencing alternative allowing a convicted defendant to
+      be released into the community."
+  - sentence_type: Probation Terminated Instanter
+    component: null
+    flag: null
+    terminates_probation: instanter
+    reason: >-
+      The probation ended immediately ("instanter"); the row records the end
+      of an earlier probation, not a sentence, and whether satisfactorily is
+      not recorded.
+  - sentence_type: Probation Terminated Satisfactorily
+    component: null
+    flag: null
+    terminates_probation: satisfactory
+    reason: The earlier probation ended successfully; no new sentence.
+  - sentence_type: Probation Terminated Unsatisfactorily
+    component: null
+    flag: null
+    terminates_probation: unsatisfactory
+    reason: The earlier probation ended unsuccessfully without a new term on this row.
+  - sentence_type: Supervision
+    component: supervision
+    flag: null
+    terminates_probation: null
+    reason: >-
+      Court supervision, a disposition after which the charge is dismissed
+      on successful completion (730 ILCS 5/5-1-21), not a probation.
+  - sentence_type: Vocational Rehabilitation Impact Center(VRIC)
+    component: incarceration
+    flag: null
+    terminates_probation: null
+    reason: >-
+      A custodial impact-incarceration program of the county, beside the boot
+      camp.
+# COMMITMENT_TYPE, the glossary's "A more specific type of sentence issued".
+commitment_types:
+  - commitment_type: 2nd Chance Probation
+    component: probation
+    flag: null
+    reason: Second Chance probation (730 ILCS 5/5-6-3.4).
+  - commitment_type: 710/410 Probation
+    component: probation
+    flag: null
+    reason: >-
+      The glossary: "a type of probation for first offenders. It is not a
+      conviction" (720 ILCS 550/10, 570/410).
+  - commitment_type: Conditional Discharge
+    component: conditional_discharge
+    flag: null
+    reason: The glossary's conditional discharge.
+  - commitment_type: Conditional Release
+    component: conditional_discharge
+    flag: null
+    reason: Conditional and revocable release without probation (730 ILCS 5/5-1-4).
+  - commitment_type: Cook County Boot Camp
+    component: incarceration
+    flag: null
+    reason: >-
+      The glossary: "Correctional boot camp."
+  - commitment_type: Cook County Department of Corrections
+    component: incarceration
+    flag: null
+    reason: Custody in the county jail.
+  - commitment_type: Cook County Impact Incarceration Program
+    component: incarceration
+    flag: null
+    reason: A custodial impact-incarceration program (the boot camp's program).
+  - commitment_type: Court Supervision
+    component: supervision
+    flag: null
+    reason: Court supervision (730 ILCS 5/5-1-21).
+  - commitment_type: Death
+    component: death
+    flag: death
+    reason: A sentence of death, without a finite day count.
+  - commitment_type: Domestic Violence Probation
+    component: probation
+    flag: null
+    reason: A probation.
+  - commitment_type: Drug Court Probation
+    component: probation
+    flag: null
+    reason: A probation supervised by the drug treatment court.
+  - commitment_type: Drug School
+    component: program
+    flag: null
+    reason: >-
+      The glossary's Drug School: four lessons "with a focus on substance
+      abuse and education, not treatment", a program, not custody or
+      probation.
+  - commitment_type: Gang Probation
+    component: probation
+    flag: null
+    reason: A probation.
+  - commitment_type: Home Confinement
+    component: home_detention
+    flag: null
+    reason: Confinement at home, not a jail or prison term.
+  - commitment_type: Illinois Department of Corrections
+    component: incarceration
+    flag: null
+    reason: >-
+      The glossary: "Incarceration."
+  - commitment_type: Inpatient Mental Health Services
+    component: treatment
+    flag: null
+    reason: Court-ordered inpatient treatment.
+  - commitment_type: Intensive Drug Probation Services
+    component: probation
+    flag: null
+    reason: >-
+      The glossary: "Type of probation."
+  - commitment_type: Intensive Probation Services
+    component: probation
+    flag: null
+    reason: >-
+      The glossary: "Type of probation."
+  - commitment_type: Juvenile IDOC
+    component: incarceration
+    flag: null
+    reason: Custody in the juvenile department of corrections.
+  - commitment_type: Mental Health Probation
+    component: probation
+    flag: null
+    reason: >-
+      The glossary: "Type of probation."
+  - commitment_type: Natural Life
+    component: incarceration
+    flag: life
+    reason: Natural life imprisonment, without a finite day count.
+  - commitment_type: Periodic Imprisonment
+    component: incarceration
+    flag: null
+    reason: >-
+      Imprisonment for designated periods with release between them (730 ILCS
+      5/5-7-1), an incarceration.
+  - commitment_type: Probation
+    component: probation
+    flag: null
+    reason: The glossary's probation.
+  - commitment_type: Probation Terminated Instanter
+    component: null
+    flag: null
+    reason: >-
+      Records the end of a probation, not a sentence; no component (the row's
+      sentence type says whether it terminates one).
+  - commitment_type: Probation Terminated Unsatisfactorily
+    component: null
+    flag: null
+    reason: >-
+      Records the end of a probation, not a sentence; no component (the row's
+      sentence type says whether it terminates one).
+  - commitment_type: Repeat Offender Probation
+    component: probation
+    flag: null
+    reason: A probation.
+  - commitment_type: Sex Offender Probation
+    component: probation
+    flag: null
+    reason: A probation.
+  - commitment_type: Veteran's Court Probation
+    component: probation
+    flag: null
+    reason: A probation supervised by the veterans treatment court.
+  - commitment_type: Vocational Rehabilitation Impact Center(VRIC)
+    component: incarceration
+    flag: null
+    reason: A custodial impact-incarceration program of the county.

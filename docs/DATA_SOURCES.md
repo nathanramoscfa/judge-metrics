@@ -335,17 +335,40 @@ it as a term of the agreement (root roadmap §5.5).
   variants ("Stanley  Sacks"). The glossary defines `JUDGE` as "Judge who
   oversaw the case" and `SENTENCE_JUDGE` as "Judge who oversaw the
   sentencing" — it does not call `JUDGE` the judge who entered the
-  disposition. The bond fields name no judicial officer. Resolution to
-  judge entities by a curated alias table is Phase 5 Step 3.
+  disposition. The bond fields name no judicial officer. The 538 distinct
+  strings are resolved by `data/reference/cook_sao/judge_aliases.csv` to
+  the 521 judges of `judges.csv` (position `unstated`: the source names no
+  rank) — 521 by an exact or spacing/case match or the family name written
+  first, two by a middle name present or absent — while 14 are held
+  `unresolved` (a given name reduced to an initial, a family name alone, a
+  conflicting given or family name) and one (`Donnelly`) `ambiguous`, each
+  with its reason and candidates (docs/ENTITY_RESOLUTION.md "Judges by alias
+  (Cook County)"). A held string attributes no row until a reviewer decides
+  it.
 - **Actor attribution:** the glossary attributes "Nolle Prosecution" to
   the prosecutor ("The prosecutor has decided not to pursue this
   charge"), "Finding Guilty" and "FNG" to "a judge in a bench trial", the
   verdicts to "jurors in a jury trial", and describes "SOL" as "Illinois
   judges remove cases from the court's active list … without the State
-  forfeiting the right to reinstate". The rule table that maps every
-  (disposition, reason) pair of the profile to an actor and a
-  judicial-discretion classification, with `unknown` as the explicit
-  fallback, is Phase 5 Step 3.
+  forfeiting the right to reinstate".
+  `data/reference/cook_sao/attribution_rules.yaml` (Phase 5 Step 3) maps
+  every (disposition, reason) pair of the profile,
+  every felony-review result, and every diversion program and result to a
+  canonical value, its finality, an actor, and a judicial-discretion
+  classification, with a rationale citing the glossary or the value's
+  plain legal meaning and `unknown` wherever the documentation does not
+  settle it. Over the 1,080,014 Dispositions rows (78 pairs) the actor is
+  `unknown` for 1,906 rows (0.1765%, 13 pairs: the court dismissals the
+  glossary describes as nolles on a treatment-court graduation, the
+  transfers, the interlocutory hold, a vacated charge, the
+  sexually-dangerous-person finding, and four values the glossary does not
+  define); 99.35% of the rows are final; the prosecutor holds 66.40% of the
+  rows, the judge 31.84%, the jury 0.95%, a mandatory rule (an abatement on
+  the defendant's death) 0.64%, a reviewing court 0.0005%. The SOL rule is
+  the prosecutor's: the judge's order only strikes the case at the State's
+  election. The pretrial, sentence, offense, and court semantics are in
+  `pretrial_rules.yaml`, `sentence_rules.yaml`, `offense_map.csv`, and
+  `courts.yaml` beside it (docs/ARCHITECTURE.md "Cook County source").
 - **First real metrics:** the judge-attributed sentencing family
   (`SENTENCE_JUDGE`), the disposition family where Step 3's rules and
   Step 5's gate attribute it, and court-level bond decisions; the one

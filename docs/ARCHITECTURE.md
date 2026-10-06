@@ -255,7 +255,8 @@ contained relative ids for this reason.
 `ingest/cook_sao/` is the first real source (`docs/DATA_SOURCES.md`,
 `cook_sao`): the Cook County State's Attorney's five case-level datasets
 on the county's Socrata portal. Phase 5 Step 1 lands the fetch, the
-evidence, and the fixture; parsing is Step 4's.
+evidence, and the fixture; Step 3 the rule tables that turn the source's
+codes into canonical values; parsing is Step 4's.
 
 - **Fetch (`connector.py`, parser version `0`).** `discover` lists Intake,
   Initiation, Dispositions, Sentencing, and Diversion from constants
@@ -322,6 +323,49 @@ evidence, and the fixture; parsing is Step 4's.
   kept, so excerpting the fixture itself chooses the same cases and writes
   identical bytes. The result is the committed `tests/fixtures/cook_sao/`
   (73 cases).
+- **Rule tables (`data/reference/cook_sao/`, `rules.py`, Phase 5 Step
+  3).** Seven reviewed tables, each a precedent Phase 6 audits:
+  `attribution_rules.yaml` (every disposition and reason pair, felony-review
+  result, diversion program and result, and Initiation charging event → a
+  canonical value, its finality, the actor, the judicial-discretion
+  classification, an optional judicial ruling, the evidence cited, and a
+  rationale, under seven attribution principles stated in its header, with
+  an explicit fallback and a `summary` of the unknown share recomputed by
+  test), `pretrial_rules.yaml` (each bond type under the monetary-bail
+  regime and, from 2023-09-18, the Pretrial Fairness Act's: release type,
+  detention, and whether the decision itself releases — only an I bond
+  does; a deposit or cash bond never claims a release), `sentence_rules.yaml`
+  (one sentence per participant, date, and phase; currency and superseding;
+  every phase, sentence type, commitment type, and unit → components and
+  terms in days, rounded half up from 365.25 days a year and 30.4375 a
+  month, with flags for life, death, unstated, non-term, unparseable,
+  missing, and implausible terms), `offense_map.csv` (every category and
+  class → a canonical category and severity, no catch-all), `courts.yaml`
+  (Cook County, Illinois, FIPS 17031; the six municipal districts and the
+  circuit court as their parent; every court name and courthouse), and
+  `judge_aliases.csv` with `judges.csv` (docs/ENTITY_RESOLUTION.md "Judges
+  by alias (Cook County)"). `tables.yaml` pins each table's file, version,
+  and sha256. `load_rules()` reads the manifest and every table from paths
+  built from the module constants (`yaml.safe_load`, the `csv` module),
+  refuses a digest that differs (an edit must bump the version beside the
+  digest) and a version that differs from `RULE_VERSIONS` (the code's
+  record, which the connector's parser version embeds as
+  `RULE_VERSION_TAG`, so a table change re-derives every row), and
+  validates every field against case vocabulary 3 and the tables' own
+  invariants (finality agrees with `final_charge_disposition`; a
+  prosecutor, jury, or police actor is `non_judicial`; an `unknown` states
+  "not settled by the source's documentation"; a release is never claimed
+  for a detention or a monetary bond), raising `RuleError` that names the
+  file, the key, and the field. The matchers — a disposition pair (exact
+  pair, then the disposition's `*` rule, then the fallback), a felony-review
+  result, a diversion program or result, a charging event, a bond type and
+  its date's regime, a sentencing row, a term and unit, a category, a
+  class, a court name and courthouse (and a case's court from its rows),
+  a judge string, and a race or gender label (`restricted_category`:
+  normalized, never recoded) — are total and deterministic: every input
+  returns a rule, a status, or `None` for a value the source never wrote
+  (which the connector rejects), and every canonical value they return is
+  a vocabulary value (`tests/property/test_cook_sao_matchers.py`).
 - **Logging.** The fetch logs dataset names, rows-updated times, sizes,
   and digests; the profile and the excerpt log nothing about rows. No log
   line names a participant id, a case id, or a restricted value.
@@ -1158,8 +1202,9 @@ verification, and pipeline step 13 on top of them.
   `cohort_size` the followed members, `observed_count` the followed
   members with the outcome), `survival` (the Kaplan-Meier `1 - S(w)` per
   window over the whole cohort with the Greenwood interval),
-  `distribution` (one observation per vocabulary value of the dimension,
-  zero counts included, the whole map in `distribution`), and `median`
+  `distribution` (one observation per final disposition of the vocabulary,
+  `final_charge_disposition` since vocabulary 3, zero counts included, the
+  whole map in `distribution`), and `median`
   (over the rows with a value, `cohort_size` the `n`, grouped by the
   offense category of the case's lead convicted charge when the
   dimension says so). Shares, rates, and survival estimates fill
@@ -1416,9 +1461,14 @@ expected counts, ratios, pooled estimates, and intervals (below,
   row's columns agree with the artifact, and with `--refit` refits every
   model from its snapshot and seed under the code version the row records
   and compares the bytes, naming the model and the first differing field;
-  it exits 1 on any problem. Since Step 3 `metrics compute` fits the
-  snapshot's missing models first (below), so `models fit` after it finds
-  nothing to do; the CI `e2e` job still runs it and `models verify`.
+  it exits 1 on any problem. A model fitted under an earlier
+  specification version (Phase 5 Step 3 made version 2) is checked against
+  its row but counted `unverifiable` rather than refitted: the file no
+  longer states the specification it was fitted under, and the superseded
+  observations that cite it keep it as history. Since Step 3 `metrics
+  compute` fits the snapshot's missing models first (below), so `models
+  fit` after it finds nothing to do; the CI `e2e` job still runs it and
+  `models verify`.
 
 ### Observed-to-expected ratios (Phase 4 Step 3)
 
@@ -1583,7 +1633,10 @@ or describes no ingested source):
   and person), and the attribute table, grouped by decision and attribute,
   with the decision ids bound as one array (`= ANY(:member_ids)`) and the
   attribute names as bound values; a decision whose party carries two values
-  of one attribute (two merged participants of one case) has none for it.
+  of one attribute (two merged participants of one case) has none for it,
+  and an attribute no index event has a value of (one the source does not
+  record: the synthetic source records no race or gender) yields no cells
+  rather than a withheld cell per vocabulary value (Phase 5 Step 3).
   The values live in one dictionary inside `subgroup_calibration`, which is
   cleared before it returns; the pure `calibration_cells` aggregates per
   vocabulary value O, E (from the published coefficients), O / E, and the

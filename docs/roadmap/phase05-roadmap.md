@@ -2729,9 +2729,9 @@ Conversation is New per phase-boundary hygiene (and, when it overlaps Steps
 
 ---
 
-## Step 3 — Mapping and Attribution Rules, the Judge and Court Tables, and Vocabulary 3
+## Step 3 — Mapping and Attribution Rules, the Judge and Court Tables, and Vocabulary 3 ✅
 
-**Status:** Not started
+**Status:** Complete — PR #54 (2026-10-05)
 
 > **Goal:** Turn the Step 1 profile into reviewed, versioned reference data that
 > the connector applies on its very first ingest, so no real row is ever
@@ -4140,6 +4140,65 @@ variant. Conversation is New per phase-boundary hygiene.
       (the restricted kinds `race`
       and `gender` included), and
       specification 2.
+    - Step 3 notes (2026-10-05):
+      `RULE_VERSION_TAG` is the
+      tables' versions joined by
+      dots (`1.1.1.1.1.1.1`), so
+      the parser version is
+      `1+1.1.1.1.1.1.1`. A matcher
+      returns `None` for a value
+      the source never wrote (an
+      offense, class, court name,
+      bond type, race or gender
+      label: reject the row with an
+      issue) and the explicit
+      fallback for an unlisted
+      disposition, review result,
+      or program (never final,
+      `unknown`). Dispositions has
+      one row per participant and
+      charge version (the latest
+      state), so a charge whose row
+      is `superseded` or
+      `transferred` left the case
+      without a final disposition:
+      the case-status rule must
+      treat both as ended (closed
+      when every charge is final,
+      superseded, or transferred),
+      while `pending` (BFW,
+      mistrial, a not-not-guilty
+      finding, a vacated charge)
+      keeps it open. Until Step 5
+      wires finality, the engine's
+      disposed populations still
+      read "not null and not
+      pending", so pipeline step
+      13's figures over the corpus
+      count those two as disposed.
+      BFW is a `bench_warrant` court
+      event; it follows a
+      non-appearance (the glossary)
+      but survives only as a
+      charge's last state, so
+      `observable_outcomes` stays
+      `("revocation",)`. A bond's
+      regime is its own date's; the
+      sentence matcher is per row,
+      and the sentence's days are
+      the longest finite term among
+      its current rows
+      (`sentence_rules.yaml`
+      `terms`). Race and gender go
+      through
+      `rules.restricted_category`;
+      add `gender` and a whole-key
+      `race` match to the log
+      scrubber (`logging.py`
+      matches substrings, and a
+      bare `race` would redact
+      `trace`) before any of them
+      can reach a log event.
     - The runner's limits (this
       roadmap's Current State,
       "Ingest surface"): run-sized
@@ -5084,6 +5143,33 @@ is New per phase-boundary hygiene.
       carry actor `judge` with no
       judge, per
       `pretrial_rules.yaml`.
+    - Step 3 notes (2026-10-05): the
+      finality is the kind
+      `final_charge_disposition`;
+      the disposition distribution
+      already lists those values
+      alone (`compute.py`, Step 3,
+      identical on the synthetic
+      world), so this step wires the
+      disposed-charge and
+      disposed-case populations,
+      which still count the
+      non-final `superseded` and
+      `transferred` as disposed.
+      After the Act (2023-09-18) an
+      I-bond release is `judge` with
+      classification `unknown`
+      (release is required absent a
+      detention petition the source
+      does not record) and a D or C
+      bond is `unknown`/`unknown`:
+      state both in the methodology
+      beside the court-level
+      counts. BFW rows document a
+      non-appearance only as a
+      charge's last state, so
+      failure to appear stays not
+      observable for this source.
     - Required checks that pin what
       this step touches:
       `verify_phase03.py` (the 33
@@ -8164,7 +8250,7 @@ workflow above maps directly to the corresponding row below.
 | ---- | ---------------------------------------------- | ---------- | ----------- | -------------- | -------- | ---- | ----------- |
 | 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #52 |
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #53 |
-| 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
