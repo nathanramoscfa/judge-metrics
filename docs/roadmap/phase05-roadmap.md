@@ -2729,9 +2729,9 @@ Conversation is New per phase-boundary hygiene (and, when it overlaps Steps
 
 ---
 
-## Step 3 — Mapping and Attribution Rules, the Judge and Court Tables, and Vocabulary 3
+## Step 3 — Mapping and Attribution Rules, the Judge and Court Tables, and Vocabulary 3 ✅
 
-**Status:** Not started
+**Status:** Complete — PR #54 (2026-10-05)
 
 > **Goal:** Turn the Step 1 profile into reviewed, versioned reference data that
 > the connector applies on its very first ingest, so no real row is ever
@@ -8250,7 +8250,7 @@ workflow above maps directly to the corresponding row below.
 | ---- | ---------------------------------------------- | ---------- | ----------- | -------------- | -------- | ---- | ----------- |
 | 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #52 |
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #53 |
-| 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
