@@ -1248,7 +1248,7 @@ def models_verify(
     else:
         typer.echo(
             f"models={result.models} verified={result.verified} refitted={result.refitted} "
-            f"problems={len(result.problems)}"
+            f"unverifiable={result.unverifiable} problems={len(result.problems)}"
         )
         lines = [
             f"mismatch: model {problem.model_id} {problem.target}"

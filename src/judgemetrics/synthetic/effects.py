@@ -58,7 +58,7 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from judgemetrics.synthetic.model import Case, Judge, RiskFeatures, World
 from judgemetrics.synthetic.rng import uniform
-from judgemetrics.synthetic.vocabulary import SEVERITIES, SEVERITY_RANK, age_band_of
+from judgemetrics.synthetic.vocabulary import SEVERITY_RANK, SYNTHETIC_SEVERITIES, age_band_of
 
 # --- the planted parameters -------------------------------------------------------------
 
@@ -77,7 +77,9 @@ FEATURES: tuple[str, ...] = (
     "pending_case",
 )
 # Numeric code of the lead severity: the most severe charge scores highest.
-SEVERITY_CODE: dict[str, int] = {s: len(SEVERITIES) - 1 - SEVERITY_RANK[s] for s in SEVERITIES}
+SEVERITY_CODE: dict[str, int] = {
+    s: len(SYNTHETIC_SEVERITIES) - 1 - SEVERITY_RANK[s] for s in SYNTHETIC_SEVERITIES
+}
 
 RISK_WEIGHTS: dict[str, float] = {
     "lead_severity": 0.25,
@@ -242,7 +244,7 @@ def risk_features(case: Case, cases_of_person: Sequence[Case]) -> RiskFeatures:
         (disposed := other.disposition_at) is None or disposed >= cutoff for other in others
     )
     return RiskFeatures(
-        lead_severity=SEVERITIES[lead],
+        lead_severity=SYNTHETIC_SEVERITIES[lead],
         charge_count=min(3, len(case.charges)),
         prior_cases=min(3, len(others)),
         prior_convictions=min(2, convicted),

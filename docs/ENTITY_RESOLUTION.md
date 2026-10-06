@@ -6,9 +6,10 @@ while aggressively limiting false-positive merges (the brief's
 `<entity_resolution>`; ROADMAP.md §4 Phase 2.3 and §5 "Risks &
 mitigations"). The package is `src/judgemetrics/entity_resolution/`;
 this version resolves persons only. Judges resolve on exact external
-identifiers (Phase 1, `docs/DATA_MODEL.md`), cases on
-`(court, case_number_normalized)`; probabilistic linkage of judges and
-courts across sources arrives in Phase 7.
+identifiers (Phase 1, `docs/DATA_MODEL.md`) or, for the Cook County
+source, through a reviewed alias table (below, "Judges by alias (Cook
+County)"), cases on `(court, case_number_normalized)`; probabilistic
+linkage of judges and courts across sources arrives in Phase 7.
 
 ## Objective and posture
 
@@ -264,6 +265,62 @@ golden expectations are meant to change, the generator's truth
 test (`tests/integration/test_entity_resolution.py`) keeps its
 narrower, transactional assertions on the review workflow and the
 audit log.
+
+## Judges by alias (Cook County)
+
+The Cook County State's Attorney exports name judges as free text — 469
+`JUDGE` strings on Dispositions ("Judge who oversaw the case") and 402
+`SENTENCE_JUDGE` strings on Sentencing ("Judge who oversaw the
+sentencing"), 538 distinct in all — with no identifier, no position, and
+no service dates. They are resolved by a curated table instead of the
+person pipeline: `data/reference/cook_sao/judge_aliases.csv` has one row
+per distinct string of the profile (the string, its
+`normalize_person_name` form, its status, the canonical key, the rule, the
+candidates, and the reason), and `judges.csv` one row per canonical key
+(a stable slug of the display name, the display name as the source writes
+it with single spaces and the given name first, and the position
+`unstated`, because the source never states a rank). Phase 5 Step 3 drafted
+both from the profile and reviewed every non-exact row by hand; the loader
+(`ingest/cook_sao/rules.py`) refuses an edit whose digest and version are
+not bumped in `tables.yaml` (docs/ARCHITECTURE.md "Cook County source").
+
+A string is **resolved** only by these rules:
+
+- `exact` — the string is the judge's display name;
+- `spacing_or_case` — it differs from the display name in spacing or
+  letter case only (the export writes an absent middle name as two spaces,
+  "Stanley  Sacks");
+- `family_given_order` — the source writes the family name first after a
+  comma ("Byrne, Thomas");
+- `middle_present_or_absent` — a middle name or initial is present in one
+  string and absent in the other, and no other judge shares the given and
+  family names ("William  Raines" and "William B Raines"; "Maura  Boyle"
+  and "Maura  Slattery Boyle").
+
+Everything else is held, never guessed:
+
+- `unresolved`, `given_initial_only` — the given name is an initial
+  ("J  HYNES", "S  GOEBEL"): the candidate sharing the family name and the
+  initial is listed, not chosen;
+- `unresolved` or `ambiguous`, `family_name_only` — a family name alone
+  ("FLOOD", one candidate; "Donnelly", two);
+- `unresolved`, `given_name_variant` — the given names conflict, however
+  close ("Ricky" and "Rickey Jones", "Darren" and "Darron Edward Bowden",
+  "Ray" and "Raymond L Jagielski", "Douglas J" and "Doug Simpson"): two
+  strings whose given names conflict are never merged, and the less used
+  one waits rather than becoming a second judge;
+- `unresolved`, `family_name_variant` — the family names differ ("Matthew
+  Coghlin" and "Matthew E Coghlan"; "Shelley Sutker" and "Shelley
+  Sutker-Dermer").
+
+Of the 538 strings, 523 resolve to 521 judges, 14 are unresolved, and one
+is ambiguous. A held string attributes no row: Phase 5 Step 4 publishes
+its rows without a judge and raises one `judge_unresolved` issue per string
+per run, so the table is this phase's judge review queue, and deciding a
+string is a table edit and a version bump. The matcher looks a string up
+verbatim, then by its normalized form, so a new spacing or case variant of
+a listed string resolves like it; a string the table does not list is
+unresolved ("not in the alias table").
 
 ## What later phases add
 

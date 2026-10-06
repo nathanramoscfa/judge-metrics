@@ -1,0 +1,1101 @@
+# data/reference/cook_sao/attribution_rules.yaml
+# Who made each decision the Cook County State's Attorney exports record: every
+# (CHARGE_DISPOSITION, CHARGE_DISPOSITION_REASON) pair of
+# data/reference/cook_sao/profile.yaml (Dispositions and Sentencing), every
+# felony-review result, every diversion program and result, and the
+# Initiation charging events, each mapped to canonical values of the case
+# vocabulary (version 3) with a written rationale. Loaded and validated by
+# judgemetrics.ingest.cook_sao.rules (yaml.safe_load); versioned in
+# tables.yaml beside its sha256, so an edit bumps `version` there and here and
+# re-derives every row through the connector's parser version. Phase 6 Step 1
+# validates these rules against the source's documents.
+#
+# Attribution principles, followed by every rule below:
+#
+# 1. Attribute a decision to the actor who legally made it under Illinois
+#    procedure and the SAO's documentation, never to whoever presided over
+#    the case.
+# 2. A prosecutor's nolle prosequi or SOL is `prosecutor` and `non_judicial`.
+#    A reason that records a judicial ruling before it (a sustained motion to
+#    quash and suppress; no probable cause) is kept as a `judicial_ruling`
+#    flag beside the rule, never counted as a judicial dismissal.
+# 3. A bench finding or a dismissal by the court is `judge`; a verdict is
+#    `jury`.
+# 4. The conviction a guilty plea produces is `judge` and `discretionary`:
+#    the plea is the defendant's and often negotiated with the State, but the
+#    conviction is the court's judgment (725 ILCS 5/102-14), entered only once
+#    the court accepts the plea under Illinois Supreme Court Rule 402, which
+#    it may refuse. A judge metric must not read a plea conviction as the
+#    judge's fact-finding.
+# 5. A value that ends no case on the merits ("Superseded by Indictment",
+#    "Transferred - Misd Crt", "Mistrial Declared", "BFW", "Hold Pending
+#    Interlocutory") is `final: false` and never counts as a disposition: its
+#    canonical disposition is `pending` while the charge is still open in the
+#    case, or `superseded` / `transferred` when it left the case without an
+#    outcome on its merits.
+# 6. A post-judgment value is attributed to the court that entered it; when
+#    the source does not say which court, it is `unknown`.
+# 7. Whatever the documentation does not settle is `unknown` with the reason
+#    "not settled by the source's documentation". A rule never guesses to
+#    avoid `unknown`.
+#
+# Matching (rules.py): a disposition pair takes its exact rule (a blank
+# reason is the pair's null), else the disposition's `*` rule (any reason,
+# blank included, where every reason shares the outcome), else `fallback`.
+# `cites` names the evidence: `glossary` (the URL below, the column the
+# rationale quotes) or `plain_legal_meaning` (the value's meaning in Illinois
+# law, stated in the rationale). `summary` is recomputed from the profile's
+# counts by tests/unit/test_cook_sao_rules.py.
+version: 1
+documentation:
+  glossary: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf
+  flowchart: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/ebb427cf-8198-4b8d-bb7a-fd6906076eee?download=true&filename=CCSAO%20Felony%20Cases%20Flowchart.pdf
+unknown_reason: not settled by the source's documentation
+dispositions:
+  # --- the prosecutor's decisions ----------------------------------------------------
+  - charge_disposition: Nolle Prosecution
+    charge_disposition_reason: '*'
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "The prosecutor has decided not to pursue this
+      charge"; whatever its reason (a plea to other counts, an absent witness,
+      a completed program, a re-indictment as a new case), the State's nolle
+      ends the charge in this case and is never a judicial dismissal.
+  - charge_disposition: Nolle Prosecution
+    charge_disposition_reason: Motion to Quash Arrest & Suppress Evidence/Sustained
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    judicial_ruling: suppression_granted
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The court sustained the defense's motion to quash the arrest and
+      suppress evidence, and the State then nolled the charge
+      (Charge_Disposition_Reason: "Nolle Prosecution as result of motion to
+      quash ... and suppress evidence"); the dismissal is the prosecutor's,
+      the ruling a flag.
+  - charge_disposition: Nolle Prosecution
+    charge_disposition_reason: Warrant Quashed/Recalled
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    judicial_ruling: warrant_quashed
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The court quashed or recalled the warrant and the State then nolled the
+      charge (Charge_Disposition_Reason: "Nolle Prosecution as result of
+      motion to quash a warrant filed"); the dismissal is the prosecutor's,
+      the ruling a flag.
+  - charge_disposition: Nolle Prosecution
+    charge_disposition_reason: Judgement & Conviction Vacated
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    judicial_ruling: conviction_vacated
+    event_type: null
+    cites: plain_legal_meaning
+    rationale: >-
+      A court vacated the judgment and conviction and the State then declined
+      to proceed again (the reason's plain meaning; the glossary does not list
+      it); the dismissal is the prosecutor's, the vacatur a flag.
+  - charge_disposition: Nolle Pros - Aonic
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: null
+    cites: glossary
+    rationale: >-
+      A nolle prosequi because the arresting officer was not in court (the
+      glossary's "Nolle - AONIC" reason, here written as the disposition): the
+      State's decision.
+  - charge_disposition: Nolle On Remand
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: null
+    cites: plain_legal_meaning
+    rationale: >-
+      After a higher court remanded the case, the State nolled the charge
+      instead of proceeding again: a nolle prosequi, the prosecutor's
+      decision.
+  - charge_disposition: SOL
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The glossary says "Illinois judges remove cases from the court's active
+      list ... without the State forfeiting the right to reinstate", and that
+      "The State must move to reinstate": the judge's order only strikes the
+      case at the State's election not to proceed, as with a nolle prosequi,
+      so the decision is the prosecutor's; the charge leaves the active list
+      (a reinstatement would be a later row).
+  - charge_disposition: Charge Rejected
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Rejected: Felony charges are rejected", the
+      State's charging decision, recorded as the charge's disposition.
+  - charge_disposition: Superseded by Indictment
+    charge_disposition_reason: null
+    disposition: superseded
+    final: false
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    event_type: indictment
+    cites: glossary
+    rationale: >-
+      The State's indictment replaced the charge (the glossary's
+      Re-Indictment: the new charges "supersede or replace the original"); it
+      ends no case on its merits, so it is never a disposition.
+  # --- dismissals by the court ---------------------------------------------------------
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: null
+    cites: plain_legal_meaning
+    rationale: >-
+      A dismissal by the court, as distinct from the State's nolle prosequi
+      the export records separately: a ruling on the charge (725 ILCS 5/114-1
+      lists the grounds).
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: Drug Court Graduate
+    disposition: dismissed
+    final: true
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The disposition records a dismissal by the court while the glossary
+      defines the reason as "Nolle Prosecution as result of defendant
+      completing Drug Treatment Court"; who dismissed is not settled by the
+      source's documentation.
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: Mental Health Graduate
+    disposition: dismissed
+    final: true
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The disposition records a dismissal by the court while the glossary
+      defines the reason as a nolle prosequi on completing Mental Health
+      Treatment Court; who dismissed is not settled by the source's
+      documentation.
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: Veteran's Court Graduate
+    disposition: dismissed
+    final: true
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The disposition records a dismissal by the court while the glossary
+      defines the reason as a nolle prosequi on completing Veterans Treatment
+      Court; who dismissed is not settled by the source's documentation.
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: PG to Misdemeanor
+    disposition: dismissed
+    final: true
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      The felony charge was dismissed because the defendant pleaded guilty to
+      a misdemeanor (the glossary's "Plea guilty to misdemeanor charge(s)"),
+      a negotiated outcome; whether the court or the State dropped the charge
+      is not settled by the source's documentation.
+  - charge_disposition: Case Dismissed
+    charge_disposition_reason: Transfered to Misdemeanor Court
+    disposition: transferred
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: transfer
+    cites: plain_legal_meaning
+    rationale: >-
+      The charge left the felony case for misdemeanor court, where its outcome
+      is not recorded: no outcome on the merits; who sent it is not settled by
+      the source's documentation.
+  - charge_disposition: FNPC
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    judicial_ruling: no_probable_cause
+    event_type: preliminary_hearing
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Finding of no probable cause at a preliminary
+      hearing", a judge's determination (Finding_No_Probable_Cause: "a judge
+      did not believe that there was probable cause") that discharges the
+      charge: a judicial dismissal.
+  - charge_disposition: Death Suggested-Cause Abated
+    charge_disposition_reason: null
+    disposition: dismissed
+    final: true
+    actor_type: legislature_or_mandatory_rule
+    judicial_discretion_classification: mandatory
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "If the defendant dies the criminal case, abates, or
+      is dismissed"; the abatement follows from the death by law, no actor's
+      choice, so it is never a judicial dismissal.
+  # --- findings and pleas --------------------------------------------------------------
+  - charge_disposition: Plea Of Guilty
+    charge_disposition_reason: '*'
+    disposition: convicted_plea
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: plea_hearing
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Defendant pled guilty to the specific charge"; the
+      conviction is the court's judgment on the accepted plea (principle 4),
+      whatever its reason (Adjudicated Minor, which the glossary does not
+      list, names a minor's case and does not change who entered it).
+  - charge_disposition: Plea of Guilty - Amended Charge
+    charge_disposition_reason: '*'
+    disposition: convicted_plea
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: plea_hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      A guilty plea to an amended charge: the court's judgment on the accepted
+      plea (principle 4).
+  - charge_disposition: Plea of Guilty - Lesser Included
+    charge_disposition_reason: '*'
+    disposition: convicted_plea
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: plea_hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      A guilty plea to a lesser included offense: the court's judgment on the
+      accepted plea (principle 4).
+  - charge_disposition: Plea of Guilty But Mentally Ill
+    charge_disposition_reason: null
+    disposition: convicted_plea
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: plea_hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      A plea of guilty but mentally ill, which the court accepts only after
+      finding the defendant mentally ill (725 ILCS 5/113-4(d)): a conviction
+      entered by the court.
+  - charge_disposition: Finding Guilty
+    charge_disposition_reason: '*'
+    disposition: convicted_verdict
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Defendant found guilty by a judge in a bench
+      trial."
+  - charge_disposition: Finding Guilty - Amended Charge
+    charge_disposition_reason: '*'
+    disposition: convicted_verdict
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      A bench finding of guilt on an amended charge (a "Finding", which the
+      glossary uses for a judge in a bench trial).
+  - charge_disposition: Finding Guilty - Lesser Included
+    charge_disposition_reason: null
+    disposition: convicted_verdict
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      A bench finding of guilt of a lesser included offense (a "Finding": a
+      judge in a bench trial).
+  - charge_disposition: Finding Guilty But Mentally Ill
+    charge_disposition_reason: null
+    disposition: convicted_verdict
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: plain_legal_meaning
+    rationale: >-
+      A bench finding of guilty but mentally ill, a conviction (725 ILCS
+      5/115-2, 730 ILCS 5/5-2-6).
+  - charge_disposition: FNG
+    charge_disposition_reason: null
+    disposition: acquitted
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Defendant found not guilty by a judge in a bench
+      trial."
+  - charge_disposition: FNG Reason Insanity
+    charge_disposition_reason: null
+    disposition: acquitted
+    final: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: trial
+    cites: plain_legal_meaning
+    rationale: >-
+      A bench finding of not guilty by reason of insanity, an acquittal (the
+      commitment that may follow is a separate proceeding, 730 ILCS 5/5-2-4).
+  - charge_disposition: Verdict Guilty
+    charge_disposition_reason: '*'
+    disposition: convicted_verdict
+    final: true
+    actor_type: jury
+    judicial_discretion_classification: non_judicial
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Defendant found guilty by jurors in a jury trial."
+  - charge_disposition: Verdict Guilty - Amended Charge
+    charge_disposition_reason: null
+    disposition: convicted_verdict
+    final: true
+    actor_type: jury
+    judicial_discretion_classification: non_judicial
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      A jury's verdict of guilty on an amended charge (a "Verdict": jurors in
+      a jury trial).
+  - charge_disposition: Verdict Guilty - Lesser Included
+    charge_disposition_reason: null
+    disposition: convicted_verdict
+    final: true
+    actor_type: jury
+    judicial_discretion_classification: non_judicial
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      A jury's verdict of guilty of a lesser included offense.
+  - charge_disposition: Verdict Guilty But Mentally Ill
+    charge_disposition_reason: null
+    disposition: convicted_verdict
+    final: true
+    actor_type: jury
+    judicial_discretion_classification: non_judicial
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      A jury's verdict of guilty but mentally ill, a conviction.
+  - charge_disposition: Verdict-Not Guilty
+    charge_disposition_reason: null
+    disposition: acquitted
+    final: true
+    actor_type: jury
+    judicial_discretion_classification: non_judicial
+    event_type: trial
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: "Defendant found not guilty by jurors in a jury
+      trial."
+  # --- values that end no case on the merits --------------------------------------------
+  - charge_disposition: BFW
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: judge
+    judicial_discretion_classification: unknown
+    event_type: bench_warrant
+    cites: glossary
+    rationale: >-
+      Charge_Disposition: a "Bond Forfeiture Warrant is issued after a
+      defendant does not appear in court"; the court issues it and the charge
+      stays pending; whether the court could decline is not settled by the
+      source's documentation.
+  - charge_disposition: Mistrial Declared
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: mistrial
+    cites: plain_legal_meaning
+    rationale: >-
+      The court declared a mistrial, ending the trial but not the charge,
+      which stays pending for a retrial.
+  - charge_disposition: Hold Pending Interlocutory
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: appeal
+    cites: plain_legal_meaning
+    rationale: >-
+      The case is held while an interlocutory appeal is decided and the
+      charge stays pending; which party appealed and who ordered the hold is
+      not settled by the source's documentation.
+  - charge_disposition: Transferred - Misd Crt
+    charge_disposition_reason: null
+    disposition: transferred
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: transfer
+    cites: plain_legal_meaning
+    rationale: >-
+      The charge was transferred to misdemeanor court, where its outcome is
+      not recorded: no outcome on the merits; who transferred it is not
+      settled by the source's documentation.
+  - charge_disposition: Finding Not Not Guilty
+    charge_disposition_reason: '*'
+    disposition: pending
+    final: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    event_type: hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      The finding of "not not guilty" at a discharge hearing for a defendant
+      unfit to stand trial (725 ILCS 5/104-25): the evidence would sustain a
+      conviction, but the finding is neither a conviction nor an acquittal and
+      the defendant is remanded for treatment, so the charge stays pending.
+  - charge_disposition: Sexually Dangerous Person
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      A finding under the Sexually Dangerous Persons Act (725 ILCS 205)
+      commits the person in civil proceedings brought instead of the trial; it
+      neither convicts nor acquits, and the finding may be the court's or a
+      jury's (725 ILCS 205/5): who made it is not settled by the source's
+      documentation.
+  - charge_disposition: Charge Vacated
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: hearing
+    cites: plain_legal_meaning
+    rationale: >-
+      A court vacated the judgment on the charge, which returns it to the
+      case without an outcome; whether the trial court or a higher court
+      vacated it is not settled by the source's documentation.
+  - charge_disposition: Charge Reversed
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: appellate_court
+    judicial_discretion_classification: unknown
+    event_type: appeal
+    cites: plain_legal_meaning
+    rationale: >-
+      A reviewing court reversed the judgment (a reversal is an appellate
+      court's act); whether outright or with a remand for a new trial is not
+      settled by the source's documentation, so no outcome is read from it.
+  # --- values the documentation does not define ------------------------------------------
+  - charge_disposition: Withdrawn
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Not in the glossary: what was withdrawn (a charge, a plea) and by whom
+      is not settled by the source's documentation.
+  - charge_disposition: WOWI
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      An abbreviation the glossary does not define; its meaning is not
+      settled by the source's documentation.
+  - charge_disposition: SOLW
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Not in the glossary; it may be a strike-off with leave to reinstate
+      with a warrant, which the documentation does not say, so it is not
+      settled by the source's documentation.
+  - charge_disposition: TRAN-FAI
+    charge_disposition_reason: null
+    disposition: pending
+    final: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    event_type: null
+    cites: glossary
+    rationale: >-
+      An abbreviation the glossary does not define (one row); its meaning is
+      not settled by the source's documentation.
+fallback:
+  disposition: pending
+  final: false
+  actor_type: unknown
+  judicial_discretion_classification: unknown
+  event_type: null
+  cites: glossary
+  rationale: >-
+    A pair no rule lists: not settled by the source's documentation, so it is
+    never a disposition and never attributed.
+# FELONY_REVIEW_RESULT (Intake, Initiation, Dispositions, Sentencing): the
+# State's felony-review (charging) step. An `outcome` drafts a `charging`
+# decision; a null outcome records a step of the review that decides nothing
+# and drafts no decision.
+felony_review:
+  - felony_review_result: Approved
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Approved: Felony charges are approved", the
+      State's charging decision.
+  - felony_review_result: Charge(S) Approved
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Charge(S) Approved: Felony charges are approved."
+  - felony_review_result: App-Automatic Transf
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      Approved ("App") felony charges against a minor whose case the law
+      transfers automatically to the criminal court (705 ILCS 405/5-130).
+  - felony_review_result: App-Deputy Override
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      Approved ("App") felony charges, on a deputy supervisor's override
+      within the State's Attorney's office.
+  - felony_review_result: App Bulls Night 1997
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      Approved ("App") felony charges, labelled with the night they were
+      reviewed.
+  - felony_review_result: Approved Arrest War
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      The State approved felony charges with an arrest warrant (a warrant
+      issues on a complaint charging the offense, 725 ILCS 5/107-9).
+  - felony_review_result: Approved Arrest Warr
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      The State approved felony charges with an arrest warrant (725 ILCS
+      5/107-9).
+  - felony_review_result: Arrest Warrant Approved
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      The State approved felony charges with an arrest warrant (725 ILCS
+      5/107-9).
+  - felony_review_result: Direct Indictment
+    outcome: approved
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The State chose to charge by presenting the case directly to the grand
+      jury (Event: "Direct Indictment: The Grand Jury hears evidence presented
+      by the State").
+  - felony_review_result: Rejected
+    outcome: rejected
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Rejected: Felony charges are rejected."
+  - felony_review_result: Disregard
+    outcome: rejected
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Disregard: Felony charges are rejected."
+  - felony_review_result: Charge Rejected
+    outcome: rejected
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Rejected: Felony charges are rejected", in other words.
+  - felony_review_result: Continued Investigation
+    outcome: continued
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Felony_Review_Result: "Continued Investigation: Police are instructed to
+      continue the investigation."
+  - felony_review_result: Continued Invest
+    outcome: continued
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Continued Investigation", abbreviated.
+  - felony_review_result: Continued
+    outcome: continued
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Continued Investigation", shortened.
+  - felony_review_result: Continue
+    outcome: continued
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Continued Investigation", shortened.
+  - felony_review_result: Cont Inv Vsi
+    outcome: continued
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Continued investigation pending a victim-sensitive interview (the
+      glossary's "Continued Investigation").
+  - felony_review_result: Felony Review
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Records that the case went through felony review, not its result: no
+      charging decision is drafted.
+  - felony_review_result: Felony Reviewed
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Records that felony review took place, not its result: no charging
+      decision is drafted.
+  - felony_review_result: Final Felony Review
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Names a stage of the review, not its result: no charging decision is
+      drafted.
+  - felony_review_result: Screen Felony
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Names a screening step of the review, not its result: no charging
+      decision is drafted.
+  - felony_review_result: Fr Assign Complete
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      An assignment within the felony review unit, not a result: no charging
+      decision is drafted.
+  - felony_review_result: Fr Assign Asa
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      An assignment of an assistant State's Attorney to the review, not a
+      result: no charging decision is drafted.
+  - felony_review_result: Assign Asa To Fr
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      An assignment of an assistant State's Attorney to felony review, not a
+      result: no charging decision is drafted.
+  - felony_review_result: In Person
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      How the review was conducted, not its result: no charging decision is
+      drafted.
+  - felony_review_result: Telephone
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      How the review was conducted, not its result: no charging decision is
+      drafted.
+  - felony_review_result: Advice
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      Advice given to the police, not a charging result: no charging decision
+      is drafted.
+  - felony_review_result: Victim Sensitive Interview
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      An interview step of the review, not its result: no charging decision is
+      drafted.
+  - felony_review_result: VICTIM SENSITIVE INT
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      "Victim Sensitive Interview", abbreviated: an interview step, no
+      charging decision.
+  - felony_review_result: Search Warrant
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      A search-warrant review, which charges no one: no charging decision is
+      drafted.
+  - felony_review_result: Sw
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      "Search Warrant", abbreviated: no charging decision is drafted.
+  - felony_review_result: Approved Search Warrant
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      An approved search warrant charges no one: no charging decision is
+      drafted.
+  - felony_review_result: Arrest Warrant
+    outcome: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      Names an arrest warrant without saying whether charges were approved:
+      not settled by the source's documentation, so no charging decision is
+      drafted.
+  - felony_review_result: Aw
+    outcome: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      "Arrest Warrant", abbreviated, without a result: not settled by the
+      source's documentation, so no charging decision is drafted.
+  - felony_review_result: Warr Ord Warr Issued
+    outcome: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      Records that a warrant was ordered or issued, not a charging result: not
+      settled by the source's documentation, so no charging decision is
+      drafted.
+  - felony_review_result: Warrant Exec
+    outcome: null
+    actor_type: law_enforcement
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      A warrant was executed (an arrest by the police), not a charging result:
+      no charging decision is drafted.
+  - felony_review_result: Sf
+    outcome: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      An abbreviation the glossary does not define: not settled by the
+      source's documentation, so no charging decision is drafted.
+  - felony_review_result: Deputy Override
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      A deputy supervisor overrode a review decision without the value saying
+      in which direction: not settled by the source's documentation, so no
+      charging decision is drafted.
+  - felony_review_result: Chief Judge Assignment To Felony Courtroom
+    outcome: null
+    actor_type: judge
+    judicial_discretion_classification: unknown
+    cites: plain_legal_meaning
+    rationale: >-
+      The chief judge assigned the case to a felony courtroom: an assignment,
+      not a charging decision, so none is drafted; what else it records is not
+      settled by the source's documentation.
+  - felony_review_result: Bond
+    outcome: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      Names the bond stage, not a review result: not settled by the source's
+      documentation, so no charging decision is drafted.
+  - felony_review_result: Motion State
+    outcome: null
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: plain_legal_meaning
+    rationale: >-
+      A motion of the State, not a review result: no charging decision is
+      drafted.
+felony_review_fallback:
+  outcome: null
+  actor_type: unknown
+  judicial_discretion_classification: unknown
+  cites: glossary
+  rationale: >-
+    A result no rule lists: not settled by the source's documentation, so no
+    charging decision is drafted.
+# DIVERSION_PROGRAM: the referral is a `diversion` decision. The glossary marks
+# each program pre-plea or post-plea.
+diversion_programs:
+  - diversion_program: DDPP
+    stage: pre_plea
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Drug Deferred Prosecution Program ... (Pre-Plea)": a
+      deferred prosecution, which defers the State's own prosecution.
+  - diversion_program: BR9
+    stage: pre_plea
+    actor_type: prosecutor
+    judicial_discretion_classification: non_judicial
+    cites: glossary
+    rationale: >-
+      The glossary's "Felony Deferred Prosecution Program (Branch 9) ...
+      (Pre-Plea)": a deferred prosecution, the State's.
+  - diversion_program: RJCC
+    stage: pre_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Restorative Justice Community Court ... (Pre-Plea)",
+      which needs the victim's agreement; whether the State or the court
+      refers a case is not settled by the source's documentation.
+  - diversion_program: ACT
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Access to Community Treatment ... (Post-Plea)", a
+      court-supervised program entered after a plea; whether the court, the
+      State, or both decided the referral is not settled by the source's
+      documentation.
+  - diversion_program: ARI
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Adult Redeploy Illinois Court ... (Post-Plea)"; who
+      decided the referral is not settled by the source's documentation.
+  - diversion_program: DC
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Drug Treatment Court ... (Post-Plea)"; who decided the
+      referral is not settled by the source's documentation.
+  - diversion_program: DS
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Drug School ... (Post-Plea)"; who decided the referral
+      is not settled by the source's documentation.
+  - diversion_program: MHC
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Mental Health Treatment Court ... (Post-Plea)"; who
+      decided the referral is not settled by the source's documentation.
+  - diversion_program: VC
+    stage: post_plea
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      The glossary's "Veterans Treatment Court ... (Post Plea)"; who decided
+      the referral is not settled by the source's documentation.
+  - diversion_program: SEED
+    stage: null
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    cites: glossary
+    rationale: >-
+      Not among the glossary's programs: its stage and who refers to it are
+      not settled by the source's documentation.
+diversion_program_fallback:
+  stage: null
+  actor_type: unknown
+  judicial_discretion_classification: unknown
+  cites: glossary
+  rationale: >-
+    A program no rule lists: not settled by the source's documentation.
+# DIVERSION_RESULT: an event at DIVERSION_CLOSED_DATE; a blank result is "No
+# record of defendant failing or graduating found" (the glossary), no event.
+diversion_results:
+  - diversion_result: Graduated
+    event_type: diversion_completed
+    cites: glossary
+    rationale: >-
+      Diversion_Result: "Graduated: Defendant graduated from diversion
+      program."
+  - diversion_result: Failed
+    event_type: diversion_failed
+    cites: glossary
+    rationale: >-
+      Diversion_Result: "Failed: Defendant failed diversion program."
+  - diversion_result: null
+    event_type: null
+    cites: glossary
+    rationale: >-
+      Diversion_Result: "No record of defendant failing or graduating found;
+      this includes participants whose programs have not yet concluded."
+diversion_result_fallback:
+  event_type: null
+  cites: glossary
+  rationale: >-
+    A result no rule lists: not settled by the source's documentation, so no
+    event is drafted.
+# Initiation's EVENT ("Manner in which charge was formally filed") at
+# EVENT_DATE, and FINDING_NO_PROBABLE_CAUSE ("1": the case was disposed of at
+# the preliminary examination as a finding of no probable cause).
+initiation_events:
+  - event: Grand Jury
+    event_type: indictment
+    cites: glossary
+    rationale: >-
+      Event: "The Grand Jury hears evidence presented by the State and
+      determines if a bill of indictment ... should be issued."
+  - event: Preliminary Hearing
+    event_type: preliminary_hearing
+    cites: glossary
+    rationale: >-
+      Event: "a court date at which the prosecution has the burden of showing
+      that there is probable cause."
+  - event: null
+    event_type: null
+    cites: glossary
+    rationale: >-
+      No charging event is recorded on the row.
+finding_no_probable_cause:
+  value: '1'
+  event_type: preliminary_hearing
+  judicial_ruling: no_probable_cause
+  actor_type: judge
+  cites: glossary
+  rationale: >-
+    Finding_No_Probable_Cause: "a judge did not believe that there was
+    probable cause for the matter to continue further"; the flag's blank is
+    "no record" of such a finding.
+summary:
+  dataset: dispositions.csv
+  rows: 1080014
+  pairs: 78
+  fallback_pairs: 0
+  unknown_actor_rows: 1906
+  unknown_actor_pairs: 13
+  unknown_actor_share: 0.001765
+  final_rows: 1073015
+  final_share: 0.993520
+  actor_shares:
+    judge: 0.318363
+    prosecutor: 0.663976
+    jury: 0.009499
+    legislature_or_mandatory_rule: 0.006393
+    appellate_court: 0.000005
+    unknown: 0.001765

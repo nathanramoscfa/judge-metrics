@@ -57,6 +57,27 @@ def test_the_manifest_lists_every_file_and_nothing_else() -> None:
     assert set(manifest.files) == set(EVERY_FILE) - {"manifest.json"}
 
 
+def test_case_vocabulary_3_leaves_the_fixture_on_the_synthetic_values() -> None:
+    # Vocabulary 3 (Phase 5 Step 3) added the Cook County values; the generator
+    # draws none of them, so the fixture's charges keep the synthetic severities
+    # and dispositions and the byte comparison above holds without a regeneration.
+    import csv
+
+    from judgemetrics.normalization import vocabulary
+    from judgemetrics.synthetic.vocabulary import (
+        CASE_VOCABULARY_VERSION,
+        FINAL_CHARGE_DISPOSITIONS,
+        SYNTHETIC_SEVERITIES,
+    )
+
+    assert vocabulary.version() == CASE_VOCABULARY_VERSION == 3
+    with (GOLDEN / "source" / "charges.csv").open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert rows
+    assert {row["severity"] for row in rows} <= set(SYNTHETIC_SEVERITIES)
+    assert {row["disposition"] for row in rows} <= {*FINAL_CHARGE_DISPOSITIONS, "pending", ""}
+
+
 def test_the_manifest_carries_the_current_generator_and_truth_versions() -> None:
     manifest = Manifest.load(GOLDEN / "manifest.json")
     assert manifest.generator_version == GENERATOR_VERSION, (

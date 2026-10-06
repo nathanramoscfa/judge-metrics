@@ -16,6 +16,7 @@ as the app role, which can select ``outcome_model`` and cannot write it.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import uuid
 from collections.abc import Iterator
@@ -32,7 +33,7 @@ from judgemetrics.config import get_settings
 from judgemetrics.db.models import MetricSnapshot, OutcomeModel, Source
 from judgemetrics.db.session import make_engine
 from judgemetrics.metrics.adjustment.artifacts import artifact_path
-from judgemetrics.metrics.adjustment.catalog import snapshot_parameters
+from judgemetrics.metrics.adjustment.catalog import snapshot_parameters, verify_models
 from judgemetrics.metrics.adjustment.features import DesignFrame, design_rows
 from judgemetrics.metrics.adjustment.fit import INSUFFICIENT_EVENTS
 from judgemetrics.metrics.adjustment.spec import load_spec
@@ -201,6 +202,28 @@ def test_models_verify_refits_byte_for_byte_and_fails_on_a_changed_byte(
     finally:
         path.write_bytes(original)
     assert _invoke(golden_metrics, "verify", "--snapshot", snapshot).exit_code == 0
+
+
+def test_a_model_of_an_earlier_specification_is_unverifiable_not_a_mismatch(
+    fitted: dict[str, Any], golden_metrics: GoldenMetrics, migrated_database: Engine
+) -> None:
+    # After a specification bump (Phase 5 Step 3 made version 2) the earlier models
+    # stay as the history superseded observations cite: their artifacts are still
+    # checked against their rows, but no refit under the new file can reproduce them.
+    later = dataclasses.replace(SPEC, version=SPEC.version + 1)
+    with Session(migrated_database) as session:
+        result = verify_models(
+            session,
+            golden_metrics.settings,
+            snapshot_hash=_snapshot(golden_metrics),
+            refit=True,
+            spec=later,
+        )
+        session.rollback()
+    assert result.ok, result.problems
+    assert result.models == result.verified == result.unverifiable == EXPECTED_MODELS
+    assert result.refitted == 0
+    assert result.as_dict()["unverifiable"] == EXPECTED_MODELS
 
 
 def test_list_and_show_read_the_catalogue_without_the_storage_uri(

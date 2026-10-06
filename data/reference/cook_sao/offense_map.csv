@@ -1,0 +1,103 @@
+field,source_value,canonical_value,note
+class,,unclassified,no class recorded
+class,1,felony_1,Class 1 felony
+class,2,felony_2,Class 2 felony
+class,3,felony_3,Class 3 felony
+class,4,felony_4,Class 4 felony
+class,A,misdemeanor_a,Class A misdemeanor
+class,B,misdemeanor_b,Class B misdemeanor
+class,C,misdemeanor_c,Class C misdemeanor
+class,M,felony_m,"first-degree murder, the glossary's Class M felony (the most severe)"
+class,O,unclassified,"not in the glossary's class list; its charges are criminal contempt and civil-law violations (cannabis under 10 grams, paraphernalia), which carry no class"
+class,P,petty_offense,"not in the glossary's class list; its charges are petty offenses: traffic violations (seat belt, turn signal), a recently expired FOID card, theft of lost property"
+class,U,unclassified,"not in the glossary's class list; its charges (uninsured vehicle, land-conveyance fraud) do not say which class"
+class,X,felony_x,Class X felony
+class,Z,unclassified,"not in the glossary's class list; its charges range from retail theft to murder, so no class can be read from the code"
+offense_category,Aggravated Assault Police Officer,person,
+offense_category,Aggravated Assault Police Officer Firearm,person,
+offense_category,Aggravated Battery,person,
+offense_category,Aggravated Battery Police Officer,person,
+offense_category,Aggravated Battery Police Officer Firearm,person,
+offense_category,Aggravated Battery With A Firearm,person,"a battery: the person category, not weapon"
+offense_category,Aggravated DUI,traffic,
+offense_category,Aggravated Discharge Firearm,weapon,
+offense_category,Aggravated Fleeing and Eluding,traffic,
+offense_category,Aggravated Identity Theft,financial,
+offense_category,Aggravated Robbery,person,
+offense_category,Aggravated Robbery BB Gun,person,
+offense_category,Armed Robbery,person,
+offense_category,Armed Violence,weapon,a felony committed while armed (720 ILCS 5/33A)
+offense_category,Arson,property,
+offense_category,Arson and Attempt Arson,property,
+offense_category,Attempt Armed Robbery,person,
+offense_category,Attempt Arson,property,
+offense_category,Attempt Homicide,person,
+offense_category,Attempt Sex Crimes,person,
+offense_category,Attempt Vehicular Hijacking,person,
+offense_category,Battery,person,
+offense_category,Benefit Recipient Fraud,financial,
+offense_category,Bomb Threat,public_order,its primary charges are disorderly conduct
+offense_category,Bribery,public_order,an offense against government (720 ILCS 5/33-1)
+offense_category,Burglary,property,
+offense_category,Child Abduction,person,
+offense_category,Child Pornography,person,a sex offense against a child
+offense_category,Communicating With Witness,public_order,interference with judicial procedure
+offense_category,Compelling Gang Membership,person,coercion of a person (720 ILCS 5/12-6.4)
+offense_category,Credit Card Cases,financial,
+offense_category,Criminal Damage to Property,property,
+offense_category,Criminal Trespass To Residence,property,
+offense_category,DUI,traffic,
+offense_category,Deceptive Practice,financial,
+offense_category,Disarming Police Officer,person,
+offense_category,Dog Fighting,public_order,
+offense_category,Domestic Battery,person,
+offense_category,Driving With Suspended Or Revoked License,traffic,
+offense_category,Escape - Failure to Return,public_order,
+offense_category,Failure To Pay Child Support,public_order,
+offense_category,Failure to Register as a Sex Offender,public_order,a registration violation
+offense_category,Forgery,financial,
+offense_category,Fraud,financial,
+offense_category,Fraudulent ID,financial,"document fraud, beside forgery"
+offense_category,Gambling,public_order,
+offense_category,Gun - Non UUW,weapon,
+offense_category,Gun Running,weapon,
+offense_category,Hate Crimes,person,
+offense_category,Home Invasion,person,
+offense_category,Homicide,person,
+offense_category,Human Trafficking,person,
+offense_category,Identity Theft,financial,
+offense_category,Impersonating Police Officer,public_order,
+offense_category,Intimidation,person,
+offense_category,Kidnapping,person,
+offense_category,Major Accidents,traffic,its primary charges are leaving the scene of a crash involving a death
+offense_category,Narcotics,drug,
+offense_category,Obstructing Justice,public_order,
+offense_category,Official Misconduct,public_order,an offense against government (720 ILCS 5/33-3)
+offense_category,Other Offense,other,the source's own catch-all: its charges range from disorderly conduct to resisting an officer and leaving the scene of an injury crash
+offense_category,PROMIS Conversion,unclassified,cases converted from the earlier PROMIS system with no category; their charges range from cannabis delivery to first-degree murder
+offense_category,Pandering,public_order,
+offense_category,Perjury,public_order,
+offense_category,Police Shooting,other,"the glossary does not define it and no primary charge carries it, so no canonical category can be read from it"
+offense_category,Possession Of Burglary Tools,property,
+offense_category,Possession of Contraband in Penal Institution,public_order,
+offense_category,Possession of Explosives,weapon,
+offense_category,Possession of Shank in Penal Institution,public_order,"contraband in a penal institution, beside its parent category"
+offense_category,Possession of Stolen Motor Vehicle,property,
+offense_category,Prostitution,public_order,
+offense_category,Reckless Discharge of Firearm,weapon,
+offense_category,Reckless Homicide,person,"a homicide offense (720 ILCS 5/9-3), often by vehicle"
+offense_category,Residential Burglary,property,
+offense_category,Retail Theft,property,
+offense_category,Robbery,person,
+offense_category,Sex Crimes,person,
+offense_category,Stalking,person,
+offense_category,Tampering,public_order,"its primary charges are tampering with a security, fire, or life-safety system"
+offense_category,Theft,property,
+offense_category,Theft by Deception,financial,"a deception offense, beside fraud"
+offense_category,UUW - Unlawful Use of Weapon,weapon,
+offense_category,Unlawful Restraint,person,
+offense_category,Vehicular Hijacking,person,
+offense_category,Vehicular Invasion,person,
+offense_category,Violate Bail Bond,public_order,
+offense_category,Violation Order Of Protection,public_order,
+offense_category,Violation of Sex Offender Registration,public_order,a registration violation

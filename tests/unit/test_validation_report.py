@@ -130,7 +130,7 @@ def _cell(attribute: str, value: str, withheld: str | None = None) -> SubgroupCe
 
 def fixture_report() -> ValidationReport:
     settings = ReportSettings(
-        spec_version=1,
+        spec_version=2,
         model_version="expected-logit-v1",
         registry_version=2,
         methodology_version="1.0",
@@ -255,6 +255,8 @@ def test_the_report_renders_every_section_from_fixture_diagnostics() -> None:
     assert "describe associations in available records" in flat
     assert "manifest seed 20260916, scale demo, generator version 3, truth version 3" in flat
     assert "methodology version 1.0" in flat
+    # Specification version 2 (Phase 5 Step 3) is the one the committed report cites.
+    assert "Outcome model specification version 2 (`expected-logit-v1`)" in flat
     # Summary and calibration of the fitted model; the small model is stated, not hidden.
     assert "| failure_to_appear | 365 | fitted | 400 | 150 | 300 | 110 | 100 | 40 |" in lines
     assert "| failure_to_appear | 365 | 0.201 | 0.045 | 0.612 | 1.041 | 0.877 |" in lines

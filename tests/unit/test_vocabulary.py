@@ -60,6 +60,8 @@ def test_required_values_are_listed() -> None:
         "dismissal",
         "disposition",
         "sentencing",
+        "charging",
+        "diversion",
     )
     assert set(vocabulary.values("judicial_discretion_classification")) >= {
         "discretionary",
@@ -78,6 +80,18 @@ def test_required_values_are_listed() -> None:
         "convicted_plea",
         "convicted_verdict",
         "pending",
+        "superseded",
+        "transferred",
+    )
+    # Version 3: the final dispositions, the only ones the engine counts as disposed.
+    assert vocabulary.values("final_charge_disposition") == (
+        "dismissed",
+        "acquitted",
+        "convicted_plea",
+        "convicted_verdict",
+    )
+    assert set(vocabulary.values("final_charge_disposition")) < set(
+        vocabulary.values("charge_disposition")
     )
     assert set(vocabulary.values("event_type")) >= {
         "arraignment",
@@ -114,22 +128,52 @@ def test_unknown_is_allowed_only_where_the_brief_allows_it() -> None:
     assert vocabulary.allows_unknown("actor_type")
     assert vocabulary.allows_unknown("judicial_discretion_classification")
     assert not vocabulary.allows_unknown("case_type")
-    # Version 2: the restricted age band names an absent age explicitly.
+    # Version 2: the restricted age band names an absent age explicitly; version 3:
+    # race and gender name a blank source value (or the source's own "Unknown").
     assert vocabulary.allows_unknown("age_band")
     assert [kind for kind in vocabulary.kinds() if vocabulary.allows_unknown(kind)] == [
         "judicial_discretion_classification",
         "actor_type",
         "age_band",
+        "race",
+        "gender",
     ]
 
 
 def test_the_restricted_vocabularies_name_the_restricted_attributes() -> None:
-    assert vocabulary.version() == 2
-    assert vocabulary.values("restricted_attribute") == ("age_band", "synthetic_group")
+    assert vocabulary.version() == 3
+    assert vocabulary.values("restricted_attribute") == (
+        "age_band",
+        "synthetic_group",
+        "race",
+        "gender",
+    )
     for kind in vocabulary.values("restricted_attribute"):
         assert vocabulary.values(kind), kind
     assert vocabulary.values("age_band") == ("18-24", "25-34", "35-44", "45-54", "55+", "unknown")
     assert vocabulary.values("synthetic_group") == ("group_a", "group_b", "group_c")
+    # The Cook County source's labels, normalized (case, punctuation) but not recoded.
+    for kind in ("race", "gender"):
+        assert vocabulary.values(kind)[-1] == UNKNOWN
+        for value in vocabulary.values(kind):
+            assert value == value.lower() and " " not in value, (kind, value)
+
+
+def test_severities_keep_the_synthetic_order_and_the_generator_draws_only_those() -> None:
+    from judgemetrics.synthetic.vocabulary import SEVERITY_RANK, SYNTHETIC_SEVERITIES
+
+    severities = vocabulary.values("severity")
+    # Most severe first; the synthetic five keep their relative order (vocabulary 3).
+    assert [s for s in severities if s in SYNTHETIC_SEVERITIES] == list(SYNTHETIC_SEVERITIES)
+    assert severities[:3] == ("felony_m", "felony_x", "felony_1")
+    # The generator ranks the synthetic severities alone, as it did under version 2.
+    assert SEVERITY_RANK == {
+        "felony_1": 0,
+        "felony_2": 1,
+        "felony_3": 2,
+        "misdemeanor_a": 3,
+        "misdemeanor_b": 4,
+    }
 
 
 def test_the_connector_and_the_generator_band_every_age_alike() -> None:

@@ -24,8 +24,9 @@ and the Step 1 helpers:
 - ``compute_survival``: the Kaplan-Meier cumulative incidence ``1 - S(w)``
   per window over the whole cohort (``observed_count`` the events at or
   before ``w``, the interval from the Greenwood standard error);
-- ``compute_distribution``: one observation per vocabulary value of the
-  dimension (zero counts included) with the whole map in ``distribution``;
+- ``compute_distribution``: one observation per final disposition of the
+  vocabulary (``final_charge_disposition``; zero counts included) with the
+  whole map in ``distribution``;
 - ``compute_median``: the median of the measure over the rows with a
   value (``cohort_size`` is that ``n``; ``eligible_count`` every
   attributed row), grouped by the offense category of the case's lead
@@ -113,7 +114,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-PENDING = "pending"
+FINAL_DISPOSITION_KIND = "final_charge_disposition"
 MEMBER_CHARGE = "charge"
 UNKNOWN_CATEGORY = "unknown"
 CONVICTED_DISPOSITIONS: frozenset[str] = frozenset({"convicted_plea", "convicted_verdict"})
@@ -502,7 +503,9 @@ def compute_distribution(context: _Context) -> list[ObservationDraft]:
         msg = f"{definition.slug}: distribution dimension {definition.dimension!r} is unsupported"
         raise ComputeError(msg)
     rows, kind, id_column = population_rows(context)
-    values = [v for v in vocabulary.values("charge_disposition") if v != PENDING]
+    # The final values only (vocabulary 3): a non-final disposition ends no charge
+    # on its merits, so it is never a value of the distribution.
+    values = list(vocabulary.values(FINAL_DISPOSITION_KIND))
     counts = {value: rows.filter(pl.col("disposition") == value).height for value in values}
     drafts: list[ObservationDraft] = []
     for value in values:

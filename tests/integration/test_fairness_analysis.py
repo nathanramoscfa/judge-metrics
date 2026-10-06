@@ -6,7 +6,8 @@ shared ``golden_metrics`` fixture: thirteen outcome models, every one
 ``insufficient_events`` on the golden cohorts):
 
 - as the ingest role, ``subgroup_calibration`` returns one cell per model and
-  restricted attribute value, and every golden cell is withheld with its
+  value of each restricted attribute the synthetic source records (age band
+  and synthetic group; no race or gender), and every golden cell is withheld with its
   reason (too few index events, or no fitted model) and carries no figure;
 - as the app role it is refused before any statement runs, and the app role
   running the attribute statement itself fails with ``InsufficientPrivilege``;
@@ -58,6 +59,9 @@ GOLDEN = REPO_ROOT / "tests" / "fixtures" / "golden"
 APP_ROLE = "judgemetrics_app"
 SPEC = load_spec()
 REASONS = {"below_threshold", "expected_below_minimum", "model_unavailable"}
+# The restricted attributes the synthetic source records (vocabulary 3 adds the
+# Cook County source's race and gender, which no synthetic party carries).
+SYNTHETIC_ATTRIBUTES = ("age_band", "synthetic_group")
 FIGURES = ("events", "observed", "expected", "ratio", "lower", "upper")
 
 
@@ -98,7 +102,8 @@ def test_the_ingest_role_runs_the_analysis_and_every_golden_cell_is_withheld(
     cells, models = calibrated
     assert len(models) == 13
     assert all(model.status != FITTED for model in models)
-    attributes = vocabulary.values(RESTRICTED_KIND)
+    attributes = [a for a in vocabulary.values(RESTRICTED_KIND) if a in SYNTHETIC_ATTRIBUTES]
+    assert attributes == list(SYNTHETIC_ATTRIBUTES)
     expected = [
         (model.target.name, model.window_days, attribute, value)
         for model in models

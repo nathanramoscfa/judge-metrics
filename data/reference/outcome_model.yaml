@@ -19,7 +19,13 @@
 # threshold. A `recovery` tolerance alters neither (it is what the synthetic
 # recovery test asserts, not what is computed) and does not bump it.
 # `model_version` names the model family and its feature set; it changes
-# with a new functional form, not with a tuned value.
+# with a new functional form, not with a tuned value. Version 2 (Phase 5
+# Step 3) lists the severities and offense categories case vocabulary 3 adds
+# (the Illinois classes and the Cook County source's `other` and
+# `unclassified` categories) as levels of lead_severity and lead_category,
+# each reference unchanged and every earlier level in its earlier order: a
+# level with no rows is dropped from the design (features.py), so no fitted
+# model or published figure of a source without them moves.
 #
 # Terms: an *index event* is one row of a model - a pretrial decision for
 # the release target, a pretrial-release cohort member followed for the
@@ -29,7 +35,7 @@
 # included). The *index case* is the case of the index event; its *filing*
 # is 00:00 UTC of the filing date, the instant the analytic frame's
 # cases.filed_at carries.
-version: 1
+version: 2
 model_version: expected-logit-v1
 
 targets:
@@ -67,7 +73,18 @@ features:
     source: [charges.filed_at, charges.severity]
     kind: categorical
     vocabulary: severity
-    levels: [misdemeanor_b, misdemeanor_a, felony_3, felony_2, felony_1]
+    levels:
+      - misdemeanor_b
+      - unclassified
+      - petty_offense
+      - misdemeanor_c
+      - misdemeanor_a
+      - felony_4
+      - felony_3
+      - felony_2
+      - felony_1
+      - felony_x
+      - felony_m
     reference: misdemeanor_b
     known_at: decision_at
     missing: exclude
@@ -82,7 +99,7 @@ features:
     source: [charges.filed_at, charges.offense_category, charges.severity, charges.source_row_id]
     kind: categorical
     vocabulary: offense_category
-    levels: [public_order, traffic, drug, property, financial, weapon, person]
+    levels: [public_order, traffic, drug, property, financial, weapon, person, other, unclassified]
     reference: public_order
     known_at: decision_at
     missing: exclude

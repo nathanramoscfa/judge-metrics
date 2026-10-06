@@ -1,0 +1,144 @@
+# data/reference/cook_sao/pretrial_rules.yaml
+# The pretrial (bond) semantics of the Cook County State's Attorney exports:
+# every bond type of data/reference/cook_sao/profile.yaml (Initiation's
+# BOND_TYPE_INITIAL and BOND_TYPE_CURRENT) under each legal regime, mapped to
+# a pretrial_release decision. Loaded and validated by
+# judgemetrics.ingest.cook_sao.rules (yaml.safe_load); versioned in
+# tables.yaml beside its sha256, so an edit bumps `version` there and here and
+# re-derives every row through the connector's parser version.
+version: 1
+documentation:
+  glossary: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf
+# What "released" means for this source.
+released_means: >-
+  A bond type records the bond court's decision, not a release from custody:
+  the exports record neither whether or when a deposit or cash bond was
+  posted nor any release. A decision releases the person only when the
+  decision itself does, with no condition the source cannot see met - an
+  individual (I) bond, which the glossary describes as "released on their own
+  recognizance", and, from 2023-09-18, an order of pretrial release without a
+  monetary condition, which the exports record as an I bond. Only those rules
+  set release_at (the bond's date). A deposit (D) or cash (C) bond permits
+  release once posted: it is not a detention (detained_flag false) and claims
+  no release (release_at null). No Bond detains. A blank bond type drafts no
+  decision and is counted, never imputed; so does a bond type without a bond
+  date, whose regime cannot be told.
+# The regime is decided by the bond's own date (BOND_DATE_INITIAL for the
+# initial bond, BOND_DATE_CURRENT for the current one), as a calendar date.
+regimes:
+  - name: monetary_bail
+    until: '2023-09-18'
+    description: >-
+      Before 2023-09-18 a bond court set an I, D, or C bond or denied bond
+      (No Bond).
+  - name: pretrial_fairness_act
+    from: '2023-09-18'
+    description: >-
+      From 2023-09-18 the Pretrial Fairness Act (Public Act 101-652 as
+      amended, effective that day) ended monetary bail in Illinois: every
+      person is eligible for pretrial release, which the court may deny only
+      on the State's petition after a detention hearing (725 ILCS 5/110-2,
+      5/110-6.1).
+# The electronic-monitoring flags (BOND_ELECTRONIC_MONITOR_FLAG_INITIAL and the
+# published misspelling BOND_ELECTROINIC_MONITOR_FLAG_CURRENT) export `true`
+# where the glossary documents 1; a blank is "No record of electronic
+# monitoring found", which the glossary warns may under-report.
+electronic_monitoring:
+  flag_value: 'true'
+  condition: electronic_monitoring
+  blank: no condition recorded
+# The bond amount is kept as recorded (an I bond carries the amount forfeited
+# on non-appearance; from 2023-09-18 most I bonds carry none).
+bonds:
+  - bond_type: I Bond
+    regime: monetary_bail
+    release_type: recognizance
+    detained_flag: false
+    releases: true
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    rationale: >-
+      The glossary: "The defendant pays nothing and is released on their own
+      recognizance"; the bond judge chose the bond under the bail statute's
+      factors, a discretionary decision of a judicial officer the exports do
+      not name.
+  - bond_type: D Bond
+    regime: monetary_bail
+    release_type: monetary_bond
+    detained_flag: false
+    releases: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    rationale: >-
+      The glossary: "The defendant must pay 10% of the bail amount set by a
+      judge in order to secure release"; release follows a posting the
+      exports do not record, so no release is claimed.
+  - bond_type: C Bond
+    regime: monetary_bail
+    release_type: monetary_bond
+    detained_flag: false
+    releases: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    rationale: >-
+      The glossary: "The defendant must pay the full-face value of the bail
+      amount ordered by a judge in order to secure release"; release follows a
+      posting the exports do not record, so no release is claimed.
+  - bond_type: No Bond
+    regime: monetary_bail
+    release_type: detained
+    detained_flag: true
+    releases: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    rationale: >-
+      The glossary: "No bond issued, and the defendant remains in custody"; a
+      denial of bail is a judicial officer's decision.
+  - bond_type: I Bond
+    regime: pretrial_fairness_act
+    release_type: recognizance
+    detained_flag: false
+    releases: true
+    actor_type: judge
+    judicial_discretion_classification: unknown
+    rationale: >-
+      Under the Act the court orders pretrial release without a monetary
+      condition, which the exports record as an I bond; release is required
+      unless the State petitions to detain (725 ILCS 5/110-2, 5/110-6.1), and
+      the exports do not record whether a petition was filed, so whether the
+      release was the court's choice is not settled by the source's
+      documentation.
+  - bond_type: D Bond
+    regime: pretrial_fairness_act
+    release_type: monetary_bond
+    detained_flag: false
+    releases: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    rationale: >-
+      A deposit bond dated on or after 2023-09-18 contradicts the Act's end of
+      monetary bail; whether the row carries a bond set before the Act forward
+      or records an error is not settled by the source's documentation, and
+      no release is claimed.
+  - bond_type: C Bond
+    regime: pretrial_fairness_act
+    release_type: monetary_bond
+    detained_flag: false
+    releases: false
+    actor_type: unknown
+    judicial_discretion_classification: unknown
+    rationale: >-
+      A cash bond dated on or after 2023-09-18 contradicts the Act's end of
+      monetary bail; what the row records is not settled by the source's
+      documentation, and no release is claimed.
+  - bond_type: No Bond
+    regime: pretrial_fairness_act
+    release_type: detained
+    detained_flag: true
+    releases: false
+    actor_type: judge
+    judicial_discretion_classification: discretionary
+    rationale: >-
+      Under the Act pretrial release is denied only by a detention order the
+      court enters after a hearing on the State's petition (725 ILCS
+      5/110-6.1), a judicial officer's decision the exports do not name.

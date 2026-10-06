@@ -61,6 +61,8 @@ RESTRICTED_ATTRIBUTES = (
     "synthetic_group",
     "party_attribute",
 )
+# Phase 5 Step 3: the Cook County source's restricted kinds (matched as whole words).
+RESTRICTED_WORDS = ("race", "races", "gender", "genders")
 METRICS_DIR = REPO_ROOT / "src" / "judgemetrics" / "metrics"
 SOURCE_ID = "11111111-1111-1111-1111-111111111111"
 SURVIVOR = "aaaaaaaa-0000-0000-0000-000000000001"
@@ -367,6 +369,11 @@ def test_no_module_under_metrics_names_a_restricted_attribute() -> None:
         text = path.read_text(encoding="utf-8")
         for name in RESTRICTED_ATTRIBUTES:
             assert name not in text, f"{path.relative_to(METRICS_DIR)} names {name}"
+        # Vocabulary 3's restricted kinds, as whole words ("trace" is not "race").
+        for word in RESTRICTED_WORDS:
+            assert not re.search(rf"\b{word}\b", text, re.IGNORECASE), (
+                f"{path.relative_to(METRICS_DIR)} names {word}"
+            )
 
 
 def test_the_snapshot_refuses_every_table_of_the_restricted_schema() -> None:

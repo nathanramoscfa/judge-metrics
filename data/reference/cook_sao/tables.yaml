@@ -1,0 +1,38 @@
+# data/reference/cook_sao/tables.yaml
+# The Cook County rule tables: each file under data/reference/cook_sao/ that
+# judgemetrics.ingest.cook_sao.rules loads, with its version and the sha256 of
+# its bytes. The loader refuses a table whose digest differs from the one
+# pinned here, or whose version differs from rules.RULE_VERSIONS, so editing a
+# table means bumping its version here (and in the YAML table's own `version`
+# field, and in RULE_VERSIONS) beside its new digest; the connector's parser
+# version embeds RULE_VERSIONS, so every row is re-derived (AGENTS.md).
+# profile.yaml is generated, not a rule table, and is not listed.
+tables:
+  attribution_rules:
+    file: attribution_rules.yaml
+    version: 1
+    sha256: d9696a09b7db1af83b27516cbdda8bcacb5fe3eb2c50b73664ac05941a54a6f0
+  pretrial_rules:
+    file: pretrial_rules.yaml
+    version: 1
+    sha256: 9866452ffe5fdec13d24b7c3a0d67023224c625b4250aec323c282a57216b1fb
+  sentence_rules:
+    file: sentence_rules.yaml
+    version: 1
+    sha256: 0850df8a3e9758f3e8fdd2017f3173f2cb6f11b9b0f168ab2070025b28ebecdb
+  offense_map:
+    file: offense_map.csv
+    version: 1
+    sha256: 6cbc44110c1bfcd83dfe46326fbaa283bf13db7e9927cdd207098df5671473a1
+  courts:
+    file: courts.yaml
+    version: 1
+    sha256: 13824398e6efc24240ec5c4e1fcf16c84a48b781b354232f94b1ec028fe1e347
+  judge_aliases:
+    file: judge_aliases.csv
+    version: 1
+    sha256: 4e5953ead593ebb8077696fef562af0a3bb2ba81bcabb295819457800bea75dd
+  judges:
+    file: judges.csv
+    version: 1
+    sha256: a8897fd5dd385a541e18374b47bf206b771d2dec61fdcfd5977bf4da8b677fc7

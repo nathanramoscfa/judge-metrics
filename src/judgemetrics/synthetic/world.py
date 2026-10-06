@@ -33,8 +33,8 @@ from judgemetrics.synthetic.rng import Streams, chance, choice, randint, uniform
 from judgemetrics.synthetic.vocabulary import (
     OFFENSE_CATEGORIES,
     POSITIONS,
-    SEVERITIES,
     SYNTHETIC_GROUPS,
+    SYNTHETIC_SEVERITIES,
 )
 from judgemetrics.synthetic.wordlists import compose_name, full_name
 
@@ -78,7 +78,7 @@ def load_offenses(path: Path = OFFENSES_PATH) -> list[Offense]:
         if row["offense_category"] not in OFFENSE_CATEGORIES:
             msg = f"{path}: {row['statute_code']} has unknown category {row['offense_category']!r}"
             raise GenerationError(msg)
-        if row["severity"] not in SEVERITIES:
+        if row["severity"] not in SYNTHETIC_SEVERITIES:
             msg = f"{path}: {row['statute_code']} has unknown severity {row['severity']!r}"
             raise GenerationError(msg)
         offenses.append(

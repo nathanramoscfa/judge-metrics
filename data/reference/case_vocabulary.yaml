@@ -8,7 +8,17 @@
 # values onto these and never extend them silently. Version 2 (Phase 4
 # Step 1) adds the restricted vocabularies - restricted_attribute, age_band,
 # synthetic_group - whose values live only in the `restricted` schema.
-version: 2
+# Version 3 (Phase 5 Step 3) adds exactly the values the Cook County rule
+# tables (data/reference/cook_sao/) use: the Illinois offense classes and two
+# offense categories, the non-final dispositions `superseded` and
+# `transferred` with `final_charge_disposition` (the dispositions that end a
+# charge on its merits, the only ones the engine counts as disposed), the
+# court events, charging and diversion decisions, sentence components,
+# phases, and term flags of that source, the position for an unstated rank,
+# the charging outcomes, diversion stages, and judicial rulings the tables
+# record, and the restricted kinds `race` and `gender` - the source's own
+# category labels, normalized (letter case and punctuation) but not recoded.
+version: 3
 kinds:
   case_type:
     - felony
@@ -30,11 +40,20 @@ kinds:
     - plea_hearing
     - sentencing_hearing
     - revocation
+    - preliminary_hearing
+    - indictment
+    - mistrial
+    - transfer
+    - appeal
+    - diversion_completed
+    - diversion_failed
   decision_type:
     - pretrial_release
     - dismissal
     - disposition
     - sentencing
+    - charging
+    - diversion
   judicial_discretion_classification:
     - discretionary
     - mandatory
@@ -51,12 +70,25 @@ kinds:
     - convicted_plea
     - convicted_verdict
     - pending
+    - superseded
+    - transferred
+  final_charge_disposition:
+    - dismissed
+    - acquitted
+    - convicted_plea
+    - convicted_verdict
   severity:
+    - felony_m
+    - felony_x
     - felony_1
     - felony_2
     - felony_3
+    - felony_4
     - misdemeanor_a
     - misdemeanor_b
+    - misdemeanor_c
+    - petty_offense
+    - unclassified
   offense_category:
     - drug
     - property
@@ -65,6 +97,8 @@ kinds:
     - public_order
     - traffic
     - financial
+    - other
+    - unclassified
   justice_event_type:
     - new_case
     - new_charge
@@ -86,19 +120,54 @@ kinds:
   position:
     - circuit_judge
     - associate_judge
+    - unstated
   sentence_component:
     - incarceration
     - probation
     - fine
+    - conditional_discharge
+    - supervision
+    - death
+    - treatment
+    - program
+    - home_detention
+  sentence_phase:
+    - original
+    - probation_violation
+    - amended
+    - resentenced
+    - remanded
+  sentence_term_flag:
+    - life
+    - death
+    - term_unstated
+    - unit_not_a_term
+    - unparseable_term
+    - missing_term
+    - implausible_term
   release_condition:
     - check_in
     - no_contact
     - travel_restriction
     - drug_testing
     - electronic_monitoring
+  charging_outcome:
+    - approved
+    - rejected
+    - continued
+  diversion_stage:
+    - pre_plea
+    - post_plea
+  judicial_ruling:
+    - suppression_granted
+    - no_probable_cause
+    - conviction_vacated
+    - warrant_quashed
   restricted_attribute:
     - age_band
     - synthetic_group
+    - race
+    - gender
   age_band:
     - 18-24
     - 25-34
@@ -110,3 +179,25 @@ kinds:
     - group_a
     - group_b
     - group_c
+  race:
+    - albino
+    - american_indian
+    - asian
+    - biracial
+    - black
+    - caucasian
+    - hispanic
+    - latinx
+    - middle_eastern_north_african
+    - native_hawaiian_or_other_pacific_islander
+    - other
+    - white
+    - white_black_hispanic_or_latino
+    - white_hispanic_or_latino
+    - unknown
+  gender:
+    - female
+    - male
+    - male_name_no_gender_given
+    - unknown_gender
+    - unknown
