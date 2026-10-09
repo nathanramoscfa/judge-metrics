@@ -205,7 +205,7 @@ cp .env.example .env    # then replace every change-me
 uv run poe up           # PostgreSQL 17 (pg_trgm, roles) + MinIO, healthy
 uv run poe migrate      # Alembic migrations: every canonical table, as the admin role
 uv run poe ingest-fjc   # FJC judges → raw lake (MinIO) + canonical tables, as the ingest role
-uv run poe ingest-cook  # the five Cook County SAO exports (1.2 GB) → raw lake; a rerun downloads nothing (see "Data")
+uv run poe ingest-cook  # the five Cook County SAO exports (1.2 GB) → raw lake → canonical tables; a rerun does nothing (see "Data")
 uv run poe seed         # generate data/synthetic/20260916 (demo scale) and ingest it through the synthetic connector
 uv run judgemetrics synthetic generate   # the generator alone → data/synthetic/20260916/{source,truth,manifest.json}
 uv run poe compute-metrics   # export a snapshot under data/snapshots/<hash>/ and publish every registry metric for every judge and court
@@ -415,7 +415,7 @@ first real state-court corpus is the Cook County State's Attorney's
 case-level datasets (Phase 5), with the Florida pilot following once
 lawful access is secured (Phase 7).
 
-### Fetching the real Cook County corpus
+### Ingesting the real Cook County corpus
 
 The five Cook County exports are public-domain bulk downloads of the
 county's open-data portal (no account, no token). With the services up
@@ -423,15 +423,24 @@ and migrated (`uv run poe up`, `uv run poe migrate`) and
 `JUDGEMETRICS_IDENTIFIER_PEPPER` set:
 
 ```sh
-uv run poe ingest-cook   # about 1.2 GB streamed into the raw lake; 12 minutes or more
-uv run poe ingest-cook   # again: five metadata requests, nothing downloaded
+uv run poe ingest-cook   # about 1.2 GB streamed into the raw lake, then parsed and published
+uv run poe ingest-cook   # again: five metadata requests, nothing downloaded or parsed
 uv run judgemetrics ingest runs --source cook_sao
 uv run judgemetrics sources profile cook_sao --check   # the committed profile describes your exports
+uv run judgemetrics ingest retire cook_sao   # delete the source's rows (the lake stays) before ingesting a new release
 ```
 
 Each export streams to a temporary file outside the repository and is
-stored by its sha256; nothing is parsed yet (parser version `0`; Phase 5
-Step 4 maps the rows). The data stays on your machine: the raw lake and
+stored by its sha256, then parsed through the reviewed rule tables
+(`data/reference/cook_sao/`) into the canonical tables in one transaction
+(`docs/ARCHITECTURE.md` "Cook County connector"; its "Scale budgets" give
+the wall time and memory of a full run). The `ingest-cook` task turns
+pipeline step 13 (recompute the impacted metrics) off through its `env`
+table until Phase 5 Step 6 makes the engine scale to the corpus, so the
+source has no published figure yet (do not run `compute-metrics` over it
+before then). The SAO
+re-hashes every case and participant id for each release, so a new release is
+ingested after `ingest retire`, never over the old rows. The data stays on your machine: the raw lake and
 the database are never committed, and the only real rows in the
 repository are the small fixture in `tests/fixtures/cook_sao/`, whose
 race, gender, age, and incident and arrest-agency columns are blank. The

@@ -78,7 +78,12 @@ from judgemetrics.entity_resolution.features import (
     compute_features,
     load_profiles,
 )
-from judgemetrics.entity_resolution.merge import MergeError, canonical_person_id, merge_persons
+from judgemetrics.entity_resolution.merge import (
+    MergeError,
+    canonical_person_id,
+    canonical_person_ids,
+    merge_persons,
+)
 from judgemetrics.entity_resolution.scoring import TRACE_SKIPPED, Scorer, StubScorer
 from judgemetrics.entity_resolution.stages import StageResult
 from judgemetrics.ingest.base import NaturalKey, PersonDraft, TaggedRecord, utc_now
@@ -254,7 +259,7 @@ def resolve_candidates(
     actor: str = SYSTEM_ACTOR,
 ) -> ResolutionStats:
     """Block, evaluate, store, and merge for the run's persons and the persons they block with."""
-    anchor = {canonical_person_id(session, pid) for pid in person_ids}
+    anchor = set(canonical_person_ids(session, person_ids).values())
     if not anchor:
         return ResolutionStats()
     blocks = blocks_for(session, blocking_hashes(session, anchor))

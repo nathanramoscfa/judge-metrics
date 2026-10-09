@@ -7,7 +7,9 @@ Under ``src/judgemetrics/``, a reference to the restricted table — its name
 reader (``validation/fairness.py``), the ORM model and the package that
 exports it (``db/models/restricted.py``, ``db/models/__init__.py``), and
 Phase 4 Step 1's write path (``ingest/base.py``, ``ingest/publish.py``,
-``ingest/runner.py``, ``ingest/synthetic/``). The bare word "restricted" is
+``ingest/runner.py``, ``ingest/synthetic/``), and Phase 5 Step 4's second connector
+(``ingest/cook_sao/``: race, gender, and the age band reach the table by the same write
+path). The bare word "restricted" is
 not the pattern: a dozen modules use it in prose. ``PartyAttributeDraft`` is
 the write path's draft class and is matched as the table name it carries.
 """
@@ -38,7 +40,9 @@ ALLOWED_FILES = frozenset(
         "ingest/runner.py",
     }
 )
-ALLOWED_DIRECTORIES = ("ingest/synthetic/",)
+# A registered connector directory joins this tuple (``scripts/verify_phase04.py`` check 31
+# reads it from here), so a later connector never fails an earlier phase's required check.
+ALLOWED_DIRECTORIES = ("ingest/synthetic/", "ingest/cook_sao/")
 
 
 def _relative(path: Path) -> str:

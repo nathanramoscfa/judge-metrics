@@ -444,11 +444,19 @@ it as a term of the agreement (root roadmap §5.5).
   attribution, the column list, the metadata URL, the retrieval time, the
   `ETag`, and `Last-Modified`; the parser version on every derived row.
 - **Ingested by:** `judgemetrics ingest run cook_sao` (`uv run poe
-  ingest-cook`), connector `CookSaoConnector`, parser version `0` (fetch
-  and store only; Phase 5 Step 4 parses); the fixture is
-  `tests/fixtures/cook_sao/` (73 real cases chosen by
+  ingest-cook`), connector `CookSaoConnector`, parser version
+  `1+<rule table versions>` (Phase 5 Step 4: it fetches, stores, parses,
+  and publishes the five exports through the reviewed rule tables; a table
+  edit re-derives every row from the raw lake without a download); the
+  fixture is `tests/fixtures/cook_sao/` (73 real cases chosen by
   `judgemetrics sources excerpt cook_sao`, restricted and
-  quasi-identifying columns blanked).
+  quasi-identifying columns blanked). The mapping is in
+  `docs/ARCHITECTURE.md` "Cook County connector", the measured cost of a
+  full run in "Scale budgets". The source is declared to observe one
+  outcome, `revocation` (a probation-violation sentencing in the same case),
+  over the coverage window 2011-01-01 to 2024-12-30. `judgemetrics ingest
+  retire cook_sao` removes the source's rows before a new release is
+  ingested (the SAO re-hashes every id).
 - **Known limitations:** felony cases of three SAO bureaus only; no
   cross-case person key, so no cross-case outcome; the ids are re-hashed
   for every release, so a re-publication would re-key every case and

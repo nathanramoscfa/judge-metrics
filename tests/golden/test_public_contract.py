@@ -41,7 +41,12 @@ from sqlalchemy.orm import Session
 from judgemetrics.config import REPO_ROOT
 from judgemetrics.db.models import RESTRICTED_TABLES, Person
 from judgemetrics.schemas.metrics import SUPPRESSED_FIELDS
-from tests.golden.conftest import RESTRICTED_NAMES, GoldenFixture, GoldenMetrics
+from tests.golden.conftest import (
+    RESTRICTED_NAMES,
+    RESTRICTED_WHOLE_WORDS,
+    GoldenFixture,
+    GoldenMetrics,
+)
 
 pytestmark = [pytest.mark.golden, pytest.mark.integration]
 
@@ -67,12 +72,27 @@ def _keys(value: Any, *, with_values: bool = False) -> set[str]:
     return found
 
 
+def _words(name: str) -> set[str]:
+    """The lower-case words of a key: camelCase and snake_case split, so ``Traced`` is not ``race``."""
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    return {word for word in re.split(r"[^a-z0-9]+", spaced.lower()) if word}
+
+
 def _restricted_hits(document: Any, *, with_values: bool = False) -> set[str]:
-    """The restricted names that occur in (or as part of) a key, or a value when asked."""
-    names = {name.lower() for name in _keys(document, with_values=with_values)}
-    return {
+    """The restricted names that occur in (or as part of) a key, or a value when asked.
+
+    ``RESTRICTED_WHOLE_WORDS`` (``race``, ``gender``) match whole words of a key only,
+    because a substring ``race`` would match ``trace``; a served value is prose.
+    """
+    raw = _keys(document, with_values=with_values)
+    names = {name.lower() for name in raw}
+    hits = {
         restricted for restricted in RESTRICTED_NAMES if any(restricted in name for name in names)
     }
+    if not with_values:
+        words = set().union(*(_words(name) for name in raw)) if raw else set()
+        hits |= {word for word in RESTRICTED_WHOLE_WORDS if word in words}
+    return hits
 
 
 def test_the_openapi_snapshot_names_no_restricted_property() -> None:
@@ -128,7 +148,8 @@ def test_no_app_readable_text_column_holds_a_participant_id(
         ).all()
         scanned = {(schema, table) for schema, table, _ in columns}
         assert ("public", "case_party") in scanned
-        assert ("public", "data_quality_issue") in scanned
+        # Revision 0011 revoked the app role's read of the issue table: it is not scannable.
+        assert ("public", "data_quality_issue") not in scanned
         assert not any(schema == "restricted" for schema, _ in scanned)
         for schema, table, column in columns:
             # Identifiers come from the catalog and are quoted; the pattern is bound.

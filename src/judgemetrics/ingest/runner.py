@@ -86,6 +86,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from judgemetrics.config import Settings
+from judgemetrics.db.arrays import fetch_by_values
 from judgemetrics.db.models import (
     Base,
     DataQualityIssue,
@@ -139,6 +140,7 @@ from judgemetrics.ingest.base import (
     SupportsCheckpoint,
     SupportsContext,
     SupportsCoverage,
+    SupportsRunIssues,
     SupportsWorkDir,
     TaggedRecord,
     describe_key,
@@ -166,11 +168,18 @@ from judgemetrics.ingest.store import ObjectRef, RawObjectStore, object_key
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
 from judgemetrics.metrics.engine import EngineResult
-from judgemetrics.quality.checks import IssueDraft, run_checks, run_pre_deduplication_checks
+from judgemetrics.quality.checks import (
+    CaseFacts,
+    IssueDraft,
+    run_checks,
+    run_pre_deduplication_checks,
+)
 
 log = get_logger(__name__)
 
 MAX_REASON_LENGTH = 2000
+# Issues inserted per statement (Core executemany, not one ORM object each).
+ISSUE_BATCH = 1000
 # Prefix of the per-run temporary directory (downloads and lake read-backs).
 WORK_DIR_PREFIX = "judgemetrics-ingest-"
 NORMALIZE_FAILED = "normalize_failed"
@@ -182,7 +191,7 @@ UNRESOLVED_PERSON = "unresolved_person"
 UNRESOLVED_PARTY = "unresolved_party"
 # Judge identity systems with a partial unique expression index on
 # ``external_ids ->> '<system>'`` (``uq_judge_external_ids_<system>``).
-JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid", "synthetic_judge_code"})
+JUDGE_IDENTITY_SYSTEMS = frozenset({"fjc_nid", "synthetic_judge_code", "cook_sao_judge"})
 __all__ = [
     "IngestFailed",
     "PersonResolution",
@@ -440,33 +449,47 @@ def impacted_subjects(
     if not case_ids and not person_ids and not judge_ids and not court_ids:
         return ()
     charge = Base.metadata.tables["charge"]
+    court_case = Base.metadata.tables["court_case"]
     if case_ids:
         person_ids.update(
-            session.scalars(
-                select(charge.c.person_id).where(charge.c.case_id.in_(case_ids)).distinct()
+            row[0]
+            for row in fetch_by_values(
+                session,
+                lambda condition: select(charge.c.person_id).where(condition).distinct(),
+                charge.c.case_id,
+                case_ids,
             )
         )
     if person_ids:
         case_ids.update(
-            session.scalars(
-                select(charge.c.case_id).where(charge.c.person_id.in_(person_ids)).distinct()
+            row[0]
+            for row in fetch_by_values(
+                session,
+                lambda condition: select(charge.c.case_id).where(condition).distinct(),
+                charge.c.person_id,
+                person_ids,
             )
         )
     if case_ids:
-        court_case = Base.metadata.tables["court_case"]
         court_ids.update(
-            session.scalars(
-                select(court_case.c.court_id).where(court_case.c.id.in_(case_ids)).distinct()
+            row[0]
+            for row in fetch_by_values(
+                session,
+                lambda condition: select(court_case.c.court_id).where(condition).distinct(),
+                court_case.c.id,
+                case_ids,
             )
         )
         for table_name in ("judge_assignment", "decision", "sentence"):
             table = Base.metadata.tables[table_name]
+
+            def judges_of(
+                condition: sa.ColumnElement[bool], table: sa.Table = table
+            ) -> sa.Select[Any]:
+                return select(table.c.judge_id).where(condition, table.c.judge_id.is_not(None))
+
             judge_ids.update(
-                session.scalars(
-                    select(table.c.judge_id)
-                    .where(table.c.case_id.in_(case_ids), table.c.judge_id.is_not(None))
-                    .distinct()
-                )
+                row[0] for row in fetch_by_values(session, judges_of, table.c.case_id, case_ids)
             )
     return (
         *(Subject("judge", str(judge_id)) for judge_id in sorted(judge_ids, key=str)),
@@ -502,17 +525,15 @@ def recompute_metrics(
     from judgemetrics.metrics.engine import compute_and_publish
     from judgemetrics.metrics.registry import DESCRIPTIVE_KINDS
 
+    if not settings.metrics_recompute_on_ingest:
+        # The impacted set costs a lookup per touched case: not computed when nothing
+        # will use it (a full Cook County run turns step 13 off until the engine scales).
+        bound.info("ingest.metrics.skipped", because="metrics_recompute_on_ingest is off")
+        return RecomputeResult(impacted=(), engine=None)
     impacted = impacted_subjects(session, resolved, published)
     if not impacted:
         bound.info("ingest.metrics.skipped", because="no impacted subject")
         return RecomputeResult(impacted=(), engine=None)
-    if not settings.metrics_recompute_on_ingest:
-        bound.info(
-            "ingest.metrics.skipped",
-            because="metrics_recompute_on_ingest is off",
-            impacted=len(impacted),
-        )
-        return RecomputeResult(impacted=impacted, engine=None)
     engine = compute_and_publish(
         session,
         settings,
@@ -686,13 +707,17 @@ def _execute_in(
         for artifact in artifacts
     ]
 
-    if isinstance(connector, SupportsContext):
+    # The connector's lookup tables are built only when something will be parsed: a rerun
+    # over unchanged artifacts neither reads them back from the lake nor indexes them.
+    if isinstance(connector, SupportsContext) and any(state.reparse for state in states):
         connector.load_context([_materialized(state, store, work_dir) for state in states])
     _record_coverage(session, source, connector, bound)
 
     counts = RunCounts()
     tagged: list[TaggedRecord] = []
     issues: list[IssueDraft] = []
+    records = {state.artifact.external_id: state.record for state in states}
+    provenances: dict[uuid.UUID, Provenance] = {}
     for state in states:
         if not state.reparse:
             continue
@@ -704,13 +729,22 @@ def _execute_in(
         if not validation.ok:
             msg = "validation failed: " + "; ".join(validation.errors)
             raise IngestFailed(msg)
-        provenance = Provenance(
-            source_record_id=state.record.id, raw_sha256=state.record.raw_sha256
-        )
         rows = 0
         for row in connector.parse(state.raw):  # step 6
-            rows += 1
-            counts.seen += 1
+            rows += row.rows
+            counts.seen += row.rows
+            record = state.record
+            if row.artifact_id is not None and row.artifact_id != state.artifact.external_id:
+                named = records.get(row.artifact_id)
+                if named is None:
+                    msg = f"the connector attributed a record to an unknown artifact {row.artifact_id!r}"
+                    raise IngestFailed(msg)
+                record = named
+            provenance = provenances.get(record.id)
+            if provenance is None:
+                provenance = provenances[record.id] = Provenance(
+                    source_record_id=record.id, raw_sha256=record.raw_sha256
+                )
             try:
                 drafts = list(connector.normalize(row))  # step 8
             except IngestError as exc:
@@ -722,19 +756,36 @@ def _execute_in(
                         severity=IssueSeverity.ERROR,
                         issue_code=NORMALIZE_FAILED,
                         description=str(exc)[:MAX_REASON_LENGTH],
-                        source_record_id=state.record.id,
+                        source_record_id=record.id,
                     )
                 )
                 continue
             tagged.extend(TaggedRecord(record=draft, provenance=provenance) for draft in drafts)
         bound.info("ingest.artifact.parsed", external_id=state.artifact.external_id, rows=rows)
 
+    if isinstance(connector, SupportsRunIssues):
+        for finding in connector.run_issues():
+            named_record = records.get(finding.artifact_id) if finding.artifact_id else None
+            counts.rejected += finding.rejected_rows
+            issues.append(
+                IssueDraft(
+                    entity_type=finding.entity_type,
+                    entity_key=None,
+                    severity=finding.severity,
+                    issue_code=finding.issue_code,
+                    description=finding.description[:MAX_REASON_LENGTH],
+                    source_record_id=named_record.id if named_record is not None else None,
+                )
+            )
+
     issues.extend(run_pre_deduplication_checks(tagged))  # step 11, the part step 9 would hide
     deduplicated = _deduplicate(tagged, bound)  # step 9
+    del tagged
     resolved = _resolve(session, deduplicated, run, counts)  # step 10
+    del deduplicated
     counts.rejected += len(resolved.rejections)
     issues.extend(resolved.rejections)
-    issues.extend(run_checks(resolved.all_tagged()))  # step 11
+    issues.extend(run_checks(resolved.all_tagged(), _parent_cases(session, resolved)))  # step 11
     published = _publish(session, resolved, counts, bound)  # step 12
     # Step 10, the rule stages: they read case linkage from what step 12 published.
     stats = resolve_candidates(session, list(resolved.person_ids.values()), run)
@@ -1166,6 +1217,32 @@ def _resolve(
     return resolved
 
 
+def _parent_cases(session: Session, resolved: _Resolved) -> dict[NaturalKey, CaseFacts]:
+    """The cases the run's children reference that exist only in the database (bounded lookups).
+
+    The case-level checks compare a child row with its case's filing date and
+    status; a run that parses only some artifacts has children whose case it
+    did not draft, so the case is read here instead of being unknown.
+    """
+    keys_by_id = {case_id: key for key, case_id in resolved.db_cases.items()}
+    if not keys_by_id:
+        return {}
+    court_case = Base.metadata.tables["court_case"]
+
+    def statement(condition: sa.ColumnElement[bool]) -> sa.Select[Any]:
+        return select(
+            court_case.c.id, court_case.c.filed_date, court_case.c.closed_date, court_case.c.status
+        ).where(condition)
+
+    facts: dict[NaturalKey, CaseFacts] = {}
+    for case_id, filed, closed, status in fetch_by_values(
+        session, statement, court_case.c.id, keys_by_id
+    ):
+        key = keys_by_id[case_id]
+        facts[key] = CaseFacts(natural_key=key, filed_date=filed, closed_date=closed, status=status)
+    return facts
+
+
 def _case_key_of(record: CanonicalRecord) -> NaturalKey | None:
     if isinstance(
         record,
@@ -1190,7 +1267,9 @@ def _person_key_of(record: CanonicalRecord) -> NaturalKey | None:
 
 
 def _judge_key_of(record: CanonicalRecord) -> NaturalKey | None:
-    if isinstance(record, JudgeAssignmentDraft | CourtEventDraft | DecisionDraft | SentenceDraft):
+    if isinstance(
+        record, JudgeAssignmentDraft | ChargeDraft | CourtEventDraft | DecisionDraft | SentenceDraft
+    ):
         return record.judge_key
     return None
 
@@ -1264,14 +1343,16 @@ def _lookup_courts(session: Session, keys: Iterable[NaturalKey]) -> dict[Natural
 def _lookup_judges(session: Session, keys: Iterable[NaturalKey]) -> dict[NaturalKey, uuid.UUID]:
     wanted = set(keys)
     found: dict[NaturalKey, uuid.UUID] = {}
-    for system in {key[1] for key in wanted if len(key) == 3}:
+    for system in sorted({key[1] for key in wanted if len(key) == 3}):
         values = {key[2] for key in wanted if key[1] == system}
-        rows = session.execute(
-            select(JUDGE.c.id, JUDGE.c.external_ids[system].astext).where(
-                JUDGE.c.external_ids[system].astext.in_(values)
-            )
-        ).all()
-        for row_id, value in rows:
+        identity = JUDGE.c.external_ids[system].astext
+
+        def judges_by_identity(
+            condition: sa.ColumnElement[bool], identity: sa.ColumnElement[Any] = identity
+        ) -> sa.Select[Any]:
+            return select(JUDGE.c.id, identity).where(condition)
+
+        for row_id, value in fetch_by_values(session, judges_by_identity, identity, values):
             key = ("judge", system, str(value))
             if key in wanted:
                 found[key] = row_id
@@ -1299,7 +1380,7 @@ def _publish(session: Session, resolved: _Resolved, counts: RunCounts, bound: An
     party_ids = upsert_parties(session, resolved.parties, case_ids, person_ids, counts)
     upsert_party_attributes(session, resolved.party_attributes, party_ids, counts)
     assignment_ids = upsert_assignments(session, resolved.assignments, case_ids, judge_ids, counts)
-    charge_ids = upsert_charges(session, resolved.charges, case_ids, person_ids, counts)
+    charge_ids = upsert_charges(session, resolved.charges, case_ids, person_ids, judge_ids, counts)
     event_ids = upsert_events(session, resolved.events, case_ids, person_ids, judge_ids, counts)
     decision_ids = upsert_decisions(
         session, resolved.decisions, case_ids, person_ids, judge_ids, counts
@@ -1577,15 +1658,18 @@ def _upsert_services(
     judge_keys_by_id = {value: key for key, value in judge_ids.items()}
     court_keys_by_id = {value: key for key, value in court_ids.items()}
     involved = {row["judge_id"] for row in rows}
-    lookup = session.execute(
-        select(
+    lookup = fetch_by_values(
+        session,
+        lambda condition: select(
             JUDGE_SERVICE.c.id,
             JUDGE_SERVICE.c.judge_id,
             JUDGE_SERVICE.c.court_id,
             JUDGE_SERVICE.c.position_type,
             JUDGE_SERVICE.c.start_date,
-        ).where(JUDGE_SERVICE.c.judge_id.in_(involved))
-    ).all()
+        ).where(condition),
+        JUDGE_SERVICE.c.judge_id,
+        involved,
+    )
     wanted = {item.record.natural_key for item in items}
     found: dict[NaturalKey, uuid.UUID] = {}
     for row_id, judge_id, court_id, position_type, start in lookup:
@@ -1635,6 +1719,8 @@ def _persist_issues(
         existing = {tuple(row) for row in rows}
     created = 0
     by_severity: dict[str, int] = {}
+    pending: list[dict[str, Any]] = []
+    issue_table = Base.metadata.tables["data_quality_issue"]
     for issue in issues:
         entity_id = published.get(issue.entity_type, issue.entity_key)
         signature = (
@@ -1648,17 +1734,22 @@ def _persist_issues(
         if signature in existing:
             continue
         existing.add(signature)
-        session.add(
-            DataQualityIssue(
-                source_record_id=issue.source_record_id,
-                entity_type=issue.entity_type,
-                entity_id=entity_id,
-                severity=issue.severity,
-                issue_code=issue.issue_code,
-                description=issue.description,
-                status=IssueStatus.OPEN,
-            )
+        pending.append(
+            {
+                "source_record_id": issue.source_record_id,
+                "entity_type": issue.entity_type,
+                "entity_id": entity_id,
+                "severity": issue.severity,
+                "issue_code": issue.issue_code,
+                "description": issue.description,
+                "status": IssueStatus.OPEN,
+            }
         )
         created += 1
+        if len(pending) >= ISSUE_BATCH:
+            session.execute(sa.insert(issue_table), pending)
+            pending = []
+    if pending:
+        session.execute(sa.insert(issue_table), pending)
     session.flush()
     bound.info("ingest.quality_issues", found=len(issues), created=created, by_severity=by_severity)

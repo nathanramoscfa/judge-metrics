@@ -314,13 +314,44 @@ Everything else is held, never guessed:
   Sutker-Dermer").
 
 Of the 538 strings, 523 resolve to 521 judges, 14 are unresolved, and one
-is ambiguous. A held string attributes no row: Phase 5 Step 4 publishes
-its rows without a judge and raises one `judge_unresolved` issue per string
-per run, so the table is this phase's judge review queue, and deciding a
-string is a table edit and a version bump. The matcher looks a string up
-verbatim, then by its normalized form, so a new spacing or case variant of
-a listed string resolves like it; a string the table does not list is
-unresolved ("not in the alias table").
+is ambiguous. A held string attributes no row: the connector (Phase 5
+Step 4) publishes its rows without a judge — a charge with a null
+`judge_id`, a sentence with a null `judge_id` — and raises one
+`judge_unresolved` issue per string per run, with the number of rows it
+left unattributed, so the table is this phase's judge review queue, and
+deciding a string is a table edit and a version bump (which re-derives every
+row). The matcher looks a string up verbatim, then by its normalized form, so
+a new spacing or case variant of a listed string resolves like it; a string
+the table does not list is unresolved ("not in the alias table").
+
+A resolved key becomes a judge row under the identity system
+`cook_sao_judge` (`external_ids ->> 'cook_sao_judge'`, a partial unique
+expression index since revision 0011, and an entry in the runner's
+`JUDGE_IDENTITY_SYSTEMS` allow-list), named by `judges.csv`. Every judge a
+run references has one derived service record per court it is attributed
+rows at, from the first to the last attributed disposition or sentence date,
+marked `derived` in its metadata: the source gives no appointment date, so the
+span is the evidence, not the commission.
+
+## Persons of a case-participant source (Cook County)
+
+The Cook County exports carry no name, date of birth, or cross-case key:
+`CASE_PARTICIPANT_ID` is per case and is re-hashed for every release (the
+profile measures zero participants under more than one case). A "person" of
+this source is therefore a **case participation** — one person row per
+participant of a case, hashed in the source's own namespace
+(`sha256(pepper   source_participant_id   cook_sao   id)`, the
+source-qualified form of `security/identifiers.py`, so no value can collide
+with another source's) — and the deterministic stage can find the same
+participation again on a re-ingest but can never link two cases. The rule
+stage needs a name or a date of birth and has neither, so no candidate pair
+exists for this source, no person is merged, and the review queue holds none
+of its persons. Every Cook County metric is within-case: a defendant's
+outcomes in a later case are not observable, and none is published (the
+source's `observable_outcomes` is `revocation`, a probation-violation
+resentencing in the same case). Linking participations across cases would
+need a lawful person key the source does not provide; Phase 5's Florida
+selection weighs exactly that.
 
 ## What later phases add
 

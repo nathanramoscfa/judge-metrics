@@ -1,5 +1,5 @@
 # tests/integration/test_migrations.py
-"""The migrations (0001–0010): round trip, model constraints, role grants, the audit trigger.
+"""The migrations (0001–0011): round trip, model constraints, role grants, the audit trigger.
 
 Runs against the Compose / CI PostgreSQL through the admin URL; skipped
 with a clear reason when no database URL is configured (tests/conftest.py).
@@ -180,7 +180,10 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert not set(RESTRICTED_SCHEMA_TABLES) & set(snapshot.tables)
     # Revision 0010: an adjusted observation's model.
     assert "ix_metric_observation_outcome_model_id" in indexes["metric_observation"]
-    assert current_revision(migrated_database) == head_revision() == "0010"
+    # Revision 0011: the Cook County judge identity, the charge's disposing judge.
+    assert "uq_judge_external_ids_cook_sao_judge" in indexes["judge"]
+    assert "ix_charge_judge_id" in indexes["charge"]
+    assert current_revision(migrated_database) == head_revision() == "0011"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -414,6 +417,72 @@ def test_revision_0010_adjusted_observation_columns_checks_and_round_trip(
     assert _snapshot(migrated_database) == before
 
 
+def test_revision_0011_judge_identity_index_charge_judge_and_issue_grant(
+    migrated_database: Engine,
+) -> None:
+    """The partial expression index, the nullable RESTRICT key, the revoked issue table, the round trip."""
+    with migrated_database.connect() as connection:
+        index = connection.execute(
+            text(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE indexname = 'uq_judge_external_ids_cook_sao_judge'"
+            )
+        ).scalar()
+        assert index is not None and "UNIQUE" in index
+        assert "cook_sao_judge" in index and "WHERE" in index
+        column = connection.execute(
+            text(
+                "SELECT data_type, is_nullable FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'charge' "
+                "AND column_name = 'judge_id'"
+            )
+        ).one()
+        assert (column[0], column[1]) == ("uuid", "YES")
+        rule = connection.execute(
+            text(
+                "SELECT delete_rule FROM information_schema.referential_constraints "
+                "WHERE constraint_name = 'fk_charge_judge_id_judge'"
+            )
+        ).scalar()
+        assert rule == "RESTRICT"
+        if connection.execute(
+            text("SELECT 1 FROM pg_roles WHERE rolname = 'judgemetrics_app'")
+        ).scalar():
+            assert not connection.scalar(
+                text(
+                    "SELECT has_table_privilege('judgemetrics_app', 'data_quality_issue', 'SELECT')"
+                )
+            )
+    # 0011 alone round-trips: its column, key, index, and revoke go and come back.
+    url = _url(migrated_database)
+    before = _snapshot(migrated_database)
+    downgrade(url, "0010")
+    try:
+        assert current_revision(migrated_database) == "0010"
+        with migrated_database.connect() as connection:
+            names = set(
+                connection.scalars(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = 'charge'"
+                    )
+                )
+            )
+            assert "judge_id" not in names
+            if connection.execute(
+                text("SELECT 1 FROM pg_roles WHERE rolname = 'judgemetrics_app'")
+            ).scalar():
+                assert connection.scalar(
+                    text(
+                        "SELECT has_table_privilege("
+                        "'judgemetrics_app', 'data_quality_issue', 'SELECT')"
+                    )
+                )
+    finally:
+        upgrade(url, "head")
+    assert _snapshot(migrated_database) == before
+
+
 def test_revision_0004_columns_check_and_trigger(migrated_database: Engine) -> None:
     with migrated_database.connect() as connection:
         columns = {
@@ -530,7 +599,7 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # 0009 first: outcome_model goes and nothing else.
+    # 0011 and 0010 go first, then 0009: outcome_model goes and nothing else.
     downgrade(url, "0008")
     assert current_revision(migrated_database) == "0008"
     without_models = _snapshot(migrated_database)

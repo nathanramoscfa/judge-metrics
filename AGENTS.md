@@ -150,7 +150,8 @@ uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
 uv run poe dev-web         # Next.js dev server in web/ (pnpm) against the local API
 uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + canonical tables (ingest role)
-uv run poe ingest-cook     # the five Cook County SAO exports (1.2 GB) streamed → raw lake, parser 0 (not in bootstrap); a rerun downloads nothing
+uv run poe ingest-cook     # the five Cook County SAO exports (1.2 GB) streamed → raw lake → canonical tables, step 13 off via the task's env table (not in bootstrap); a rerun downloads and parses nothing
+uv run judgemetrics ingest retire SOURCE [--yes]   # delete a registered source's rows (ingest role, one transaction, refused in production) before ingesting a new release; keeps the source row, runs, lake, audit log
 uv run judgemetrics sources profile cook_sao [--out PATH] [--check] [--from-fixture DIR]   # data/reference/cook_sao/profile.yaml from the stored exports (ingest role); --check exits 1 on drift
 uv run judgemetrics sources excerpt cook_sao --out DIR [--from-fixture DIR]   # the stratified real-row fixture, blanked columns emptied; excerpting the fixture reproduces it
 uv run judgemetrics        # CLI: db upgrade|downgrade|current, serve, ingest list-sources|run|runs, openapi export
@@ -1218,6 +1219,75 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `gender` under `metrics/` as whole words (a substring would match
   `trace`); the log scrubber matches substrings, so its `race` entry waits
   for Step 4, which logs the values first.
+
+- Cook County connector at corpus scale (Phase 5 Step 4, docs/ARCHITECTURE.md
+  "Cook County connector" and "Scale budgets"): parser version
+  `1+<RULE_VERSION_TAG>`. **A case is built from the rows of all five exports
+  at once** (`case.build_case`, fed by `context.CookContext.cases()`, a k-way
+  merge of five frames each sorted by every column read), because a charge's
+  offense is in Initiation, its disposition in Dispositions, a case's court and
+  status in several; so the first `parse` call of a run streams the whole
+  corpus (one `SourceRecordDraft` per case and export, `rows` = that export's
+  rows of the case, `artifact_id` = the export whose `source_record` the drafts
+  are attributed to) and the later calls yield nothing. `load_context` runs
+  only when some artifact is to be parsed (the runner no longer reads the
+  lake back for a rerun). Rows the tables cannot place are counted in
+  `findings.Findings` and persisted as issues through `SupportsRunIssues`
+  (`RunIssue.rejected_rows` feeds `records_rejected`), never raised: a case's
+  rows are grouped before they are normalized. Every draft's natural key is
+  produced once by the builder. **Identity**: a person is a case
+  participation — the source-qualified hash
+  (`hash_identifier(..., source="cook_sao")`; the unqualified form and every
+  synthetic hash are unchanged, and a value with a NUL byte is refused); the
+  party key is `defendant:<ordinal>` (code-point order of the case's
+  normalized ids); a charge is `<ordinal>:<charge id>:<version id>` and a
+  version filed in Initiation and replaced by a later version of the same
+  charge is not published (60,776 of 1,386,500); a sentence is `<ordinal>:
+  <date>:<phase>`, a court event `initiation|disposition:<ordinal>:<type>:
+  <timestamp>`, a decision `charging|bond:<ordinal>` or `diversion:...`.
+  **Status**: a case is closed when every charge has ended — final,
+  `superseded`, or `transferred`; `pending` keeps it open. **Bond**: one
+  `pretrial_release` decision per participant from the *initial* bond, actor
+  and classification from `pretrial_rules.yaml`, no judge, `judge_not_recorded`
+  (the missing-judge check counts such decisions once per type instead of
+  warning per decision); the current bond is not published.
+  `PRE_FILING_DECISIONS` (`pretrial_release`, `charging`) are exempt from the
+  decision-before-filing check because the exports date a case by the day the
+  SAO received it, after the bond hearing for a quarter of the cases.
+  **Restricted data**: race, gender, and the age band come from the first
+  export in the order Intake, Initiation, Dispositions, Sentencing, Diversion
+  with a valid label; they leave `case.py` only as vocabulary values in
+  `PartyAttributeDraft`s, no other module of `ingest/cook_sao/` names the
+  table or a raw value, and `ingest/cook_sao/` is on the restricted-reader
+  allow-list (`tests/unit/test_restricted_readers.py`, which
+  `verify_phase04.py` check 31 now reads, so a later connector directory never
+  fails that required check). The log scrubber's `SENSITIVE_TOKENS`
+  (`race`, `gender`, `age_at_incident`) match whole underscore-separated key
+  tokens, not substrings (`trace` survives). `data_quality_issue` is revoked
+  from the app role (revision 0011, `RESTRICTED_TABLES`, `03-test-database.sql`'s
+  re-revoke block): a description names files, columns, counts, and — for a
+  coded column no table lists, or a held judge string — that public value,
+  never a participant id or a restricted value.
+  **Scale**: every lookup of a run-sized id list goes through
+  `judgemetrics.db.arrays` (`in_array` renders `column = ANY(:values)`,
+  `fetch_by_values` batches 50,000 values per statement); `lookup_cases`
+  reads only the wanted case numbers; `canonical_person_ids` resolves many
+  persons in one array lookup per level; the publishers build rows lazily one
+  batch at a time and issues are inserted with Core in batches of 1,000;
+  `recompute_metrics` checks the setting before computing the impacted set;
+  the parent cases of a run's children that exist only in the database are
+  read for the case-level checks (`quality.checks.CaseFacts`). **Do not run
+  `compute-metrics` over a database holding the full corpus until Step 6.**
+  **`ingest retire SOURCE_ID [--yes]`** (`ingest/retire.py`) deletes a
+  registered source's rows in dependency order (metrics, issues, case-level
+  rows, persons, reference rows nothing else cites, source records nothing
+  cites), keeps the `source` row, the runs, the lake, and the audit log,
+  writes an `ingest.retire` audit row, and is refused in production; a
+  person of the source that a row of another source still points at aborts
+  it. `purge_source` (tests) calls it; `seed` retires the synthetic source
+  first when the dataset on disk was written by an older `GENERATOR_VERSION`
+  (issue #36). The `ingest-cook` poe task is an inline table with an `env`
+  entry turning pipeline step 13 off.
 
 ## End-of-session report (from the brief)
 

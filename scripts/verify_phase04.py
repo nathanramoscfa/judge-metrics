@@ -193,7 +193,11 @@ RESTRICTED_ALLOWED_FILES = (
     "ingest/publish.py",
     "ingest/runner.py",
 )
+# The connector directories that may name the restricted table are the ones
+# tests/unit/test_restricted_readers.py lists (read with a line reader, so a connector
+# registered in a later phase never fails this check); this is the fallback minimum.
 RESTRICTED_ALLOWED_DIRECTORIES = ("ingest/synthetic/",)
+RESTRICTED_READERS_TEST = "tests/unit/test_restricted_readers.py"
 VALIDATION_DOC = "docs/VALIDATION.md"
 VALIDATION_SECTIONS = (
     "Summary",
@@ -1092,14 +1096,24 @@ def check_30() -> str | None:
     return _missing(*(f"{PACKAGE}/validation/{name}.py" for name in VALIDATION_MODULES))
 
 
+def _restricted_allowed_directories() -> tuple[str, ...]:
+    """The directories ``test_restricted_readers.py`` allows, else the Phase 4 minimum."""
+    if not _path(RESTRICTED_READERS_TEST).is_file():
+        return RESTRICTED_ALLOWED_DIRECTORIES
+    match = re.search(
+        r"^ALLOWED_DIRECTORIES = \(([^)]*)\)", _read(RESTRICTED_READERS_TEST), re.MULTILINE
+    )
+    listed = tuple(re.findall(r'"([^"]+)"', match.group(1))) if match else ()
+    return tuple(dict.fromkeys((*RESTRICTED_ALLOWED_DIRECTORIES, *listed)))
+
+
 def check_31() -> str | None:
     root = _path(PACKAGE)
     outside = []
+    allowed_directories = _restricted_allowed_directories()
     for module in sorted(root.rglob("*.py")):
         relative = module.relative_to(root).as_posix()
-        if relative in RESTRICTED_ALLOWED_FILES or relative.startswith(
-            RESTRICTED_ALLOWED_DIRECTORIES
-        ):
+        if relative in RESTRICTED_ALLOWED_FILES or relative.startswith(allowed_directories):
             continue
         if RESTRICTED_NAME.search(module.read_text(encoding="utf-8")):
             outside.append(f"{PACKAGE}/{relative}")

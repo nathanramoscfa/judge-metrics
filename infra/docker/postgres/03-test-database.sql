@@ -76,8 +76,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"owner_name" IN SCHEMA public
 -- migrations' revokes for every restricted table that exists (none exists on
 -- a fresh volume, where the migrations apply them later): the app role never
 -- reads person_identifier, correction_request (INSERT only, revision 0007),
--- audit_log, or entity_resolution_candidate; the ingest role only appends
--- to audit_log. The `restricted` schema (revision 0008) is never granted to
+-- audit_log, entity_resolution_candidate, or data_quality_issue (revision
+-- 0011); the ingest role only appends to audit_log. The `restricted` schema (revision 0008) is never granted to
 -- the app role; its USAGE and every table privilege are revoked again
 -- whenever the schema exists, so no rerun can open it.
 DO $$
@@ -85,7 +85,8 @@ DECLARE
     restricted text;
 BEGIN
     FOREACH restricted IN ARRAY ARRAY[
-        'person_identifier', 'correction_request', 'audit_log', 'entity_resolution_candidate'
+        'person_identifier', 'correction_request', 'audit_log', 'entity_resolution_candidate',
+        'data_quality_issue'
     ] LOOP
         IF to_regclass('public.' || restricted) IS NOT NULL THEN
             EXECUTE format('REVOKE ALL ON TABLE public.%I FROM judgemetrics_app', restricted);

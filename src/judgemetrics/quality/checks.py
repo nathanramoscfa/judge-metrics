@@ -27,11 +27,21 @@ Checks from the brief's list (``<data_quality>``) and their codes:
 
 ``case_number_duplicate`` runs over the drafts *before* deduplication
 (``run_pre_deduplication_checks``), because the planted duplicate collapses
-onto one case key at step 9 and would otherwise be invisible; every other
-check runs over the resolved drafts (``run_checks``). Checks that need a
-case's filing date or status see only the cases drafted in the same run;
-a child row of a case that already exists in the database is not checked
-against it (recorded as a known limitation).
+onto one case key at step 9 and would otherwise be invisible; it fires only
+for true duplicates — drafts of one case key that differ (another spelling of
+the number, another date) — never for one row drafted twice. Every other check
+runs over the resolved drafts (``run_checks``). The checks that need a case's
+filing date or status (``disposition_before_filing``, ``event_order_impossible``,
+``subsequent_before_index``, ``missing_disposition``) see the cases drafted in
+the same run *and* the parent cases of the run's children that already exist in
+the database (``CaseFacts``, loaded by the runner in bounded lookups), so a run
+that parses only one artifact is checked against the cases an earlier run
+published.
+
+``missing_judge_on_decision`` skips a decision whose draft says the source never
+names the judicial officer who made it (``judge_not_recorded``: the Cook County
+bond decisions) and reports one run-level count per decision type instead of one
+warning per decision.
 """
 
 from __future__ import annotations
@@ -39,7 +49,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -79,6 +89,21 @@ CASE_STATUS_CLOSED = "closed"
 CONVICTED_DISPOSITIONS = frozenset({"convicted_plea", "convicted_verdict"})
 # Decisions with one of these actors should name the judge who made them.
 JUDGE_EXPECTED_ACTORS = frozenset({ActorType.JUDGE, ActorType.UNKNOWN})
+# Decisions that legitimately precede a case's filing: a bond hearing follows the arrest and a
+# felony review precedes the prosecutor's receipt of the case, so neither is checked against
+# the filing date (the Cook County exports date a case by the day the SAO received it, and a
+# quarter of its cases have a bond date before that day). Their other orderings are still checked.
+PRE_FILING_DECISIONS = frozenset({"pretrial_release", "charging"})
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFacts:
+    """What the case-level checks read of a case that is not drafted in the run."""
+
+    natural_key: NaturalKey
+    filed_date: date | None
+    closed_date: date | None
+    status: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +268,9 @@ def case_number_duplicate(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
     for key, items in groups.items():
         if len(items) < 2:
             continue
+        # One row drafted twice is not a duplicate case: the drafts must differ.
+        if len({case for case, _ in _of_type(items, CaseDraft)}) < 2:
+            continue
         spellings = sorted({case.case_number for case, _ in _of_type(items, CaseDraft)})
         rendered = ", ".join(repr(spelling) for spelling in spellings)
         issues.append(
@@ -261,13 +289,20 @@ def case_number_duplicate(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
     return issues
 
 
-def _cases(tagged: Iterable[TaggedRecord]) -> dict[NaturalKey, CaseDraft]:
-    return {case.natural_key: case for case, _ in _of_type(tagged, CaseDraft)}
+def _cases(
+    tagged: Iterable[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> dict[NaturalKey, CaseDraft | CaseFacts]:
+    """The run's cases, completed with the parent cases that exist only in the database."""
+    cases: dict[NaturalKey, CaseDraft | CaseFacts] = dict(parents or {})
+    cases.update({case.natural_key: case for case, _ in _of_type(tagged, CaseDraft)})
+    return cases
 
 
-def disposition_before_filing(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
+def disposition_before_filing(
+    tagged: Iterable[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> list[IssueDraft]:
     """Error: a charge disposed before it, or its case, was filed."""
-    cases = _cases(tagged)
+    cases = _cases(tagged, parents)
     issues: list[IssueDraft] = []
     for charge, item in _of_type(tagged, ChargeDraft):
         if charge.disposed_at is None:
@@ -292,15 +327,18 @@ def disposition_before_filing(tagged: Iterable[TaggedRecord]) -> list[IssueDraft
     return issues
 
 
-def event_order_impossible(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
+def event_order_impossible(
+    tagged: Iterable[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> list[IssueDraft]:
     """Error: an ordering no case can have.
 
     A case closed before it was filed; an assignment ending before it
     started; a court event, decision, or sentence before its case was
-    filed; a release before the decision that granted it; a sentence
-    before the conviction it follows.
+    filed (a pretrial-release or charging decision may precede the filing,
+    ``PRE_FILING_DECISIONS``); a release before the decision that granted it;
+    a sentence before its defendant's first conviction in the case.
     """
-    cases = _cases(tagged)
+    cases = _cases(tagged, parents)
     issues: list[IssueDraft] = []
 
     def before_filing(case_key: NaturalKey, moment: datetime) -> str | None:
@@ -338,17 +376,24 @@ def event_order_impossible(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
                 f"{_iso(decision.decision_at)}"
             )
             issues.append(_issue(item, EVENT_ORDER_IMPOSSIBLE, IssueSeverity.ERROR, detail))
-        elif (problem := before_filing(decision.case_key, decision.decision_at)) is not None:
+        elif (
+            decision.decision_type not in PRE_FILING_DECISIONS
+            and (problem := before_filing(decision.case_key, decision.decision_at)) is not None
+        ):
             issues.append(_issue(item, EVENT_ORDER_IMPOSSIBLE, IssueSeverity.ERROR, problem))
 
-    convictions: dict[NaturalKey, datetime] = {}
+    # A sentence may follow some convictions of a multi-count case and precede others (the
+    # Cook County exports sentence a defendant count by count): it is impossible only before
+    # the *first* conviction of its own defendant in the case.
+    convictions: dict[tuple[NaturalKey, NaturalKey], datetime] = {}
     for charge, _ in _of_type(tagged, ChargeDraft):
         if charge.disposition in CONVICTED_DISPOSITIONS and charge.disposed_at is not None:
-            latest = convictions.get(charge.case_key)
-            if latest is None or charge.disposed_at > latest:
-                convictions[charge.case_key] = charge.disposed_at
+            key = (charge.case_key, charge.person_key)
+            first = convictions.get(key)
+            if first is None or charge.disposed_at < first:
+                convictions[key] = charge.disposed_at
     for sentence, item in _of_type(tagged, SentenceDraft):
-        conviction = convictions.get(sentence.case_key)
+        conviction = convictions.get((sentence.case_key, sentence.person_key))
         if conviction is not None and sentence.sentence_at < conviction:
             detail = (
                 f"sentenced {_iso(sentence.sentence_at)} before the conviction {_iso(conviction)}"
@@ -359,14 +404,16 @@ def event_order_impossible(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
     return issues
 
 
-def subsequent_before_index(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
+def subsequent_before_index(
+    tagged: Iterable[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> list[IssueDraft]:
     """Error: a justice event dated before its related case, or before the person's first case.
 
     The index of a subsequent event is the case it is documented in and,
     for the person, the earliest filing among the person's cases in the
     run: an outcome cannot precede either.
     """
-    cases = _cases(tagged)
+    cases = _cases(tagged, parents)
     first_filing: dict[NaturalKey, date] = {}
     for party, _ in _of_type(tagged, CasePartyDraft):
         case = cases.get(party.case_key)
@@ -401,24 +448,49 @@ def missing_judge_on_decision(tagged: Iterable[TaggedRecord]) -> list[IssueDraft
     """Warning: a decision by a judge (or an unknown actor) that names no judge.
 
     A statutory release, a prosecutor's dismissal, and a jury verdict
-    legitimately carry no judge and are not flagged.
+    legitimately carry no judge and are not flagged. A decision whose draft says
+    the source never names its judicial officer (``judge_not_recorded``: the Cook
+    County bond decisions) is not flagged either; each decision type's count is
+    reported once, as a run-level info issue.
     """
-    return [
-        _issue(
-            item,
-            MISSING_JUDGE_ON_DECISION,
-            IssueSeverity.WARNING,
-            f"{decision.decision_type} at {_iso(decision.decision_at)} by actor "
-            f"{decision.actor_type.value} names no judge",
+    issues: list[IssueDraft] = []
+    not_recorded: Counter[str] = Counter()
+    for decision, item in _of_type(tagged, DecisionDraft):
+        if decision.judge_key is not None or decision.actor_type not in JUDGE_EXPECTED_ACTORS:
+            continue
+        if decision.judge_not_recorded:
+            not_recorded[decision.decision_type] += 1
+            continue
+        issues.append(
+            _issue(
+                item,
+                MISSING_JUDGE_ON_DECISION,
+                IssueSeverity.WARNING,
+                f"{decision.decision_type} at {_iso(decision.decision_at)} by actor "
+                f"{decision.actor_type.value} names no judge",
+            )
         )
-        for decision, item in _of_type(tagged, DecisionDraft)
-        if decision.judge_key is None and decision.actor_type in JUDGE_EXPECTED_ACTORS
-    ]
+    issues.extend(
+        IssueDraft(
+            entity_type="decision",
+            entity_key=None,
+            severity=IssueSeverity.INFO,
+            issue_code=MISSING_JUDGE_ON_DECISION,
+            description=(
+                f"{count} {decision_type} decisions name no judge because the source never "
+                "records the judicial officer who made them"
+            ),
+        )
+        for decision_type, count in sorted(not_recorded.items())
+    )
+    return issues
 
 
-def missing_disposition(tagged: Iterable[TaggedRecord]) -> list[IssueDraft]:
+def missing_disposition(
+    tagged: Iterable[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> list[IssueDraft]:
     """Info: a charge of a closed case with no disposition."""
-    cases = _cases(tagged)
+    cases = _cases(tagged, parents)
     return [
         _issue(
             item,
@@ -502,7 +574,16 @@ def person_resolution_confidence_missing(tagged: Iterable[TaggedRecord]) -> list
 
 
 PRE_DEDUPLICATION_CHECKS = (case_number_duplicate,)
-CHECKS = (
+# The checks that read a case's filing date or status also take the parent cases.
+PARENT_AWARE_CHECKS: frozenset[Callable[..., list[IssueDraft]]] = frozenset(
+    {
+        disposition_before_filing,
+        event_order_impossible,
+        subsequent_before_index,
+        missing_disposition,
+    }
+)
+CHECKS: tuple[Callable[..., list[IssueDraft]], ...] = (
     service_dates_valid,
     service_overlap,
     missing_start_date,
@@ -525,11 +606,20 @@ def run_pre_deduplication_checks(tagged: Sequence[TaggedRecord]) -> list[IssueDr
     return issues
 
 
-def run_checks(tagged: Sequence[TaggedRecord]) -> list[IssueDraft]:
-    """Every check over the run's resolved drafts, in a fixed order."""
+def run_checks(
+    tagged: Sequence[TaggedRecord], parents: Mapping[NaturalKey, CaseFacts] | None = None
+) -> list[IssueDraft]:
+    """Every check over the run's resolved drafts, in a fixed order.
+
+    ``parents`` are the cases the run's children reference that already exist in
+    the database; the four case-level checks read them beside the run's own.
+    """
     issues: list[IssueDraft] = []
     for check in CHECKS:
-        issues.extend(check(tagged))
+        if check in PARENT_AWARE_CHECKS:
+            issues.extend(check(tagged, parents))
+        else:
+            issues.extend(check(tagged))
     return issues
 
 

@@ -17,6 +17,11 @@ pretrial-release children → sentences → justice events. The runner
 that order; each returns the ids of the rows it touched by natural key
 so issues can be linked to entities.
 
+Scale (Phase 5 Step 4): rows are built lazily, one batch at a time, so a
+run of a million charges never holds a million row dictionaries, and every
+lookup of run-sized id lists goes through ``judgemetrics.db.arrays`` (one
+typed array parameter per statement, never one bind parameter per id).
+
 Persons: a new person gets ``public_person_key = secrets.token_urlsafe(12)``
 exactly once, at insert; the key is never in an update set, so nothing a
 later run does can rewrite a public pseudonym. Identifier rows are
@@ -32,6 +37,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
+from itertools import batched
 from typing import Any
 
 import sqlalchemy as sa
@@ -39,6 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from judgemetrics.db.arrays import fetch_by_values
 from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.ingest.base import (
     CaseDraft,
@@ -56,9 +63,10 @@ from judgemetrics.ingest.base import (
     TaggedRecord,
 )
 
-# Rows per INSERT statement: the widest table (decision, 14 columns) stays
-# far below PostgreSQL's 65,535 bind parameters.
-BATCH_SIZE = 500
+# Rows per ``execute`` call: SQLAlchemy's insertmanyvalues sends them as one multi-row
+# INSERT, and the widest table (charge, 15 columns) stays far below PostgreSQL's 65,535
+# bind parameters.
+BATCH_SIZE = 1000
 PUBLIC_KEY_BYTES = 12
 RESOLUTION_DETERMINISTIC = "deterministic"
 LOG_LABELS = {"person_identifier": "identifier_hashes"}
@@ -136,9 +144,8 @@ def record_as[R](kind: type[R], item: TaggedRecord) -> R:
     return item.record
 
 
-def _batches[T](rows: Sequence[T]) -> Iterable[Sequence[T]]:
-    for start in range(0, len(rows), BATCH_SIZE):
-        yield rows[start : start + BATCH_SIZE]
+def _batches[T](rows: Iterable[T]) -> Iterable[tuple[T, ...]]:
+    return batched(rows, BATCH_SIZE, strict=False)
 
 
 def _count(result: sa.Result[Any], counts: RunCounts, table: str) -> None:
@@ -166,33 +173,37 @@ def utc_iso(value: datetime) -> str:
 def upsert_rows(
     session: Session,
     table: sa.Table,
-    rows: Sequence[dict[str, Any]],
+    rows: Iterable[dict[str, Any]],
     *,
     conflict: Sequence[Any],
     compare: Sequence[str],
     counts: RunCounts,
     index_where: Any = None,
 ) -> None:
-    """Batched upsert on ``conflict``, updating ``compare`` (and provenance) only when changed."""
-    if not rows:
-        return
-    has_provenance = "source_record_id" in table.c
+    """Batched upsert on ``conflict``, updating ``compare`` (and provenance) only when changed.
+
+    ``rows`` may be a generator: each batch of ``BATCH_SIZE`` rows is built,
+    sent, and released before the next is drawn. The statement is built and
+    compiled once and each batch is an executemany over it: SQLAlchemy's
+    insertmanyvalues renders one multi-row INSERT per batch from the cached
+    form, where compiling a ``values([...500 dicts])`` statement per batch cost
+    more than the database took to run it (measured on the Cook County corpus,
+    docs/ARCHITECTURE.md "Scale budgets").
+    """
+    stmt = insert(table)
+    excluded = stmt.excluded
+    set_: dict[str, Any] = {column: excluded[column] for column in compare}
+    if "source_record_id" in table.c:
+        set_["source_record_id"] = excluded.source_record_id
+    set_["updated_at"] = sa.func.now()
+    upsert = stmt.on_conflict_do_update(
+        index_elements=list(conflict),
+        index_where=index_where,
+        set_=set_,
+        where=sa.or_(*(table.c[column].is_distinct_from(excluded[column]) for column in compare)),
+    ).returning(table.c.id, _INSERTED)
     for batch in _batches(rows):
-        stmt = insert(table).values(list(batch))
-        excluded = stmt.excluded
-        set_: dict[str, Any] = {column: excluded[column] for column in compare}
-        if has_provenance:
-            set_["source_record_id"] = excluded.source_record_id
-        set_["updated_at"] = sa.func.now()
-        upsert = stmt.on_conflict_do_update(
-            index_elements=list(conflict),
-            index_where=index_where,
-            set_=set_,
-            where=sa.or_(
-                *(table.c[column].is_distinct_from(excluded[column]) for column in compare)
-            ),
-        ).returning(table.c.id, _INSERTED)
-        _count(session.execute(upsert), counts, table.name)
+        _count(session.execute(upsert, list(batch)), counts, table.name)
 
 
 # --- persons ------------------------------------------------------------------------
@@ -224,8 +235,9 @@ def upsert_persons(
                 "source_record_id": provenance_id(item),
             }
         )
+    statement = insert(PERSON).returning(PERSON.c.id)
     for batch in _batches(person_rows):
-        result = session.execute(insert(PERSON).values(list(batch)).returning(PERSON.c.id))
+        result = session.execute(statement, list(batch))
         counts.add(PERSON.name, created=len(result.all()), updated=0)
     return ids
 
@@ -254,9 +266,9 @@ def upsert_person_identifiers(
                     "source_record_id": provenance_id(item),
                 }
             )
+    statement = insert(PERSON_IDENTIFIER).on_conflict_do_nothing().returning(PERSON_IDENTIFIER.c.id)
     for batch in _batches(rows):
-        stmt = insert(PERSON_IDENTIFIER).values(list(batch))
-        result = session.execute(stmt.on_conflict_do_nothing().returning(PERSON_IDENTIFIER.c.id))
+        result = session.execute(statement, list(batch))
         counts.add(PERSON_IDENTIFIER.name, created=len(result.all()), updated=0)
 
 
@@ -266,11 +278,10 @@ def upsert_person_identifiers(
 def upsert_cases(
     session: Session, items: Sequence[TaggedRecord], court_ids: IdMap, counts: RunCounts
 ) -> IdMap:
-    rows: list[dict[str, Any]] = []
-    for item in items:
-        draft = record_as(CaseDraft, item)
-        rows.append(
-            {
+    def rows() -> Iterable[dict[str, Any]]:
+        for item in items:
+            draft = record_as(CaseDraft, item)
+            yield {
                 "id": uuid.uuid4(),
                 "court_id": _require(court_ids, draft.court_key, "court"),
                 "case_number": draft.case_number,
@@ -282,11 +293,11 @@ def upsert_cases(
                 "related_case_number_normalized": draft.related_case_number_normalized,
                 "source_record_id": provenance_id(item),
             }
-        )
+
     upsert_rows(
         session,
         COURT_CASE,
-        rows,
+        rows(),
         conflict=[COURT_CASE.c.court_id, COURT_CASE.c.case_number_normalized],
         compare=[
             "case_number",
@@ -299,38 +310,40 @@ def upsert_cases(
         counts=counts,
     )
     return lookup_cases(
-        session, [record_as(CaseDraft, item).natural_key for item in items], court_ids
+        session, (record_as(CaseDraft, item).natural_key for item in items), court_ids
     )
 
 
 def lookup_cases(session: Session, keys: Iterable[NaturalKey], court_ids: IdMap) -> IdMap:
-    """Ids of the cases with these keys (``("case", court name, court type, normalized)``)."""
-    wanted = set(keys)
-    if not wanted:
-        return {}
+    """Ids of the cases with these keys (``("case", court name, court type, normalized)``).
+
+    Only the wanted case numbers are read, court by court and in batches of
+    one array parameter each: a court holding half a million cases is never
+    loaded to find a handful of them.
+    """
     court_keys_by_id = {value: key for key, value in court_ids.items()}
     by_court: dict[uuid.UUID, set[str]] = {}
-    for key in wanted:
+    for key in keys:
         if len(key) != 4:
             continue
         court_id = court_ids.get(("court", key[1], key[2]))
         if court_id is not None:
             by_court.setdefault(court_id, set()).add(key[3])
-    if not by_court:
-        return {}
-    rows = session.execute(
-        select(COURT_CASE.c.id, COURT_CASE.c.court_id, COURT_CASE.c.case_number_normalized).where(
-            COURT_CASE.c.court_id.in_(by_court)
-        )
-    ).all()
     found: IdMap = {}
-    for row_id, court_id, normalized in rows:
-        court_key = court_keys_by_id.get(court_id)
-        if court_key is None:
-            continue
-        key = ("case", *court_key[1:], normalized)
-        if key in wanted:
-            found[key] = row_id
+    for court_id, numbers in by_court.items():
+        court_key = court_keys_by_id[court_id]
+
+        def statement(
+            condition: sa.ColumnElement[bool], court: uuid.UUID = court_id
+        ) -> sa.Select[Any]:
+            return select(COURT_CASE.c.id, COURT_CASE.c.case_number_normalized).where(
+                COURT_CASE.c.court_id == court, condition
+            )
+
+        for row_id, normalized in fetch_by_values(
+            session, statement, COURT_CASE.c.case_number_normalized, numbers
+        ):
+            found[("case", *court_key[1:], normalized)] = row_id
     return found
 
 
@@ -348,15 +361,15 @@ def _source_row_ids(
     involved = {
         case_ids[("case", *key[1:-1])] for key in wanted if ("case", *key[1:-1]) in case_ids
     }
-    if not involved:
-        return {}
-    rows = session.execute(
-        select(table.c.id, table.c.case_id, table.c.source_row_id).where(
-            table.c.case_id.in_(involved)
-        )
-    ).all()
     found: IdMap = {}
-    for row_id, case_id, source_row_id in rows:
+    for row_id, case_id, source_row_id in fetch_by_values(
+        session,
+        lambda condition: select(table.c.id, table.c.case_id, table.c.source_row_id).where(
+            condition
+        ),
+        table.c.case_id,
+        involved,
+    ):
         case_key = case_keys_by_id.get(case_id)
         if case_key is None:
             continue
@@ -375,16 +388,15 @@ def _case_rows(
     compare: Sequence[str],
     case_ids: IdMap,
 ) -> IdMap:
-    rows = [build(item) for item in items]
     upsert_rows(
         session,
         table,
-        rows,
+        (build(item) for item in items),
         conflict=[table.c.case_id, table.c.source_row_id],
         compare=compare,
         counts=counts,
     )
-    return _source_row_ids(session, table, [item.record.natural_key for item in items], case_ids)
+    return _source_row_ids(session, table, (item.record.natural_key for item in items), case_ids)
 
 
 def upsert_parties(
@@ -429,22 +441,22 @@ def upsert_party_attributes(
     role with ``USAGE`` on the ``restricted`` schema); the value is written
     and compared, never logged — the run log carries the row counts only.
     """
-    rows: list[dict[str, Any]] = []
-    for item in items:
-        draft = record_as(PartyAttributeDraft, item)
-        rows.append(
-            {
+
+    def rows() -> Iterable[dict[str, Any]]:
+        for item in items:
+            draft = record_as(PartyAttributeDraft, item)
+            yield {
                 "id": uuid.uuid4(),
                 "case_party_id": _require(party_ids, draft.party_key, "case party"),
                 "attribute": draft.attribute,
                 "value": draft.value,
                 "source_record_id": provenance_id(item),
             }
-        )
+
     upsert_rows(
         session,
         PARTY_ATTRIBUTE,
-        rows,
+        rows(),
         conflict=[PARTY_ATTRIBUTE.c.case_party_id, PARTY_ATTRIBUTE.c.attribute],
         compare=["value"],
         counts=counts,
@@ -488,6 +500,7 @@ def upsert_charges(
     items: Sequence[TaggedRecord],
     case_ids: IdMap,
     person_ids: IdMap,
+    judge_ids: IdMap,
     counts: RunCounts,
 ) -> IdMap:
     def build(item: TaggedRecord) -> dict[str, Any]:
@@ -496,6 +509,7 @@ def upsert_charges(
             "id": uuid.uuid4(),
             "case_id": _require(case_ids, draft.case_key, "case"),
             "person_id": _require(person_ids, draft.person_key, "person"),
+            "judge_id": _optional(judge_ids, draft.judge_key, "judge"),
             "statute_code": draft.statute_code,
             "description": draft.description,
             "offense_category": draft.offense_category,
@@ -517,6 +531,7 @@ def upsert_charges(
         session,
         [
             "person_id",
+            "judge_id",
             "statute_code",
             "description",
             "offense_category",
@@ -608,13 +623,13 @@ def upsert_decisions(
         ],
         case_ids,
     )
-    pretrial_rows: list[dict[str, Any]] = []
-    for item in items:
-        draft = record_as(DecisionDraft, item)
-        if draft.pretrial is None:
-            continue
-        pretrial_rows.append(
-            {
+
+    def pretrial_rows() -> Iterable[dict[str, Any]]:
+        for item in items:
+            draft = record_as(DecisionDraft, item)
+            if draft.pretrial is None:
+                continue
+            yield {
                 "id": uuid.uuid4(),
                 "decision_id": _require(decision_ids, draft.natural_key, "decision"),
                 "release_type": draft.pretrial.release_type,
@@ -623,11 +638,11 @@ def upsert_decisions(
                 "release_at": draft.pretrial.release_at,
                 "detained_flag": draft.pretrial.detained_flag,
             }
-        )
+
     upsert_rows(
         session,
         PRETRIAL_RELEASE,
-        pretrial_rows,
+        pretrial_rows(),
         conflict=[PRETRIAL_RELEASE.c.decision_id],
         compare=["release_type", "bond_amount", "conditions", "release_at", "detained_flag"],
         counts=counts,
@@ -722,17 +737,19 @@ def upsert_justice_events(
         return {}
     person_keys_by_id = {value: key for key, value in person_ids.items()}
     case_keys_by_id = {value: key for key, value in case_ids.items()}
-    lookup = session.execute(
-        select(
+    found: IdMap = {}
+    for row_id, person_id, event_type, event_at, related_case_id in fetch_by_values(
+        session,
+        lambda condition: select(
             JUSTICE_EVENT.c.id,
             JUSTICE_EVENT.c.person_id,
             JUSTICE_EVENT.c.event_type,
             JUSTICE_EVENT.c.event_at,
             JUSTICE_EVENT.c.related_case_id,
-        ).where(JUSTICE_EVENT.c.person_id.in_(involved))
-    ).all()
-    found: IdMap = {}
-    for row_id, person_id, event_type, event_at, related_case_id in lookup:
+        ).where(condition),
+        JUSTICE_EVENT.c.person_id,
+        involved,
+    ):
         person_key = person_keys_by_id.get(person_id)
         if person_key is None:
             continue

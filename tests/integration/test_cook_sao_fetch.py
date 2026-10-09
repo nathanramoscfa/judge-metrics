@@ -1,10 +1,11 @@
 # tests/integration/test_cook_sao_fetch.py
-"""The Cook County connector at parser version 0 through the runner.
+"""The Cook County connector's fetch and store path through the runner.
 
 ``ingest run cook_sao --from-fixture tests/fixtures/cook_sao`` stores the
 five excerpted exports as five ``source_record`` rows (the objects in the
 lake under hash-derived keys, path-backed and stored with ``put_file``)
-and publishes no canonical row; a rerun records nothing new. The
+and publishes their rows (``test_cook_sao_ingest.py`` checks those); a
+rerun records nothing new. The
 rows-updated short-circuit is exercised end to end: the runner forwards
 the previous record's rows-updated time and a fetch that sees it unchanged
 downloads nothing. The run's temporary directory is gone after the run,
@@ -45,11 +46,13 @@ from judgemetrics.ingest.base import (
     utc_now,
 )
 from judgemetrics.ingest.cook_sao.connector import CookSaoConnector
+from judgemetrics.ingest.cook_sao.rules import RULE_VERSION_TAG
+from judgemetrics.ingest.cook_sao.schema import COVERAGE_END, COVERAGE_START
 from judgemetrics.ingest.cook_sao.sources import EXTERNAL_IDS
 from judgemetrics.ingest.runner import WORK_DIR_PREFIX, run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
 from tests.conftest import TEST_IDENTIFIER_PEPPER
-from tests.integration.conftest import purge_run, purge_source
+from tests.integration.conftest import purge_source
 
 pytestmark = pytest.mark.integration
 
@@ -104,19 +107,15 @@ def _canonical_rows(session: Session, records: list[SourceRecord]) -> int:
     return total
 
 
-def test_the_fixture_stores_five_records_and_publishes_nothing(
+def test_the_fixture_stores_five_records_and_publishes_the_rows(
     clean_session: Session, store: FilesystemRawObjectStore
 ) -> None:
     session = clean_session
     run = _run(session, store, from_fixture=FIXTURES)
     assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
-    assert run.parser_version == "0"
-    assert (run.records_seen, run.records_created, run.records_updated, run.records_rejected) == (
-        0,
-        0,
-        0,
-        0,
-    )
+    assert run.parser_version == f"1+{RULE_VERSION_TAG}"
+    assert (run.records_seen, run.records_rejected) == (905, 0)
+    assert run.records_created > 0 and run.records_updated == 0
     records = _records(session)
     assert sorted(str(record.external_record_id) for record in records) == sorted(EXTERNAL_IDS)
     for record in records:
@@ -124,16 +123,16 @@ def test_the_fixture_stores_five_records_and_publishes_nothing(
         assert record.external_record_id is not None
         digest, _ = sha256_file(FIXTURES / record.external_record_id)
         assert record.raw_sha256 == digest
-        assert record.parser_version == "0"
+        assert record.parser_version == run.parser_version
         assert record.ingest_run_id == run.id
         assert store.exists(record.raw_object_path)
         assert record.metadata_["uri"].startswith("https://datacatalog.cookcountyil.gov/api/views/")
-    assert _canonical_rows(session, records) == 0
+    assert _canonical_rows(session, records) > 0
     source = session.scalar(select(Source).where(Source.name == "cook_sao"))
     assert source is not None
     assert source.owner == "Cook County State's Attorney's Office"
-    assert source.observable_outcomes == []
-    assert source.coverage_start is None and source.coverage_end is None
+    assert source.observable_outcomes == ["revocation"]
+    assert (source.coverage_start, source.coverage_end) == (COVERAGE_START, COVERAGE_END)
 
 
 def test_a_rerun_records_nothing_new(
@@ -253,7 +252,8 @@ def test_cli_run_from_the_fixture(
             if found is not None:
                 run_ids.append(uuid.UUID(found.group(1)))
             assert result.exit_code == 0, result.output
-            assert "source=cook_sao status=succeeded seen=0 created=0" in result.output
+            expected = "seen=905 created=1516" if not run_ids[:-1] else "seen=0 created=0"
+            assert f"source=cook_sao status=succeeded {expected}" in result.output
         assert len(run_ids) == 2
         with Session(migrated_database) as session:
             fixture_records = [r for r in _records(session) if r.raw_sha256 in digests]
@@ -261,8 +261,7 @@ def test_cli_run_from_the_fixture(
             # The rerun recorded nothing new.
             assert not [r for r in fixture_records if r.ingest_run_id == run_ids[1]]
     finally:
-        # The CLI committed for real; remove exactly what its runs created.
+        # The CLI committed for real; remove what its runs published.
         with Session(migrated_database) as session:
-            for run_id in run_ids:
-                purge_run(session, run_id)
+            purge_source(session, "cook_sao")
             session.commit()

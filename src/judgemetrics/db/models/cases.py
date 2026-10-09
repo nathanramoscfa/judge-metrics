@@ -121,6 +121,9 @@ class Charge(UUIDPrimaryKey, Timestamps, Base):
 
     case_id: Mapped[uuid.UUID] = _fk("court_case.id", ondelete="CASCADE")
     person_id: Mapped[uuid.UUID] = _fk("person.id")
+    # Revision 0011: the judge who entered the disposition, as the source
+    # records it (the Cook County ``JUDGE`` column), else null.
+    judge_id: Mapped[uuid.UUID | None] = _fk("judge.id", nullable=True)
     statute_code: Mapped[str | None] = mapped_column(String(128))
     description: Mapped[str] = mapped_column(Text, nullable=False)
     offense_category: Mapped[str] = mapped_column(String(64), nullable=False)
