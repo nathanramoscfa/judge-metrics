@@ -718,6 +718,7 @@ def _execute_in(
     issues: list[IssueDraft] = []
     records = {state.artifact.external_id: state.record for state in states}
     provenances: dict[uuid.UUID, Provenance] = {}
+    parsed_rows: dict[str, int] = {}
     for state in states:
         if not state.reparse:
             continue
@@ -729,17 +730,19 @@ def _execute_in(
         if not validation.ok:
             msg = "validation failed: " + "; ".join(validation.errors)
             raise IngestFailed(msg)
-        rows = 0
+        parsed_rows.setdefault(state.artifact.external_id, 0)
         for row in connector.parse(state.raw):  # step 6
-            rows += row.rows
             counts.seen += row.rows
             record = state.record
+            attributed = state.artifact.external_id
             if row.artifact_id is not None and row.artifact_id != state.artifact.external_id:
                 named = records.get(row.artifact_id)
                 if named is None:
                     msg = f"the connector attributed a record to an unknown artifact {row.artifact_id!r}"
                     raise IngestFailed(msg)
                 record = named
+                attributed = row.artifact_id
+            parsed_rows[attributed] = parsed_rows.get(attributed, 0) + row.rows
             provenance = provenances.get(record.id)
             if provenance is None:
                 provenance = provenances[record.id] = Provenance(
@@ -761,7 +764,10 @@ def _execute_in(
                 )
                 continue
             tagged.extend(TaggedRecord(record=draft, provenance=provenance) for draft in drafts)
-        bound.info("ingest.artifact.parsed", external_id=state.artifact.external_id, rows=rows)
+    # One line per artifact, with the rows attributed to it: a multi-file connector's first parse
+    # call reads every export, so the rows are named by the export they belong to.
+    for external_id, parsed in sorted(parsed_rows.items()):
+        bound.info("ingest.artifact.parsed", external_id=external_id, rows=parsed)
 
     if isinstance(connector, SupportsRunIssues):
         for finding in connector.run_issues():

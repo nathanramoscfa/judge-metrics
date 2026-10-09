@@ -553,6 +553,86 @@ keyed `(case_party_id, attribute)` and cascading with its party
 `judgemetrics seed` generates nothing in production and records the same
 refusal.
 
+## Scale budgets
+
+Budgets are measured on the maintainer's machine (Windows 11, 24 logical
+processors, 128 GB of memory; PostgreSQL 17 and MinIO in Docker Desktop with
+the Compose defaults) over the real corpus, recorded with a margin, and
+re-measured whenever the code on the path changes. CI exercises every path on
+the committed fixture; the full-corpus figures are the operator's, not a
+test's. Peak memory is read from the operating system (the peak working set of
+the ingest process, sampled every two seconds from the process counters; on
+Linux `/usr/bin/time -v`), never from inside the process. This section holds
+the ingest's budget; Phase 5 Step 6 adds the metrics engine's.
+
+### Ingest of the Cook County corpus (Phase 5 Step 4, 2026-10-08)
+
+The corpus is 3,171,690 source rows in five exports (1,221,648,291 bytes:
+Intake 528,111, Initiation 1,228,260, Dispositions 1,080,014, Sentencing
+305,884, Diversion 29,421 rows) that become 7,116,589 canonical rows,
+published in one transaction:
+
+| Table (created by the fresh run)       | Rows      | Table                      | Rows      |
+|----------------------------------------|-----------|----------------------------|-----------|
+| `court_case`                           | 501,012   | `sentence`                 | 272,589   |
+| `case_party` (= `person`)              | 551,870   | `justice_event`            | 7,121     |
+| `party_attribute` (restricted)         | 1,655,610 | `judge`                    | 521       |
+| `charge`                               | 1,325,724 | `judge_service`            | 1,010     |
+| `court_event`                          | 697,849   | `court`, `jurisdiction`    | 7, 1      |
+| `decision`                             | 677,819   | identifier hashes          | 551,870   |
+| `pretrial_release` (of those decisions)| 321,716   | rejected (out-of-range)    | 58        |
+
+The run recorded 61,081 data-quality issues, none of which stopped it:
+
+| Code                                              | Severity | Issues |
+|---------------------------------------------------|----------|--------|
+| `event_order_impossible` (45,032 sentences, 5,347 diversion decisions, 3,924 cases, 2,275 court events) | error | 56,578 |
+| `disposition_before_filing` (charges)             | error    | 4,415  |
+| `sentence_without_date`                           | error    | 1      |
+| `judge_unresolved` (held judge strings)           | warning  | 22     |
+| `date_after_corpus_end`                           | warning  | 9      |
+| `invalid_age`                                     | warning  | 1      |
+| `received_before_coverage`                        | info     | 32     |
+| `sentence_term_flagged`                           | info     | 7      |
+| `unknown_category_measured` (run level)           | info     | 4      |
+| `missing_judge_on_decision` (run level)           | info     | 2      |
+| `fact_undated`                                    | info     | 3      |
+| `bond_not_drafted`                                | info     | 2      |
+| `charge_version_replaced`, `charge_without_disposition_date`, `restricted_value_conflict`, `sentence_judges_differ`, `sentence_phase_ignored` | info | 1 each |
+
+| Run                            | Wall time | Peak memory | What it did |
+|--------------------------------|-----------|-------------|-------------|
+| Fresh ingest                   | 1,512 s (25 min 12 s) | 6.72 GiB | Read the exports back from the raw lake, indexed them, built every draft (2 min 53 s), deduplicated, resolved, checked, and upserted 7.1 million rows (21 min 51 s), resolved persons and recorded issues (25 s). |
+| Rerun over unchanged exports   | 6 s       | 0.12 GiB    | Five metadata requests; nothing downloaded, read back, or parsed; no row created or updated. |
+| `--force` rerun                | 1,015 s (16 min 55 s) | 6.79 GiB | Everything parsed and compared again (1 min 43 s to the drafts, 14 min 29 s to compare them with the stored rows); no row created or updated, no issue added. |
+| `ingest retire cook_sao`       | 63 s      | —           | Measured once on the scratch database over the same corpus: about 5.5 million rows deleted in one transaction. |
+
+The **budget** is the measurement with a margin of 1.5: a fresh run or a
+`--force` rerun finishes within **40 minutes** and **10 GiB**; a rerun that
+finds nothing to parse within **30 seconds** and **0.5 GiB**. The 6.7 GiB is
+the drafts themselves — about 6.2 million Python objects stay in memory until
+the transaction commits — and grows with the corpus, not with the batch size.
+
+Decisions this measurement settled:
+
+- **One transaction, nothing split.** The whole publish fits in memory and in
+  one transaction, so no dataset-by-dataset publish was needed and no run
+  publishes half a case.
+- **Rows are built lazily and sent with executemany.** Compiling a
+  `values([...500 dicts])` statement per batch cost more than the database took
+  to run it (the first full run published about 480 rows a second); each upsert
+  statement is now built once and each batch of 1,000 rows is an executemany
+  over it (`ingest/publish.py` `upsert_rows`), ten times faster on the corpus.
+- **Lookups are arrays.** Every lookup of a run-sized id list is one typed
+  array parameter, in batches of 50,000 (`judgemetrics.db.arrays`), so no
+  statement carries more than a handful of parameters and none can pass
+  PostgreSQL's 65,535.
+- **A rerun costs seconds.** `load_context` (reading the exports back from the
+  lake and indexing them) runs only when some artifact is to be parsed.
+- **Step 13 stays off.** Computing the impacted subjects' observations over
+  this corpus is Step 6's work; `ingest-cook` turns it off through its `env`
+  table.
+
 ## Database roles
 
 | Role                  | Used by                                              | Rights                                            |
