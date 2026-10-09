@@ -565,7 +565,7 @@ the ingest process, sampled every two seconds from the process counters; on
 Linux `/usr/bin/time -v`), never from inside the process. This section holds
 the ingest's budget; Phase 5 Step 6 adds the metrics engine's.
 
-### Ingest of the Cook County corpus (Phase 5 Step 4, 2026-10-08)
+### Ingest of the Cook County corpus (Phase 5 Step 4, 2026-10-09)
 
 The corpus is 3,171,690 source rows in five exports (1,221,648,291 bytes:
 Intake 528,111, Initiation 1,228,260, Dispositions 1,080,014, Sentencing
