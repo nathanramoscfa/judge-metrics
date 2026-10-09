@@ -31,8 +31,19 @@ offense category and class, court name, courthouse, and judge string,
 loaded and validated by `ingest/cook_sao/rules.py` against case vocabulary
 3, with outcome-model specification 2 refit on the demo seed (every
 published figure unchanged); the actor is `unknown` for 0.1765% of the
-Dispositions rows. Next: Step 4 (the Cook County connector at corpus
-scale). The phase's execution plan,
+Dispositions rows. Step 4 is complete (PR #55, 2026-10-09): the
+`cook_sao` connector (parser version `1+<RULE_VERSIONS>`) builds each case
+from all five exports and ingests the full corpus into the local database —
+501,012 cases, 551,870 case participations, 1,325,724 charges, 697,849 court
+events, 677,819 decisions, 272,589 sentences, 521 judges — in one
+transaction (25 minutes, 6.7 GiB peak; a rerun costs six seconds and writes
+nothing), with 61,081 data-quality issues recorded and the restricted race,
+gender, and age band only in `restricted.party_attribute`; every lookup of a
+run-sized id list is bounded (`db/arrays.py`), `judgemetrics ingest retire`
+removes a source's rows, and `/api/v1/coverage` lists the source with its
+coverage window (`docs/ARCHITECTURE.md` "Scale budgets"). Next: Step 5
+(real-data metric semantics and coverage statistics). The phase's execution
+plan,
 [`docs/roadmap/phase05-roadmap.md`](roadmap/phase05-roadmap.md), was
 written on 2026-10-04 from the planning kit at roadmodel 0.2.65 (the
 release on PyPI, in `uv.lock`, and in `planning/` that day): eight steps
@@ -83,6 +94,7 @@ completed on 2026-09-18 and is tagged `v0.2.0-phase-2`; Phase 1
 | 2026-09-16 | Root roadmap v2.1: post-launch Phase 9 (sustainability and data products) added; §1.4 request-identity hook, §5.5 redistribution rights, and §6.4 commercial-licensing scope pulled forward; **Redistribution** field added to every source-register entry. |
 | 2026-09-16 | Phase 2 execution roadmap (`docs/phase02-roadmap.md`) authored from the re-exported planning kit: six steps (generator, connector and `seed`, entity resolution v0 with audit log, case API and pages, property tests and golden suite, QA), per-step model selections (Fable 5.1 for Steps 1 and 3, Opus 5 elsewhere; GPT backups on Codex), the V1–V6 matrix, and the 44-check `verify_phase02.py` specification. |
 | 2026-09-16 | Scaffold pushed as the initial commit; public repository `nathanramoscfa/judge-metrics` created. |
+| 2026-10-09 | **Phase 5 Step 4 (PR #55).** The Cook County connector at corpus scale (`docs/ARCHITECTURE.md` "Cook County connector" and "Scale budgets", `docs/DATA_MODEL.md` revision 0011, `docs/DATA_SOURCES.md` `cook_sao`, `docs/ENTITY_RESOLUTION.md`). `ingest/cook_sao/` (parser version `1+<RULE_VERSIONS>`): `load_context` indexes the five exports (Polars, only the columns read, dates parsed, rows sorted canonically); `parse` walks them together in case order and `case.build_case` turns a case's rows into drafts — case, participation (source-qualified peppered hash), `defendant:<ordinal>` party, race, gender, and age band only as restricted attributes, charges with the rule tables' disposition, finality, actor, and disposing judge, court events, charging, diversion, and initial-bond decisions, sentences, and within-case revocation events; `SupportsCoverage` (2011-01-01 to 2024-12-30, observable outcome `revocation`); what the tables cannot place is counted and persisted as issues (`SupportsRunIssues`). Revision 0011: the judge identity index, `charge.judge_id`, and `data_quality_issue` revoked from the app role. `db/arrays.py` bounds every run-sized lookup (all sources) and the publishers build rows lazily, one compiled upsert per table with executemany. Quality checks read parent cases from the database; `missing_judge_on_decision` counts the decisions the source never attributes once; `case_number_duplicate` fires for true duplicates only. `judgemetrics ingest retire SOURCE [--yes]` (`purge_source` and `seed` use it; closes issue #36). The log scrubber matches `race`, `gender`, and `age_at_incident` as whole tokens. Deployed and verified on the local database: the full corpus (7,116,589 rows; 61,081 issues) ingested in 25 min 12 s at a 6.72 GiB peak, a rerun in 6 s creating and updating nothing, a `--force` rerun in 16 min 55 s doing the same, `/api/v1/ready` at `0011`, `/api/v1/coverage` listing `cook_sao` with 501,012 cases, 7 courts, 521 judges and the coverage window; budgets, rows per table, and issues by code in "Scale budgets". Data-semantics findings in "Known issues" for Step 5. |
 | 2026-10-05 | **Phase 5 Step 3 (PR #54).** Mapping and attribution rules, the judge and court tables, and case vocabulary 3 (`docs/ARCHITECTURE.md` "Cook County source", `docs/DATA_MODEL.md` "Vocabularies", `docs/ENTITY_RESOLUTION.md` "Judges by alias (Cook County)"). Seven reviewed tables under `data/reference/cook_sao/` and `tables.yaml` (each table's file, version, and sha256): `attribution_rules.yaml` (44 disposition rules covering the 78 Dispositions pairs and every Sentencing pair, 41 felony-review results, 10 diversion programs, the diversion results, the Initiation charging events, the explicit fallback, seven attribution principles in its header, and a `summary`: the actor `unknown` for 1,906 of 1,080,014 rows, 0.1765%; 99.35% final; prosecutor 66.40%, judge 31.84%, jury 0.95%, a mandatory rule 0.64%), `pretrial_rules.yaml` (I, D, C, and No Bond under the monetary-bail regime and, from 2023-09-18, the Pretrial Fairness Act's; only an I bond releases; "released" defined for the source), `sentence_rules.yaml` (one sentence per participant, date, and phase; currency and superseding; 6 phases, 15 sentence types, 29 commitment types, 12 units; days at 365.25 a year and 30.4375 a month, half up; life, death, and six other term flags; the probation-violation revocation), `offense_map.csv` (88 categories, 13 classes and the blank, no catch-all), `courts.yaml` (Cook County, FIPS 17031; six municipal districts under the circuit court; 9 court names and 17 courthouse values), `judge_aliases.csv` and `judges.csv` (538 strings: 523 resolved to 521 judges, 14 unresolved, 1 ambiguous). `ingest/cook_sao/rules.py`: `load_rules`, `RULE_VERSIONS`, `RULE_VERSION_TAG`, `RuleError` naming file, key, and field, total matchers, `restricted_category`, `summarize`. Case vocabulary 3 (the Illinois severities, `other`/`unclassified` categories, non-final `superseded`/`transferred` with `final_charge_disposition`, events, charging and diversion decisions, sentence components, phases, and term flags, `unstated` position, charging outcomes, diversion stages, judicial rulings, restricted `race` and `gender`), the generator drawing only the synthetic values (golden fixture byte for byte); outcome-model specification 2 (the new levels, references and earlier orders unchanged): `uv run poe compute-metrics` refit the 13 demo models and reproduced all 3,730 published figures, `metrics verify` clean, `docs/VALIDATION.md` changed in its version line only, `docs/METHODOLOGY.md` re-rendered. Fixed in-step: the disposition distribution reads `final_charge_disposition`; the subgroup calibration skips an attribute no index event records; `models verify --refit` counts a model of an earlier specification `unverifiable` (it could never pass again after a bump); security finding: GHSA-68fv-2mgg-jv7q (`source-map-js` below 1.2.2, high, on the production path `next` → `postcss`) was published while the PR ran and failed the web audit, fixed by updating the lockfile to 1.2.2. Tests: `test_cook_sao_rules.py` (12), `test_cook_sao_tables.py` (38), `test_judge_aliases.py` (5), `tests/property/test_cook_sao_matchers.py` (5), and updates to `test_vocabulary.py`, `test_outcome_model_spec.py`, `test_golden_fixture.py`, `test_validation_report.py`, `test_metrics_snapshot.py`, `test_fairness_analysis.py`, `test_outcome_models.py`. Notes for Steps 4 and 5 are in their task blocks. |
 | 2026-10-05 | **Phase 5 Step 2 (PR #53).** Florida source research and the lawful acquisition plan. `docs/florida-data-inventory.md`: the brief's nine-step selection as nine weighted criteria (the cross-case person key, judge attribution, access, and the redistribution rights weighted 3; maximum 63; population not scored); statewide sources (OSCA's JDMS and UCR — no route for a non-agency requester found, every `flcourts.gov` host disallowing crawlers; the clerks' CCIS, closed to non-government users; FDLE's Criminal Justice Data Transparency data, whose statutory person identifier is "the same for that person in any court case" and which FDLE "may not require a license or charge a fee" for, §943.6871); the legal framework (art. I §24, chapter 119 against rule 2.420 for court records, rule 2.420(d)(1)'s confidential categories, rule 2.425, sealing, expunction, and juvenile records, §119.07(4) and §28.24 fees, the Standards for Access); nine county clerks scored with every fact cited; Hillsborough selected (43; open weekly criminal files since 1988 with judge, division, statute, dispositions, date of birth, and a `PID`) with CJDT (48) as companion, Broward (39) and Miami-Dade (36) as the ranked fallback; the acquisition plan with the Phase 7 §7.1 trigger; the redistribution asks and how answers are recorded; eleven open questions. Four requests drafted under `docs/florida/requests/` and submitted by the operator on 2026-10-05; `docs/DATA_SOURCES.md` `fl_jdms`, `fl_cjdt` (new), and `fl_clerks` rewritten with a candidate table; question 8 and "Florida acquisition requests" above; the project roadmap §7.1 names the selected sources and the ranked fallback. |
 | 2026-10-05 | **Phase 5 Step 1 (PR #52).** Cook County due diligence, the streamed fetch, and the value-set profile (`docs/DATA_SOURCES.md` `cook_sao`, `docs/ARCHITECTURE.md` "The raw lake" and "Cook County source"). `ingest/http.py` `download_to_file` streams a body to a temporary file under a caller's cap, hashing while it writes; `RawObjectStore.put_file`/`get_file` store and read back files without loading them (chunked copy on the filesystem, managed multipart on S3); the runner hashes path-backed artifacts in chunks and owns a temporary work directory per run. The `cook_sao` connector (parser version `0`) records each dataset's portal metadata and downloads nothing while the rows-updated time is unchanged; the first live fetch stored the five exports (1,221,648,291 bytes) in 718 s at a 130 MiB peak working set, and a rerun downloaded nothing. `judgemetrics sources profile cook_sao` wrote `data/reference/cook_sao/profile.yaml` (zero participants under more than one case in every dataset); `judgemetrics sources excerpt cook_sao` wrote the 73-case real-row fixture with the restricted and quasi-identifying columns blanked; `uv run poe ingest-cook`. Questions 3 and 4 resolved; the project roadmap no longer claims a cross-case person key. |
@@ -159,8 +171,34 @@ thirty days.
 - **The engine's disposed populations count `superseded` and
   `transferred` charges as disposed until Phase 5 Step 5** wires
   vocabulary 3's finality into them (the disposition distribution already
-  lists the final values alone); no source has such a charge before
-  Step 4's ingest.
+  lists the final values alone); the corpus Step 4 ingests is the first
+  source that holds such charges.
+- **The Cook County corpus is ingested, and no metric is computed over it
+  yet.** Step 4's ingest turns pipeline step 13 off (the `ingest-cook`
+  task's `env` table): computing every registry metric for 521 judges over
+  501,012 cases is Step 6's work. Do not run `compute-metrics` against a
+  database that holds the corpus before then; `docs/ARCHITECTURE.md` "Scale
+  budgets" records what the ingest costs (25 minutes, 6.7 GiB).
+- **The corpus's own dates contradict each other in 60,994 places**
+  (data-semantics findings, 2026-10-09; the generic checks flag them as
+  `error` issues in `data_quality_issue`, which the app role cannot read,
+  and the rows are published as the source states them): 44,932 sentences (16.5%) are dated before their defendant's first
+  conviction in the case — 35,256 of them one to seven days earlier, 1,066
+  more than a year; 4,415 charges are disposed before they were filed;
+  3,924 cases close before the SAO received them; 5,347 diversion
+  decisions and 2,275 court events (1,136 of them indictments) precede the
+  case's filing date; 100 sentences precede it. Step 5 settles which date
+  each real-data metric anchors to and whether an out-of-order row is
+  excluded from a population; Phase 6 §6.1 checks the dates against source
+  documents. A statistic that uses a sentence's order relative to its
+  disposition must not be published before then.
+- **`ingest retire` leaves run-level issues behind.** The six run-level
+  issues of the Cook County run (two `missing_judge_on_decision` counts, for
+  the 321,716 pretrial-release and 16,264 diversion decisions the source never
+  attributes to a judge, and four `unknown_category_measured`) carry no source
+  record, so `retire` cannot scope them (see the bullet on run-level issues
+  below); a re-ingest adds a new issue beside the old one only when a count
+  changes.
 
 - **Cook County has no cross-case person key.** `CASE_PARTICIPANT_ID`
   names one defendant in one case (zero participants under more than one
@@ -178,13 +216,6 @@ thirty days.
   current release for the same reason. Retiring a superseded export's
   rows is `judgemetrics ingest retire` (Phase 5 Step 4, issue #36).
 
-- Case-level data-quality checks that need a case's filing date or
-  status (`disposition_before_filing`, `event_order_impossible`,
-  `subsequent_before_index`, `missing_disposition`) see only the cases
-  drafted in the same run; a child row of a case that already exists in
-  the database (a later export that ships only `charges.csv`) is not
-  checked against it. Reading the parent case from the database is a
-  small extension for the step that first needs it.
 - There is no unmerge: a merge (system or reviewer) is reversed only by
   hand until Phase 6 ships the operation behind administrative
   authentication; the audit row carries what it needs. `er review
@@ -221,22 +252,12 @@ thirty days.
   the simulation. The age effects use the true age; the ambiguous
   same-date-of-birth plant rewrites a date of birth after the draws, so
   that person's published band can differ from the band its draws used.
-- **A seed over a database that holds an older generator version's
-  dataset leaves stale rows.** `judgemetrics seed` regenerates a dataset
-  whose manifest records an older `GENERATOR_VERSION` and ingests it by
-  natural key, but the `GENERATOR_VERSION` 3 world differs from version
-  2's under the same case, charge, and participant numbering, so rows
-  the new files no longer contain stay and rows keyed by the same
-  source ids move to other cases. After this bump the local demo
-  database must drop its synthetic source before seeding (the Step 1
-  deploy did so with the test suite's `purge_source`); the fix — the
-  seed retiring the previous dataset's rows, or a source-retirement
-  command Phase 5 needs anyway — is tracked in issue #36.
 - Run-level data-quality issues (`unknown_category_measured`) carry no
-  source record and no run, so nothing can scope them to a source; the
-  test suite's `purge_source` removes the case-level ones by entity type
-  (Phase 4 Step 1), and linking an issue to its run belongs with Phase
-  6's issue triage.
+  source record and no run, so nothing can scope them to a source;
+  `ingest retire` deletes only the issues of the source's records, the test
+  suite's `purge_source` also removes the case-level ones by entity type
+  (Phase 4 Step 1), and linking an issue to its run belongs with Phase 6's
+  issue triage.
 - The synthetic connector derives `new_case` and `reconviction` justice
   events per participant id at normalization time, before entity
   resolution merges the planted split persons, and derives no
@@ -554,11 +575,11 @@ thirty days.
 
 ## Next milestones
 
-1. **Phase 5 Step 4** (`/roadmap-step 5 4`): the Cook County connector at
-   corpus scale, applying Step 3's tables (parser version
-   `1+<RULE_VERSIONS>`). Beside it, the Florida requests run on the
-   follow-up cadence in "Florida acquisition requests"; every answer is
-   recorded the day it arrives.
+1. **Phase 5 Step 5** (`/roadmap-step 5 5`): real-data metric semantics,
+   calendar periods, and coverage statistics, on the ingested corpus —
+   including the date contradictions in "Known issues" above. Beside it, the
+   Florida requests run on the follow-up cadence in "Florida acquisition
+   requests"; every answer is recorded the day it arrives.
 2. **First real metrics (`v0.5.0-phase-5`).** Cook County ingested with
    attribution and coverage; the first real metrics — the
    judge-attributed sentencing and disposition families and the

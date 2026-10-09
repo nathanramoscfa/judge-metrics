@@ -21,6 +21,7 @@ person is never returned (Step 4's repositories use it).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, cast
@@ -29,6 +30,7 @@ import sqlalchemy as sa
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.orm import Session
 
+from judgemetrics.db.arrays import fetch_by_values
 from judgemetrics.db.models import Base
 from judgemetrics.entity_resolution.audit import ACTION_MERGE, ENTITY_PERSON, write_audit
 from judgemetrics.entity_resolution.config import STATUS_MERGED
@@ -82,6 +84,46 @@ def canonical_person_id(session: Session, person_id: uuid.UUID) -> uuid.UUID:
         if target is None:
             return current
         current = target
+
+
+def canonical_person_ids(
+    session: Session, person_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """``canonical_person_id`` for many persons: one array lookup per level of merges.
+
+    A person nobody merged away maps to itself; a merged person maps to the
+    survivor at the end of its ``merged_into_person_id`` chain. A cycle raises
+    ``MergeError``, as ``canonical_person_id`` does.
+    """
+    start = set(person_ids)
+    resolved: dict[uuid.UUID, uuid.UUID] = {}
+    # person -> where the chain stands now; pending persons are looked up each round.
+    current = {person: person for person in start}
+    seen: dict[uuid.UUID, set[uuid.UUID]] = {person: {person} for person in start}
+    while current:
+        targets = dict(
+            fetch_by_values(
+                session,
+                lambda condition: select(PERSON.c.id, PERSON.c.merged_into_person_id).where(
+                    condition
+                ),
+                PERSON.c.id,
+                set(current.values()),
+            )
+        )
+        following: dict[uuid.UUID, uuid.UUID] = {}
+        for origin, at in current.items():
+            target = targets.get(at)
+            if target is None:
+                resolved[origin] = at
+                continue
+            if target in seen[origin]:
+                msg = f"merge cycle at person {target}"
+                raise MergeError(msg)
+            seen[origin].add(target)
+            following[origin] = target
+        current = following
+    return resolved
 
 
 def merge_persons(

@@ -76,13 +76,30 @@ SENSITIVE_KEYS: frozenset[str] = frozenset(
 )
 
 
+# Whole-token entries (Phase 5 Step 4): the restricted columns of the Cook
+# County exports. A key matches when the entry's underscore-separated tokens
+# appear contiguously among the key's tokens, so ``race``, ``race_value``, and
+# ``age_at_incident`` are redacted while ``trace`` and ``grace`` are not (the
+# substring rule above would redact them).
+SENSITIVE_TOKENS: frozenset[str] = frozenset({"race", "gender", "age_at_incident"})
+
+
 def _normalize_key(key: object) -> str:
     return str(key).casefold().replace("-", "_").replace(".", "_")
 
 
+def _has_tokens(tokens: list[str], entry: str) -> bool:
+    wanted = entry.split("_")
+    width = len(wanted)
+    return any(tokens[start : start + width] == wanted for start in range(len(tokens) - width + 1))
+
+
 def is_sensitive_key(key: object) -> bool:
     normalized = _normalize_key(key)
-    return any(entry in normalized for entry in SENSITIVE_KEYS)
+    if any(entry in normalized for entry in SENSITIVE_KEYS):
+        return True
+    tokens = normalized.split("_")
+    return any(_has_tokens(tokens, entry) for entry in SENSITIVE_TOKENS)
 
 
 def scrub_value(value: Any) -> Any:

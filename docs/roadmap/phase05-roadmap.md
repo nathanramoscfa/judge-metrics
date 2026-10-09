@@ -3699,9 +3699,9 @@ variant. Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 4 — The Cook County Connector at Corpus Scale
+## Step 4 — The Cook County Connector at Corpus Scale ✅
 
-**Status:** Not started
+**Status:** Complete — PR #55 (2026-10-09)
 
 > **Goal:** Ingest the real corpus. The `cook_sao` connector moves to parser
 > version `1+<RULE_VERSIONS>` and parses and normalizes the five datasets
@@ -8251,7 +8251,7 @@ workflow above maps directly to the corresponding row below.
 | 1    | Cook County due diligence, fetch, profile      | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #52 |
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #53 |
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
-| 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #55 |
 | 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 7    | Public surfaces for the first real source      | Sonnet 5.5 | Claude Code | Effort High    | On       | New  | Not started |

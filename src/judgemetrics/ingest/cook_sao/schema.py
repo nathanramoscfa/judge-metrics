@@ -50,6 +50,7 @@ BOND_TYPE_INITIAL = "BOND_TYPE_INITIAL"
 BOND_TYPE_CURRENT = "BOND_TYPE_CURRENT"
 SENTENCE_PHASE = "SENTENCE_PHASE"
 SENTENCE_TYPE = "SENTENCE_TYPE"
+SENTENCE_DATE = "SENTENCE_DATE"
 RACE = "RACE"
 GENDER = "GENDER"
 AGE_AT_INCIDENT = "AGE_AT_INCIDENT"
@@ -280,3 +281,141 @@ NUMERIC_COLUMNS: tuple[str, ...] = (
 )
 # Identifier columns: never echoed as an example of an unparseable value.
 IDENTIFIER_COLUMNS: tuple[str, ...] = (CASE_ID, PARTICIPANT_ID, CHARGE_ID, CHARGE_VERSION_ID)
+
+# --- the connector's reading of each export (Phase 5 Step 4) -------------------------
+# The window the corpus covers: Intake and Initiation begin on 2011-01-01 and the
+# SAO stopped maintaining the datasets on 2024-12-30 (docs/DATA_SOURCES.md). A date
+# after the end is a typo (the profile's `anomalies` list the years up to 2924) and
+# one before ``EARLIEST_DATE`` is not a date of this corpus.
+COVERAGE_START = date(2011, 1, 1)
+COVERAGE_END = date(2024, 12, 30)
+EARLIEST_DATE = date(1900, 1, 1)
+
+INTAKE_FILE = "intake.csv"
+INITIATION_FILE = "initiation.csv"
+DISPOSITIONS_FILE = "dispositions.csv"
+SENTENCING_FILE = "sentencing.csv"
+DIVERSION_FILE = "diversion.csv"
+# The order in which a participant's or a case's facts take precedence and in
+# which a draft is attributed to the file it first appears in.
+DATASET_ORDER: tuple[str, ...] = (
+    INTAKE_FILE,
+    INITIATION_FILE,
+    DISPOSITIONS_FILE,
+    SENTENCING_FILE,
+    DIVERSION_FILE,
+)
+
+OFFENSE_CATEGORY = "OFFENSE_CATEGORY"
+UPDATED_OFFENSE_CATEGORY = "UPDATED_OFFENSE_CATEGORY"
+FELONY_REVIEW_DATE = "FELONY_REVIEW_DATE"
+FELONY_REVIEW_RESULT = "FELONY_REVIEW_RESULT"
+_FELONY_REVIEW = (FELONY_REVIEW_DATE, FELONY_REVIEW_RESULT)
+_CHARGE_IDS = (CHARGE_ID, CHARGE_VERSION_ID)
+_DISPOSED_CHARGE_COLUMNS = (
+    "DISPOSITION_CHARGED_OFFENSE_TITLE",
+    "DISPOSITION_DATE",
+    "DISPOSITION_CHARGED_CHAPTER",
+    "DISPOSITION_CHARGED_ACT",
+    "DISPOSITION_CHARGED_SECTION",
+    "DISPOSITION_CHARGED_CLASS",
+    CHARGE_DISPOSITION,
+    CHARGE_DISPOSITION_REASON,
+)
+
+# The columns the connector reads of each export, in sort order: the identifiers
+# first, so the rows of a case are consecutive. Everything else the exports hold
+# (the incident's city and dates, the arresting agency and unit, the arraignment
+# and arrest dates, the bond's current state, the primary-charge flag, the
+# participant status) is never read: it does not enter a draft or a payload.
+READ_COLUMNS: dict[str, tuple[str, ...]] = {
+    INTAKE_FILE: (
+        CASE_ID,
+        PARTICIPANT_ID,
+        RECEIVED_DATE,
+        *_FELONY_REVIEW,
+        AGE_AT_INCIDENT,
+        RACE,
+        GENDER,
+    ),
+    INITIATION_FILE: (
+        CASE_ID,
+        PARTICIPANT_ID,
+        *_CHARGE_IDS,
+        RECEIVED_DATE,
+        OFFENSE_CATEGORY,
+        UPDATED_OFFENSE_CATEGORY,
+        "CHARGE_OFFENSE_TITLE",
+        "CHAPTER",
+        "ACT",
+        "SECTION",
+        "CLASS",
+        "EVENT",
+        "EVENT_DATE",
+        "FINDING_NO_PROBABLE_CAUSE",
+        BOND_TYPE_INITIAL,
+        "BOND_DATE_INITIAL",
+        "BOND_AMOUNT_INITIAL",
+        "BOND_ELECTRONIC_MONITOR_FLAG_INITIAL",
+        *_FELONY_REVIEW,
+        AGE_AT_INCIDENT,
+        RACE,
+        GENDER,
+    ),
+    DISPOSITIONS_FILE: (
+        CASE_ID,
+        PARTICIPANT_ID,
+        *_CHARGE_IDS,
+        RECEIVED_DATE,
+        OFFENSE_CATEGORY,
+        UPDATED_OFFENSE_CATEGORY,
+        *_DISPOSED_CHARGE_COLUMNS,
+        JUDGE,
+        "DISPOSITION_COURT_NAME",
+        "DISPOSITION_COURT_FACILITY",
+        *_FELONY_REVIEW,
+        AGE_AT_INCIDENT,
+        RACE,
+        GENDER,
+    ),
+    SENTENCING_FILE: (
+        CASE_ID,
+        PARTICIPANT_ID,
+        *_CHARGE_IDS,
+        SENTENCE_DATE,
+        SENTENCE_PHASE,
+        SENTENCE_TYPE,
+        "COMMITMENT_TYPE",
+        "COMMITMENT_TERM",
+        "COMMITMENT_UNIT",
+        "CURRENT_SENTENCE_FLAG",
+        RECEIVED_DATE,
+        OFFENSE_CATEGORY,
+        UPDATED_OFFENSE_CATEGORY,
+        *_DISPOSED_CHARGE_COLUMNS,
+        SENTENCE_JUDGE,
+        "SENTENCE_COURT_NAME",
+        "SENTENCE_COURT_FACILITY",
+        *_FELONY_REVIEW,
+        AGE_AT_INCIDENT,
+        RACE,
+        GENDER,
+    ),
+    DIVERSION_FILE: (
+        CASE_ID,
+        PARTICIPANT_ID,
+        "DIVERSION_PROGRAM",
+        "REFERRAL_DATE",
+        "DIVERSION_COUNT",
+        "DIVERSION_RESULT",
+        "DIVERSION_CLOSED_DATE",
+        RECEIVED_DATE,
+        RACE,
+        GENDER,
+    ),
+}
+# The columns parsed as dates (either format); the rest stay strings.
+READ_DATE_COLUMNS: dict[str, tuple[str, ...]] = {
+    name: tuple(column for column in columns if column in DATE_COLUMNS)
+    for name, columns in READ_COLUMNS.items()
+}

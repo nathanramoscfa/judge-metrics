@@ -124,11 +124,19 @@ class Judge(UUIDPrimaryKey, Timestamps, Base):
             unique=True,
             postgresql_where=text("external_ids ? 'synthetic_judge_code'"),
         ),
+        # One judge per Cook County judge key (revision 0011, judges.csv).
+        Index(
+            "uq_judge_external_ids_cook_sao_judge",
+            text("(external_ids ->> 'cook_sao_judge')"),
+            unique=True,
+            postgresql_where=text("external_ids ? 'cook_sao_judge'"),
+        ),
     )
 
     canonical_name: Mapped[str] = mapped_column(Text, nullable=False)
     normalized_name: Mapped[str] = mapped_column(Text, nullable=False)
-    # {"fjc_nid": "1234"} / {"synthetic_judge_code": "J-0001"}: each identity
+    # {"fjc_nid": "1234"} / {"synthetic_judge_code": "J-0001"} / {"cook_sao_judge":
+    # "abishi-c-cunningham"}: each identity
     # system has its own partial unique expression index (JUDGE_IDENTITY_SYSTEMS).
     external_ids: Mapped[dict[str, Any]] = mapped_column(
         JSONBDict, nullable=False, default=dict, server_default="{}"

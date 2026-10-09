@@ -149,6 +149,17 @@ def generate_dataset(seed: int, scale: str, out: Path, *, force: bool = False) -
     return manifest
 
 
+def recorded_generator_version(out: Path) -> str | None:
+    """The generator version the manifest in ``out`` recorded, ``None`` without a readable one."""
+    manifest_path = out.resolve() / MANIFEST_NAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        return Manifest.load(manifest_path).generator_version
+    except (ValueError, KeyError, TypeError, OSError):
+        return None
+
+
 def manifest_matches(out: Path, seed: int, scale: str) -> bool:
     """Whether ``out`` already holds a manifest for ``seed``, ``scale``, and this generator.
 

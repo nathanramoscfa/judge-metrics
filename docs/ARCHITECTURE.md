@@ -58,7 +58,10 @@ interface exactly and adds the identifying attributes:
 | `parse(raw)`            | Row-level `SourceRecordDraft`s (external record id, effective time, payload, record type). |
 | `normalize(record)`     | Canonical drafts: the reference drafts `JurisdictionDraft`, `CourtDraft`, `JudgeDraft`, `JudgeServiceDraft` and the case-level drafts `PersonDraft`, `CaseDraft`, `CasePartyDraft`, `JudgeAssignmentDraft`, `ChargeDraft`, `CourtEventDraft`, `DecisionDraft` (with an optional `PretrialReleaseDraft`), `SentenceDraft`, `JusticeEventDraft`. |
 | `SupportsCheckpoint`    | Optional: `restore_checkpoint` / `checkpoint` for cursoring sources; stored on `ingest_run.checkpoint`. |
-| `SupportsContext`       | Optional: `load_context(artifacts)` receives the raw artifact of *every* discovered artifact (changed or not) before parsing, so a multi-file source builds its cross-file lookups from the complete export; raising `IngestError` fails the run (the synthetic connector fails on manifest drift here). |
+| `SupportsContext`       | Optional: `load_context(artifacts)` receives the raw artifact of *every* discovered artifact (changed or not) before parsing, so a multi-file source builds its cross-file lookups from the complete export; raising `IngestError` fails the run (the synthetic connector fails on manifest drift here). The runner calls it only when some artifact is to be parsed: a rerun over unchanged artifacts neither reads them back from the lake nor indexes them. |
+| `SupportsCoverage`      | Optional: `coverage_window()` — the dates the source's records cover, written to `source.coverage_start`/`coverage_end` (the instant the metrics engine right-censors follow-up at). |
+| `SupportsWorkDir`       | Optional: `use_work_dir(directory)` — the run's temporary directory, into which a connector streams its downloads. |
+| `SupportsRunIssues`     | Optional (Phase 5 Step 4): `run_issues()` — findings the connector collected while it normalized (`RunIssue`: code, severity, a description of files, columns, and counts, the artifact whose `source_record` it is linked to, and the rows it left out, which the run counts as rejected). A connector that normalizes the rows of a case together cannot reject one row with `NormalizationError`; it leaves the row out and reports it here. `SourceRecordDraft.artifact_id` and `.rows` let such a connector attribute each draft to the export it belongs to and count the source rows a record stands for. |
 
 Every draft has a `natural_key`; the runner deduplicates drafts by it
 within a run and upserts on the matching unique index. Source-specific
@@ -98,10 +101,10 @@ carries a restricted attribute's value.
 | 7 | Schema validate                | `connector.validate_raw()` — executed before step 6, because the raw artifact must be validated before it is parsed; errors end the run as `failed` before anything is derived |
 | 8 | Normalize                      | `connector.normalize()` per parsed row; a `NormalizationError` rejects the row and records a `normalize_failed` issue. A `SupportsContext` connector received every artifact through `load_context` before step 7. |
 | 9 | Deduplicate                    | `_deduplicate` by `natural_key` (first draft wins; conflicting duplicates are counted in the log). `case_number_duplicate` runs just before, over the drafts as parsed, because the collapse would hide it. |
-| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through `entity_resolution.pipeline.resolve_persons(session, drafts, run)` — the deterministic stage: a draft whose `source_participant_id` hash already sits in `person_identifier` is that person, otherwise a new person and its identifier rows are written here. The rule, probabilistic, and review stages (`pipeline.resolve_candidates`) run right after step 12, because case linkage is a feature they read from the published rows: the run's persons are blocked against every person they share a name or identifier hash with, candidates are stored, system merges applied, and the run's published person ids follow the merges (`docs/ENTITY_RESOLUTION.md`). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. |
-| 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts (the reference checks of Phase 1 and the case-level checks: `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`) |
+| 10 | Resolve entities              | `_resolve`: judges by exact `external_ids->>'<system>'` (`fjc_nid`, `synthetic_judge_code`, `cook_sao_judge`), courts by exact `(canonical_name, court_type)`, jurisdictions by `(name, type)`, cases by `(court, case_number_normalized)`, persons through `entity_resolution.pipeline.resolve_persons(session, drafts, run)` — the deterministic stage: a draft whose `source_participant_id` hash already sits in `person_identifier` is that person, otherwise a new person and its identifier rows are written here. The rule, probabilistic, and review stages (`pipeline.resolve_candidates`) run right after step 12, because case linkage is a feature they read from the published rows: the run's persons are blocked against every person they share a name or identifier hash with, candidates are stored, system merges applied, and the run's published person ids follow the merges (`docs/ENTITY_RESOLUTION.md`). A case-level draft whose case, person, judge, or court cannot be resolved is rejected with an `unresolved_case` / `unresolved_person` / `unresolved_judge` / `unresolved_court` issue and counted, never dropped. Every lookup of a run-sized list of ids or hashes binds it as one typed array parameter (`column = ANY(:values)`, `judgemetrics.db.arrays`, 50,000 values per statement), never one bind parameter per value, so a run of half a million cases fits PostgreSQL's 65,535-parameter ceiling; cases are looked up by their own numbers, not by reading a court's cases. |
+| 11 | Run data-quality checks       | `judgemetrics.quality.checks.run_checks` over the resolved drafts (the reference checks of Phase 1 and the case-level checks: `disposition_before_filing`, `event_order_impossible`, `subsequent_before_index`, `missing_judge_on_decision`, `missing_disposition`, `unknown_category_measured`, `person_resolution_confidence_missing`). The four checks that read a case's filing date or status also read the parent cases of the run's children that exist only in the database (`quality.checks.CaseFacts`, bounded lookups), so a run that re-parses one artifact is checked against the cases an earlier run published. A pretrial-release or charging decision is not checked against the filing date (a bond hearing follows the arrest; a felony review precedes the prosecutor's receipt of the case). |
 | 12 | Publish canonical rows        | `_publish`: `INSERT … ON CONFLICT DO UPDATE` per entity type, in dependency order — jurisdiction → court → judge → judge_service in the runner, then persons (+ identifier rows) → cases → parties → assignments → charges → court events → decisions (+ pretrial release) → sentences → justice events in `ingest/publish.py`, batched 500 rows per statement |
-| 13 | Recompute affected metrics    | `recompute_metrics`: the judges and courts the run's published rows can change (`impacted_subjects`, "Metrics engine" below) are exported, computed, and published inside the same transaction when `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST` is on; the snapshot is recorded in `ingest_run.metrics_snapshot_id` |
+| 13 | Recompute affected metrics    | `recompute_metrics`: the judges and courts the run's published rows can change (`impacted_subjects`, "Metrics engine" below) are exported, computed, and published inside the same transaction when `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST` is on (the setting is read first: when off, the impacted set is not even computed); the snapshot is recorded in `ingest_run.metrics_snapshot_id` |
 | 14 | Record lineage and statistics | issues persisted with their source record and entity id; `ingest_run` counts, `code_version` (git SHA), `parser_version`, status, checkpoint, `metrics_snapshot_id` |
 
 ### The raw lake
@@ -256,9 +259,10 @@ contained relative ids for this reason.
 `cook_sao`): the Cook County State's Attorney's five case-level datasets
 on the county's Socrata portal. Phase 5 Step 1 lands the fetch, the
 evidence, and the fixture; Step 3 the rule tables that turn the source's
-codes into canonical values; parsing is Step 4's.
+codes into canonical values; Step 4 the parser (below, "Cook County
+connector").
 
-- **Fetch (`connector.py`, parser version `0`).** `discover` lists Intake,
+- **Fetch (`connector.py`).** `discover` lists Intake,
   Initiation, Dispositions, Sentencing, and Diversion from constants
   (`sources.py`; external ids `intake.csv` … `diversion.csv`, the store
   key's extension) and makes no network call. `fetch` first reads the
@@ -283,8 +287,8 @@ codes into canonical values; parsing is Step 4's.
   header row only and checks it, and the metadata's column list, against
   the verified headers (`schema.py`: the export's display names, which
   differ from the API field names; missing → error naming the header,
-  extra → warning). `parse` yields nothing until Step 4 bumps the version,
-  after which the runner re-parses every stored export from the lake.
+  extra → warning). A parser-version change (Step 4 bumped it from `0`)
+  makes the runner re-parse every stored export from the lake.
 - **Profile (`profile.py`, `judgemetrics sources profile cook_sao`).** As
   the ingest role, reads the latest stored record of each dataset, streams
   its object out of the lake into a temporary directory (`get_file`,
@@ -370,6 +374,136 @@ codes into canonical values; parsing is Step 4's.
   and digests; the profile and the excerpt log nothing about rows. No log
   line names a participant id, a case id, or a restricted value.
 
+### Cook County connector (Phase 5 Step 4)
+
+`ingest/cook_sao/` now parses the five exports (parser version
+`1+<RULE_VERSION_TAG>`, e.g. `1+1.1.1.1.1.1.1`: a rule-table edit bumps the
+table's version, which bumps this string, which re-derives every stored export
+from the raw lake — no download). The pieces:
+
+- **`frames.py`** reads each export with Polars, only the columns the connector
+  uses (`schema.READ_COLUMNS`; the incident's city and dates, the arresting
+  agency and unit, the arrest and arraignment dates, the bond's current state,
+  and the participant status are never read), every column a string and every
+  empty field null. Identifier columns are stripped; the date columns are parsed
+  in either export format, and a value that is not a date, is after the corpus
+  end (2024-12-30: the exports carry typos to the year 2924), or is before 1900
+  becomes null and is counted as a finding. The frame is sorted by every column
+  read, so the same rows in any order give the same frame
+  (`tests/property/test_cook_sao_order.py`).
+- **`context.py`** (`load_context`, which the runner calls with all five
+  artifacts whenever any is to be parsed — a rerun over unchanged artifacts
+  reads and indexes nothing) builds the five frames and, with Polars
+  aggregates, the judges the run references and one derived service per judge
+  and court (first to last attributed disposition or sentence date), and
+  counts the rows of every judge string the alias table holds `ambiguous` or
+  `unresolved`.
+- **`case.py`** (`build_case`) turns the rows of one `CASE_ID` across the five
+  exports into drafts, each natural key exactly once. `context.cases()` walks
+  the five sorted frames together in case-id order (a k-way merge, one case in
+  memory at a time) and the connector's `parse` yields, for each case and
+  export, one record standing for that export's rows of the case
+  (`SourceRecordDraft.rows`, `.artifact_id`); `normalize` returns the drafts
+  `build_case` attributed to that export. The runner attributes each draft to
+  that export's `source_record`, so a charge's lineage names the file its
+  disposition is in. Every entity of a case spans several exports, so the first
+  `parse` call of a run streams the whole corpus and the later calls of the
+  same run yield nothing; a partial re-parse is a full one, and the upserts
+  write only what changed.
+- **`findings.py`** collects what the connector left out or flagged (a class no
+  table lists, a date that is not a date, a judge string the table holds, an
+  amended charge version it did not publish, a bond type without a date): the
+  connector groups a case's rows before normalizing them, so it cannot reject a
+  row with an exception; it counts it, and the runner persists each finding as
+  one data-quality issue through `SupportsRunIssues` (step 14). A finding names
+  a file, a column, and a count — and, for a coded column no table lists, the
+  value — never a participant id, a restricted value, or a raw row.
+
+The dataset → table map:
+
+| Export | Rows become |
+|--------|-------------|
+| Intake | the case (when it is the first export holding it), each participant's `person`, `case_party` (`defendant:<ordinal>`), and `restricted.party_attribute` rows (when it is the first export holding the participant), the `charging` decision of the felony review |
+| Initiation | charges not yet disposed (and the participants and cases Intake lacks), the `indictment` / `preliminary_hearing` court events of `EVENT`, the finding of no probable cause, the bond decision with its `pretrial_release` row |
+| Dispositions | charges with their disposition, finality, actor, and disposing judge; the disposition's own court event (`plea_hearing`, `trial`, `mistrial`, `transfer`, …); the reference rows (jurisdiction, courts, judges, services) |
+| Sentencing | `sentence`s (one per participant, date, and phase) and the `revocation` justice event of each probation-violation sentencing |
+| Diversion | `diversion` decisions and the close of a program as a `diversion_completed` / `diversion_failed` court event |
+
+How a case becomes drafts:
+
+- **Case.** `case_number` is the SAO case id; the court is the one municipal
+  district the case's Dispositions and Sentencing rows name, else the circuit
+  court (`courts.yaml`; 35 cases in the profile name two districts); the filing
+  date is the earliest received date of any row (a case received before 2011
+  is kept and counted); the status is closed when every charge has ended — a
+  final disposition, or `superseded` / `transferred`; `pending` (a bond
+  forfeiture warrant, a mistrial) keeps the case open — and the closing date is
+  the latest disposition date.
+- **Person and party.** One `person` per participant, hashed with the
+  source-qualified form (`security/identifiers.py`:
+  `sha256(pepper \0 kind \0 cook_sao \0 id)`; the synthetic connector's
+  unqualified hashes are unchanged), one `defendant:<ordinal>` party (the
+  ordinal is the participant's position among the case's normalized ids in
+  code-point order, as revision 0008 keys the synthetic parties), and three
+  restricted attributes. Race, gender, and the age band come from the first
+  export, in the order Intake, Initiation, Dispositions, Sentencing,
+  Diversion, with a valid label (race labels differ between exports for about
+  one participant in a hundred; gender and age never do); a blank is
+  `unknown`; a label the vocabulary does not list, or an age that is not a
+  whole number from 0 to 130, is counted and not recorded. The age leaves the
+  module as a band.
+- **Charge.** One per charge version, keyed `<ordinal>:<charge id>:<version
+  id>` because co-defendants share charge ids. Offense category and severity
+  come from `offense_map.csv` (the category is the row's, not the charge's: the
+  exports give one per participant), the disposition, finality, actor, and
+  discretion from `attribution_rules.yaml`, the disposing judge from the alias
+  table (`JUDGE`, "Judge who oversaw the case"). A version filed in Initiation
+  and replaced by an amended version of the same charge in Dispositions or
+  Sentencing (60,776 in the corpus) is not published: the later version is the
+  charge. `filed_at` is the case's received date; `violent_flag` is null.
+- **Decisions and events.** One `charging` decision per participant (the first
+  export with a felony-review result; the rule says approved, rejected, or
+  continued; a result without a date drafts none); one `pretrial_release`
+  decision per participant from the *initial* bond, under the rule of the
+  regime its own date falls in (monetary bail before 2023-09-18, the Pretrial
+  Fairness Act from it): the actor is the rule's `judge` with no judge named
+  (the source never names the bond court's officer), the release is claimed only
+  for an individual (I) bond, a deposit or cash bond claims none, and the
+  electronic-monitoring flag becomes a release condition; the current bond is
+  not published (4,885 rows differ from the initial one). A diversion referral
+  is a `diversion` decision whose actor the program's rule gives (`unknown` for
+  the programs the glossary leaves open).
+- **Sentence.** One per participant, date, and phase (`sentence_rules.yaml`):
+  `incarceration_days` and `probation_days` are the longest finite term among
+  the sentence's current rows (every row when none is current), converted at
+  365.25 days a year and 30.4375 a month, rounded half up; a life, death, or
+  unstated term, or a unit that is not a term, contributes no day count and is
+  flagged; `sentence_components` keeps the phase, whether any row is current,
+  whether a later sentence of the same charge supersedes it, and every row's
+  component, days, flags, types, and charge. A row recording the end of a
+  probation drafts no sentence; a probation-violation sentencing (7,121 groups)
+  drafts the within-case `revocation` justice event unless every row ends the
+  probation satisfactorily. Rows of a phase the table ignores ("Summary Charge
+  Info") and rows whose phase, type, or commitment type no table lists are
+  counted and left out.
+- **Judges.** A resolved alias becomes a `JudgeDraft` (identity
+  `("cook_sao_judge", key)`, status `unknown`: the source states no rank or
+  status) with a derived service per court; a held string drafts no judge and
+  its rows are published without one, with one `judge_unresolved` finding per
+  string and its row count.
+
+Nothing here is a person across cases: the corpus has no key for it
+(`docs/ENTITY_RESOLUTION.md`).
+
+**Known limitations of the mapping** (also in the register): the offense
+category is the participant's, so every charge of a case carries it; the
+charge's `filed_at` is the case's received date, which can follow its bond,
+felony review, and sometimes its indictment (the before-filing check exempts
+pretrial-release and charging decisions for that reason); a charge version
+without a Dispositions or Sentencing row has no disposition, though the case
+may have ended; `ARRAIGNMENT_DATE`, the arrest date, and the felony-review
+date as an event are not mapped.
+
 ### Restricted schema
 
 The PostgreSQL schema `restricted` (revision 0008) holds the attributes
@@ -418,6 +552,86 @@ keyed `(case_party_id, attribute)` and cascading with its party
 `source_info.source_type` is `synthetic` or `--from-fixture` is given.
 `judgemetrics seed` generates nothing in production and records the same
 refusal.
+
+## Scale budgets
+
+Budgets are measured on the maintainer's machine (Windows 11, 24 logical
+processors, 128 GB of memory; PostgreSQL 17 and MinIO in Docker Desktop with
+the Compose defaults) over the real corpus, recorded with a margin, and
+re-measured whenever the code on the path changes. CI exercises every path on
+the committed fixture; the full-corpus figures are the operator's, not a
+test's. Peak memory is read from the operating system (the peak working set of
+the ingest process, sampled every two seconds from the process counters; on
+Linux `/usr/bin/time -v`), never from inside the process. This section holds
+the ingest's budget; Phase 5 Step 6 adds the metrics engine's.
+
+### Ingest of the Cook County corpus (Phase 5 Step 4, 2026-10-09)
+
+The corpus is 3,171,690 source rows in five exports (1,221,648,291 bytes:
+Intake 528,111, Initiation 1,228,260, Dispositions 1,080,014, Sentencing
+305,884, Diversion 29,421 rows) that become 7,116,589 canonical rows,
+published in one transaction:
+
+| Table (created by the fresh run)       | Rows      | Table                      | Rows      |
+|----------------------------------------|-----------|----------------------------|-----------|
+| `court_case`                           | 501,012   | `sentence`                 | 272,589   |
+| `case_party` (= `person`)              | 551,870   | `justice_event`            | 7,121     |
+| `party_attribute` (restricted)         | 1,655,610 | `judge`                    | 521       |
+| `charge`                               | 1,325,724 | `judge_service`            | 1,010     |
+| `court_event`                          | 697,849   | `court`, `jurisdiction`    | 7, 1      |
+| `decision`                             | 677,819   | identifier hashes          | 551,870   |
+| `pretrial_release` (of those decisions)| 321,716   | rejected (out-of-range)    | 58        |
+
+The run recorded 61,081 data-quality issues, none of which stopped it:
+
+| Code                                              | Severity | Issues |
+|---------------------------------------------------|----------|--------|
+| `event_order_impossible` (45,032 sentences, 5,347 diversion decisions, 3,924 cases, 2,275 court events) | error | 56,578 |
+| `disposition_before_filing` (charges)             | error    | 4,415  |
+| `sentence_without_date`                           | error    | 1      |
+| `judge_unresolved` (held judge strings)           | warning  | 22     |
+| `date_after_corpus_end`                           | warning  | 9      |
+| `invalid_age`                                     | warning  | 1      |
+| `received_before_coverage`                        | info     | 32     |
+| `sentence_term_flagged`                           | info     | 7      |
+| `unknown_category_measured` (run level)           | info     | 4      |
+| `missing_judge_on_decision` (run level)           | info     | 2      |
+| `fact_undated`                                    | info     | 3      |
+| `bond_not_drafted`                                | info     | 2      |
+| `charge_version_replaced`, `charge_without_disposition_date`, `restricted_value_conflict`, `sentence_judges_differ`, `sentence_phase_ignored` | info | 1 each |
+
+| Run                            | Wall time | Peak memory | What it did |
+|--------------------------------|-----------|-------------|-------------|
+| Fresh ingest                   | 1,512 s (25 min 12 s) | 6.72 GiB | Read the exports back from the raw lake, indexed them, built every draft (2 min 53 s), deduplicated, resolved, checked, and upserted 7.1 million rows (21 min 51 s), resolved persons and recorded issues (25 s). |
+| Rerun over unchanged exports   | 6 s       | 0.12 GiB    | Five metadata requests; nothing downloaded, read back, or parsed; no row created or updated. |
+| `--force` rerun                | 1,015 s (16 min 55 s) | 6.79 GiB | Everything parsed and compared again (1 min 43 s to the drafts, 14 min 29 s to compare them with the stored rows); no row created or updated, no issue added. |
+| `ingest retire cook_sao`       | 63 s      | —           | Measured once on the scratch database over the same corpus: about 5.5 million rows deleted in one transaction. |
+
+The **budget** is the measurement with a margin of 1.5: a fresh run or a
+`--force` rerun finishes within **40 minutes** and **10 GiB**; a rerun that
+finds nothing to parse within **30 seconds** and **0.5 GiB**. The 6.7 GiB is
+the drafts themselves — about 6.2 million Python objects stay in memory until
+the transaction commits — and grows with the corpus, not with the batch size.
+
+Decisions this measurement settled:
+
+- **One transaction, nothing split.** The whole publish fits in memory and in
+  one transaction, so no dataset-by-dataset publish was needed and no run
+  publishes half a case.
+- **Rows are built lazily and sent with executemany.** Compiling a
+  `values([...500 dicts])` statement per batch cost more than the database took
+  to run it (the first full run published about 480 rows a second); each upsert
+  statement is now built once and each batch of 1,000 rows is an executemany
+  over it (`ingest/publish.py` `upsert_rows`), ten times faster on the corpus.
+- **Lookups are arrays.** Every lookup of a run-sized id list is one typed
+  array parameter, in batches of 50,000 (`judgemetrics.db.arrays`), so no
+  statement carries more than a handful of parameters and none can pass
+  PostgreSQL's 65,535.
+- **A rerun costs seconds.** `load_context` (reading the exports back from the
+  lake and indexing them) runs only when some artifact is to be parsed.
+- **Step 13 stays off.** Computing the impacted subjects' observations over
+  this corpus is Step 6's work; `ingest-cook` turns it off through its `env`
+  table.
 
 ## Database roles
 
@@ -644,7 +858,8 @@ because the web client is generated from it ("Web tier" below).
 | Command                                          | Role   | Notes                                                   |
 |--------------------------------------------------|--------|---------------------------------------------------------|
 | `judgemetrics ingest list-sources`               | none   | Registered connectors with parser versions.             |
-| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector, `uv run poe ingest-cook` the Cook County connector (outside `bootstrap`). |
+| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector, `uv run poe ingest-cook` the Cook County connector (outside `bootstrap`; its poe task sets `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST=false` through an `env` table until Phase 5 Step 6). |
+| `judgemetrics ingest retire <source> [--yes]`    | ingest | Delete every row derived from a registered source (metrics, issues, case-level rows, persons, reference rows nothing else cites, source records) in one transaction and append an `ingest.retire` audit row; keeps the `source` row, the run history, and the raw lake; asks first without `--yes`; refused (exit 1) in production, exit 2 for an unknown source. Use it before ingesting a new release of a source whose ids change with every release (Cook County) and before `seed` re-ingests a dataset regenerated under a newer generator version (`seed` does it itself; issue #36). |
 | `judgemetrics sources profile cook_sao [--out PATH] [--check] [--from-fixture DIR]` | ingest | Write `data/reference/cook_sao/profile.yaml` from the stored exports ("Cook County source"); `--check` exits 1 with a diff, 2 when the exports cannot be read. |
 | `judgemetrics sources excerpt cook_sao --out DIR [--from-fixture DIR]` | ingest | Write the stratified real-row fixture (blanked columns) by the committed profile's strata; exit 2 when the profile describes other exports. |
 | `judgemetrics ingest runs [--source ID] [--limit N]` | app | A table of runs with counts, status, and parser version. |

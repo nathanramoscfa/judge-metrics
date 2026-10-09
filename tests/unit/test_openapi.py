@@ -85,6 +85,10 @@ RESTRICTED_PROPERTY_NAMES = {
     "age_band",
     "synthetic_group",
     "party_attribute",
+    # Phase 5 Step 4: the Cook County restricted kinds (exact property names, so
+    # `trace` is not a hit).
+    "race",
+    "gender",
 }
 
 

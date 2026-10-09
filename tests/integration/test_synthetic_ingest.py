@@ -51,10 +51,10 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, delete, func, select, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Session
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from judgemetrics.cli import app
-from judgemetrics.config import Settings
+from judgemetrics.config import Settings, get_settings
 from judgemetrics.db.models import (
     RESTRICTED_SCHEMA,
     Base,
@@ -1005,6 +1005,73 @@ def test_seed_out_generates_ingests_and_is_idempotent(
         assert re.search(r"status=succeeded seen=\d+ created=0 updated=0", second.output), (
             second.output
         )
+    finally:
+        purge_synthetic(migrated_database)
+
+
+def test_seed_retires_the_stale_rows_when_the_generator_version_changed(
+    test_settings: Settings,
+    migrated_database: Engine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #36: a dataset an older generator wrote was ingested under that version, so
+    regenerating it and ingesting by natural key would leave its rows behind; ``seed``
+    retires the synthetic source first. A planted case the new dataset does not contain
+    is the witness: an in-place ingest keeps it, a retire does not."""
+    settings = test_settings
+    monkeypatch.chdir(tmp_path)
+    purge_synthetic(migrated_database)
+    out = tmp_path / "stale"
+    env = {
+        "JUDGEMETRICS_ENV": "test",
+        "JUDGEMETRICS_DATABASE_URL": settings.database_url,
+        "JUDGEMETRICS_INGEST_DATABASE_URL": settings.effective_ingest_database_url
+        if settings.ingest_database_url
+        else settings.effective_admin_database_url,
+        "JUDGEMETRICS_RAW_STORE_URL": f"file://{(tmp_path / 'lake').as_posix()}",
+        "JUDGEMETRICS_SNAPSHOT_DIR": (tmp_path / "snapshots").as_posix(),
+        "JUDGEMETRICS_LOG_FORMAT": "json",
+        "JUDGEMETRICS_IDENTIFIER_PEPPER": TEST_IDENTIFIER_PEPPER,
+    }
+
+    def seed() -> Result:
+        get_settings.cache_clear()
+        try:
+            return CliRunner().invoke(app, ["seed", "--scale", "tiny", "--out", str(out)], env=env)
+        finally:
+            get_settings.cache_clear()
+
+    try:
+        first = seed()
+        assert first.exit_code == 0, first.output
+        assert "retired the stale" not in first.output, "nothing was stale on the first seed"
+        with Session(migrated_database) as session:
+            session.execute(
+                text(
+                    "INSERT INTO court_case (court_id, case_number, case_number_normalized, "
+                    "case_type, status, source_record_id) "
+                    "SELECT court_id, 'STALE-1', 'STALE-1', case_type, status, source_record_id "
+                    "FROM court_case LIMIT 1"
+                )
+            )
+            session.commit()
+        manifest_path = out / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["generator_version"] = "0"
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+        second = seed()
+        assert second.exit_code == 0, second.output
+        assert "retired the stale synthetic rows" in second.output
+        assert re.search(r"status=succeeded seen=\d+ created=[1-9]", second.output), second.output
+        with Session(migrated_database) as session:
+            stale = session.scalar(
+                text("SELECT count(*) FROM court_case WHERE case_number = 'STALE-1'")
+            )
+            total = session.scalar(text("SELECT count(*) FROM court_case"))
+        assert stale == 0, "the stale case was retired, not kept"
+        assert total and total > 0
     finally:
         purge_synthetic(migrated_database)
 

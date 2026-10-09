@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from judgemetrics import __version__
 from judgemetrics.cli import app
+from judgemetrics.ingest.cook_sao.rules import RULE_VERSION_TAG
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +36,11 @@ def test_cli_lists_command_groups() -> None:
 def test_ingest_list_sources_names_the_registered_connectors() -> None:
     result = runner.invoke(app, ["ingest", "list-sources"])
     assert result.exit_code == 0, result.output
-    assert result.output.splitlines() == ["cook_sao\t0", "fjc\t2026.09.1", "synthetic\t2"]
+    assert result.output.splitlines() == [
+        f"cook_sao\t1+{RULE_VERSION_TAG}",
+        "fjc\t2026.09.1",
+        "synthetic\t2",
+    ]
 
 
 def test_db_group_has_migration_commands() -> None:

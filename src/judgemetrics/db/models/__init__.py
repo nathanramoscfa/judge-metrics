@@ -95,7 +95,15 @@ CANONICAL_TABLES: tuple[str, ...] = (
 # hashed identifiers, requester contacts, the resolution candidates that
 # reference them, and the administrative audit trail.
 RESTRICTED_TABLES: frozenset[str] = frozenset(
-    {"person_identifier", "correction_request", "entity_resolution_candidate", "audit_log"}
+    {
+        "person_identifier",
+        "correction_request",
+        "entity_resolution_candidate",
+        "audit_log",
+        # Revision 0011: an issue describes source rows (case and charge ids, judge
+        # strings), which a real corpus makes sensitive; no API route reads it.
+        "data_quality_issue",
+    }
 )
 # Tables of the ``restricted`` schema (revision 0008): the app role has no
 # ``USAGE`` on the schema at all, so it cannot even name them.

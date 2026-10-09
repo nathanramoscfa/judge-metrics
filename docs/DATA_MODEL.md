@@ -41,7 +41,13 @@ created by the Alembic revisions under `alembic/versions/`:
   role; "Outcome model specification" below);
 - `0010_adjusted_observations` — `metric_observation.outcome_model_id`,
   `pooling_weight`, and `suppression_reason` with its two check
-  constraints (the observed-to-expected ratios).
+  constraints (the observed-to-expected ratios);
+- `0011_cook_county_connector` — `uq_judge_external_ids_cook_sao_judge`
+  (a partial unique expression index: one judge per Cook County judge
+  key), `charge.judge_id` (nullable, indexed, `RESTRICT`: the judge who
+  entered the charge's disposition, as the source records it), and
+  `REVOKE ALL ON data_quality_issue FROM judgemetrics_app` (an issue
+  describes source rows; no API route reads the table).
 
 `uv run alembic check` must report no drift between the models and the
 head; `alembic/env.py` sets `include_schemas` (filtered to `public` and
@@ -103,6 +109,7 @@ was computed from (Phase 3 Step 2 writes both; Step 3's
 | `judge`            | `external_ids->>'fjc_nid'` (partial: rows that carry the key)                                   | `uq_judge_external_ids_fjc_nid`              |
 | `judge_service`    | `(judge_id, court_id, position_type, start_date)`, `NULLS NOT DISTINCT`                         | `uq_judge_service_natural_key`               |
 | `judge`            | `external_ids->>'synthetic_judge_code'` (partial: rows that carry the key)                      | `uq_judge_external_ids_synthetic_judge_code` |
+| `judge`            | `external_ids->>'cook_sao_judge'` (partial: rows that carry the key; 0011)                      | `uq_judge_external_ids_cook_sao_judge`       |
 | `person`           | `public_person_key`                                                                             | `uq_person_public_person_key`                |
 | `person_identifier`| `(identifier_type, value_hash)` for the stable kinds (`source_participant_id`): one person per source identifier | `uq_person_identifier_stable` (partial) |
 | `person_identifier`| `(person_id, identifier_type, value_hash)`: one row per hash per person                         | `uq_person_identifier_person_type_hash`      |
@@ -122,8 +129,9 @@ was computed from (Phase 3 Step 2 writes both; Step 3's
 The ingest runner upserts on these keys (`INSERT … ON CONFLICT`) and
 deduplicates drafts by the same keys within a run. Judge resolution is
 exact external-id matching per identity system (`fjc_nid` for the FJC,
-`synthetic_judge_code` for the synthetic source); further systems add
-their own partial unique index when their connector lands. Case numbers
+`synthetic_judge_code` for the synthetic source, `cook_sao_judge` for
+Cook County, whose key comes from the reviewed alias table); further
+systems add their own partial unique index when their connector lands. Case numbers
 are normalized by `normalization/case_numbers.py` (upper-case, every run
 of whitespace or punctuation becomes one `-`, ends trimmed), so
 `syn 2019 000013` and `SYN-2019-000013` are one case. Persons resolve
@@ -391,7 +399,7 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier` | `correction_request`                          | The `restricted` schema (0008)          | Every other table                       |
 |-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate` and `audit_log` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; and `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value) |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate`, `audit_log`, and (0011) `data_quality_issue` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; and `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value) |
 | `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables and 0009 `outcome_model` explicitly; the metrics engine and `models fit` write as this role) |
 | `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all, and by default privilege on later tables | all |
 
@@ -461,6 +469,39 @@ party type in code-point order of the normalized participant ids (the
 order the migration ranked the old keys in, `COLLATE "C"`). The
 participant id reaches the database only as its peppered hash in
 `person_identifier`; a downgrade keeps the ordinal keys.
+
+Revision 0011 (Phase 5 Step 4) adds `charge.judge_id` — a departure from
+the brief's field list, whose charge carries no judge: the Cook County
+exports record the judge of a disposition ("Judge who oversaw the case")
+and no assignment intervals, so the disposition family cannot attribute
+through `judge_assignment` (a synthetic charge leaves it null; Step 5's
+`disposing_judge` gate reads it) — and the judge identity index for the
+`cook_sao_judge` system. It also revokes the app role's read of
+`data_quality_issue`: an issue's description names a dataset, a column,
+and counts (and, for a judge string the alias table holds, the string),
+which a real corpus makes sensitive in aggregate, and nothing in the API
+reads the table.
+
+The Cook County connector's use of the existing tables: one `jurisdiction`
+(Cook County, Illinois, FIPS 17031), seven `court`s (the circuit court and
+its six municipal districts), judges keyed `cook_sao_judge` with derived
+`judge_service` rows, a `court_case` per SAO case (the case number is the
+SAO `CASE_ID`; the status is closed when every charge has ended; the
+filing date is the earliest received date), a `person` per case
+participant (a case participation, not a person across cases — see
+`docs/ENTITY_RESOLUTION.md`), a `case_party` keyed `defendant:<ordinal>`,
+race, gender, and the age band in `restricted.party_attribute`, a `charge`
+per charge version keyed `<ordinal>:<charge id>:<version id>`, `court_event`s
+(`indictment`, `preliminary_hearing`, a disposition's own event, a
+diversion's close), `decision`s (`charging`, `diversion`, and one
+`pretrial_release` per participant from the initial bond, with its
+`pretrial_release` row and no judge), a `sentence` per participant, date, and
+phase (the longest finite incarceration and probation term in days;
+`sentence_components` holds the phase, whether it is current, whether a later
+sentence supersedes it, and every row's component, days, flags, sentence and
+commitment type, and charge), and a `revocation` `justice_event` at each
+probation-violation sentencing. The mapping is in `docs/ARCHITECTURE.md`
+"Cook County connector".
 
 ## The restricted schema
 

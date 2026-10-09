@@ -106,6 +106,33 @@ def test_pepper_never_appears_in_settings_rendering() -> None:
     assert "render-me-not" not in rendered
 
 
+def test_the_source_qualified_form_hashes_the_source_between_kind_and_value() -> None:
+    digest = hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, " 12345 ", source="cook_sao")
+    expected = hashlib.sha256(
+        b"unit-test-pepper\x00source_participant_id\x00cook_sao\x0012345"
+    ).hexdigest()
+    assert digest == expected
+    assert HEX64.match(digest)
+
+
+def test_a_qualified_hash_never_equals_an_unqualified_one_or_another_sources() -> None:
+    plain = hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "12345")
+    cook = hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "12345", source="cook_sao")
+    other = hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "12345", source="fl_clerks")
+    assert len({plain, cook, other}) == 3
+    # The separator cannot be forged from inside a value: a NUL byte is refused.
+    with pytest.raises(ValueError, match="NUL"):
+        hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "cook_sao\x0012345")
+    with pytest.raises(ValueError, match="source qualifier"):
+        hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "12345", source="")
+
+
+def test_the_synthetic_connectors_hashes_are_the_unqualified_form() -> None:
+    """No existing hash moves: the unqualified digest is exactly what Phase 2 stored."""
+    expected = hashlib.sha256(b"unit-test-pepper\x00source_participant_id\x00PT-000007").hexdigest()
+    assert hash_identifier(PEPPER, KIND_SOURCE_PARTICIPANT_ID, "pt-000007") == expected
+
+
 def test_kinds_are_the_four_documented_ones() -> None:
     assert IDENTIFIER_KINDS == (
         "source_participant_id",

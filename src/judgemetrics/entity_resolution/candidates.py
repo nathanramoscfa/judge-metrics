@@ -20,6 +20,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from itertools import batched
 from typing import Any
 
 import sqlalchemy as sa
@@ -27,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from judgemetrics.db.arrays import ID_BATCH, in_array
 from judgemetrics.db.models import Base
 from judgemetrics.db.models.enums import ResolutionDecision
 from judgemetrics.entity_resolution.config import SYSTEM_ACTOR_PREFIX
@@ -179,13 +181,17 @@ def load_candidates(
     stmt = select(CANDIDATE).where(
         CANDIDATE.c.entity_type == entity_type,
         CANDIDATE.c.model_version == model_version,
-        CANDIDATE.c.left_record_id.in_(lefts),
     )
     found: dict[Pair, StoredCandidate] = {}
-    for row in session.execute(stmt).mappings().all():
-        candidate = _stored(row)
-        if candidate.pair in wanted:
-            found[candidate.pair] = candidate
+    for batch in batched(sorted(lefts), ID_BATCH, strict=False):
+        for row in (
+            session.execute(stmt.where(in_array(CANDIDATE.c.left_record_id, batch)))
+            .mappings()
+            .all()
+        ):
+            candidate = _stored(row)
+            if candidate.pair in wanted:
+                found[candidate.pair] = candidate
     return found
 
 

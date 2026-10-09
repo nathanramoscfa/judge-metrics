@@ -72,6 +72,9 @@ RESTRICTED_NAMES: tuple[str, ...] = (
     "synthetic_group",
     "party_attribute",
 )
+# Phase 5 Step 4: the Cook County restricted kinds, matched as whole words (a
+# substring `race` would match `trace`).
+RESTRICTED_WHOLE_WORDS: tuple[str, ...] = ("race", "gender")
 
 
 def read_rows(relative: str) -> list[dict[str, str]]:

@@ -15,6 +15,7 @@ from judgemetrics.config import Settings
 from judgemetrics.logging import (
     REDACTED,
     SENSITIVE_KEYS,
+    SENSITIVE_TOKENS,
     configure_logging,
     get_logger,
     is_sensitive_key,
@@ -53,8 +54,36 @@ DENYLIST = {
 }
 
 
+# Matched as whole underscore-separated tokens, never as substrings (Phase 5
+# Step 4): a substring `race` would redact `trace`.
+TOKEN_DENYLIST = {"race", "gender", "age_at_incident"}
+
+
 def test_documented_denylist_is_complete() -> None:
     assert SENSITIVE_KEYS == frozenset(DENYLIST)
+
+
+def test_documented_token_denylist_is_complete() -> None:
+    assert SENSITIVE_TOKENS == frozenset(TOKEN_DENYLIST)
+    assert not SENSITIVE_TOKENS & SENSITIVE_KEYS
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["race", "RACE", "gender", "Gender", "race_value", "party.race", "x-gender", "age_at_incident"],
+)
+def test_token_keys_are_redacted(key: str) -> None:
+    event = scrub_sensitive(None, "info", {"event": "x", key: "value"})
+    assert event[key] == REDACTED
+
+
+@pytest.mark.parametrize(
+    "key", ["trace", "grace", "trace_id", "racetrack", "agenda", "age", "age_at", "stage"]
+)
+def test_token_keys_leave_lookalikes_alone(key: str) -> None:
+    """`trace` survives: the entries are whole tokens, not substrings."""
+    event = scrub_sensitive(None, "info", {"event": "x", key: "value"})
+    assert event[key] == "value"
 
 
 @pytest.mark.parametrize("key", sorted(DENYLIST))

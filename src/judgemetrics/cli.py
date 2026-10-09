@@ -2,8 +2,9 @@
 """The ``judgemetrics`` command-line interface (Typer).
 
 Groups: ``db`` (migrations, run as the admin role), ``serve`` (uvicorn),
-``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``runs``
-as the read-only role), ``openapi`` (``export`` the API document),
+``ingest`` (``list-sources``, ``run <source>`` as the ingest role, ``retire
+<source>`` as the ingest role to remove a source's rows for a clean re-ingest,
+``runs`` as the read-only role), ``openapi`` (``export`` the API document),
 ``synthetic`` (``generate`` a deterministic synthetic dataset, ``verify``
 one against its manifest), ``seed`` (generate the demo dataset and
 ingest it through the ``synthetic`` connector as the ingest role), and
@@ -303,6 +304,63 @@ def ingest_run(
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
 
 
+@ingest_app.command("retire")
+def ingest_retire(
+    source_id: Annotated[str, typer.Argument(help="A source id from `ingest list-sources`.")],
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Do not ask for confirmation before deleting.")
+    ] = False,
+) -> None:
+    """Delete every row derived from SOURCE_ID so it can be ingested afresh (refused in production).
+
+    Removes, as the ingest role and in one transaction, the source's metric
+    observations and models, issues, case-level rows, persons, reference rows no
+    other source cites, and source records; keeps the `source` row, the run
+    history, the raw lake, and the audit log, and appends one `ingest.retire`
+    audit row. Use it before re-ingesting a source whose identifiers change with
+    every release (Cook County) or whose generator changed (the synthetic seed).
+    """
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.ingest.registry import UnknownSourceError
+    from judgemetrics.ingest.retire import RetireError, retire_source
+    from judgemetrics.logging import configure_logging
+
+    settings = get_settings()
+    configure_logging(settings)
+    if settings.env == "production":
+        typer.echo("error: retiring a source is refused when JUDGEMETRICS_ENV=production", err=True)
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+    if not yes and not typer.confirm(
+        f"Delete every row derived from {source_id!r} (the raw lake is kept)?"
+    ):
+        typer.echo("nothing deleted")
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+    engine = make_engine(settings.effective_ingest_database_url)
+    try:
+        with Session(engine) as session:
+            try:
+                result = retire_source(session, source_id, settings=settings)
+            except UnknownSourceError as exc:
+                typer.echo(
+                    f"error: unknown source {source_id!r}; see `judgemetrics ingest list-sources`",
+                    err=True,
+                )
+                raise typer.Exit(EXIT_USAGE) from exc
+            except RetireError as exc:
+                session.rollback()
+                typer.echo(f"error: {exc}", err=True)
+                raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED) from exc
+            session.commit()
+    finally:
+        engine.dispose()
+    typer.echo(f"retired {result.source}: {result.total} rows deleted")
+    for table, count in result.deleted.items():
+        typer.echo(f"  {table}\t{count}")
+
+
 def _run_summary(run: object, source_id: str) -> str:
     from judgemetrics.db.models import IngestRun
 
@@ -526,10 +584,12 @@ def seed(
     from judgemetrics.ingest.store import RawStoreError, open_raw_store
     from judgemetrics.ingest.synthetic.connector import SyntheticConnector
     from judgemetrics.logging import configure_logging, get_logger
+    from judgemetrics.synthetic.config import GENERATOR_VERSION
     from judgemetrics.synthetic.generate import (
         DatasetExistsError,
         generate_dataset,
         manifest_matches,
+        recorded_generator_version,
     )
 
     settings = get_settings()
@@ -537,6 +597,11 @@ def seed(
     _require_pepper(settings)
     log = get_logger("judgemetrics.seed")
     target = (SYNTHETIC_DATA_DIR / str(seed)).resolve() if out is None else out
+    # A dataset an older generator version wrote was ingested (and its rows published) under
+    # that version: those rows are stale once it is regenerated, and an in-place ingest by
+    # natural key would leave them behind (issue #36), so the source is retired first.
+    previous_version = recorded_generator_version(target)
+    retire_first = previous_version is not None and previous_version != GENERATOR_VERSION
     if settings.env == "production":
         # Nothing is generated: the runner records the refusal and that is all.
         log.warning("seed.skipped_generation", because="production environment", out=str(target))
@@ -570,6 +635,20 @@ def seed(
     connector = SyntheticConnector(target, settings=settings)
     engine = make_engine(settings.effective_ingest_database_url)
     try:
+        if retire_first and settings.env != "production":
+            from judgemetrics.ingest.retire import retire_source
+
+            with Session(engine) as session:
+                retired = retire_source(session, connector.source_id, settings=settings)
+                session.commit()
+            log.info(
+                "seed.retired",
+                source=connector.source_id,
+                because="the dataset was regenerated under a newer generator version",
+                previous_version=previous_version,
+                rows=retired.total,
+            )
+            typer.echo(f"retired the stale {connector.source_id} rows ({retired.total} deleted)")
         with Session(engine) as session:
             run = run_ingest(
                 connector.source_id,

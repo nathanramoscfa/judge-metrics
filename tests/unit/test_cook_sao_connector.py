@@ -1,6 +1,7 @@
 # tests/unit/test_cook_sao_connector.py
-"""The Cook County connector at parser version 0: discovery, portal metadata, the
-rows-updated short-circuit, the streamed export, header validation, no parsing."""
+"""The Cook County connector's fetch side: discovery, portal metadata, the
+rows-updated short-circuit, the streamed export, and header validation (the parse and
+normalize side is ``test_cook_sao_normalize.py``)."""
 
 from __future__ import annotations
 
@@ -21,6 +22,8 @@ from judgemetrics.ingest.base import (
     SourceArtifact,
     SourceRecordDraft,
     SupportsContext,
+    SupportsCoverage,
+    SupportsRunIssues,
     SupportsWorkDir,
     sha256_hex,
 )
@@ -30,6 +33,7 @@ from judgemetrics.ingest.cook_sao.connector import (
     CookSaoConnector,
     parse_portal_metadata,
 )
+from judgemetrics.ingest.cook_sao.rules import RULE_VERSION_TAG
 from judgemetrics.ingest.cook_sao.schema import (
     BLANKED_COLUMNS,
     CODED_COLUMNS,
@@ -117,11 +121,17 @@ def _raw(name: str, data: bytes, headers: dict[str, str] | None = None) -> RawAr
 # --- registry and discovery -------------------------------------------------------
 
 
-def test_the_registry_lists_the_connector_at_parser_version_0() -> None:
+def test_the_registry_lists_the_connector_at_its_rule_versioned_parser_version() -> None:
     assert isinstance(get_connector("cook_sao"), CookSaoConnector)
-    assert any(s.source_id == "cook_sao" and s.parser_version == "0" for s in registered_sources())
-    assert isinstance(CookSaoConnector(), SupportsWorkDir)
-    assert not isinstance(CookSaoConnector(), SupportsContext)
+    assert any(
+        s.source_id == "cook_sao" and s.parser_version == f"1+{RULE_VERSION_TAG}"
+        for s in registered_sources()
+    )
+    connector = CookSaoConnector()
+    assert isinstance(connector, SupportsWorkDir)
+    assert isinstance(connector, SupportsContext)
+    assert isinstance(connector, SupportsCoverage)
+    assert isinstance(connector, SupportsRunIssues)
 
 
 def test_discover_lists_the_five_datasets_in_dependency_order_without_a_request() -> None:
@@ -154,12 +164,12 @@ def test_discover_lists_the_five_datasets_in_dependency_order_without_a_request(
     assert {a.uri for a in artifacts}.isdisjoint(d.export_url for d in sources.ARCHIVED_DATASETS)
 
 
-def test_source_info_names_the_owner_terms_and_no_observable_outcome() -> None:
+def test_source_info_names_the_owner_terms_and_the_one_observable_outcome() -> None:
     info = CookSaoConnector.source_info
     assert info.owner == "Cook County State's Attorney's Office"
     assert info.source_type == "government_open_data"
     assert info.access_method == "socrata_bulk_export"
-    assert info.observable_outcomes == ()
+    assert info.observable_outcomes == ("revocation",)
     assert info.terms_metadata["terms"] == "https://www.cookcountyil.gov/terms-use"
     assert info.terms_metadata["license"] == "Public Domain"
     assert info.terms_metadata["attribution"] == "Cook County State's Attorney's Office"
@@ -324,13 +334,15 @@ def test_an_unchanged_artifact_passes_without_a_payload() -> None:
     assert CookSaoConnector().validate_raw(raw).ok
 
 
-# --- parser version 0 ---------------------------------------------------------------
+# --- parsing needs the context ----------------------------------------------------------
 
 
-def test_parse_and_normalize_yield_nothing() -> None:
+def test_parse_yields_nothing_before_the_context_is_loaded() -> None:
     connector = CookSaoConnector()
     assert list(connector.parse(_raw("diversion.csv", EXPORT))) == []
-    record = SourceRecordDraft(external_record_id="x", effective_at=None, payload={})
+    record = SourceRecordDraft(
+        external_record_id="x", effective_at=None, payload={"drafts": []}, record_type="intake.csv"
+    )
     assert list(connector.normalize(record)) == []
 
 

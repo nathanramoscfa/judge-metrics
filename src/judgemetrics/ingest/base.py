@@ -47,7 +47,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
-from judgemetrics.db.models.enums import ActorType
+from judgemetrics.db.models.enums import ActorType, IssueSeverity
 
 NaturalKey = tuple[str, ...]
 Checkpoint = dict[str, Any]
@@ -223,12 +223,23 @@ class ValidationResult:
 
 @dataclass(frozen=True, slots=True)
 class SourceRecordDraft:
-    """One parsed source row. ``record_type`` tells ``normalize`` which mapping applies."""
+    """One parsed source record. ``record_type`` tells ``normalize`` which mapping applies.
+
+    ``artifact_id`` (Phase 5) names the artifact whose ``source_record`` the
+    drafts derived from this record are attributed to, when it is not the
+    artifact being parsed: a multi-file source whose entities span its
+    files (the Cook County exports) parses every file on the first
+    ``parse`` call and attributes each draft to the file it belongs to.
+    ``rows`` is the number of source rows the record stands for, which the
+    run counts as seen (a record may group the rows of one case).
+    """
 
     external_record_id: str
     effective_at: datetime | None
     payload: Mapping[str, Any]
     record_type: str = ""
+    artifact_id: str | None = None
+    rows: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,6 +445,10 @@ class ChargeDraft:
     # (a dismissal by the prosecutor is not a judicial dismissal).
     disposition_actor: ActorType | None
     source_row_id: str
+    # The judge who entered the disposition, as the source records it (revision
+    # 0011 ``charge.judge_id``); ``None`` when the source names none or the
+    # string cannot be resolved to one judge.
+    judge_key: NaturalKey | None = None
 
     @property
     def natural_key(self) -> NaturalKey:
@@ -479,6 +494,10 @@ class DecisionDraft:
     judicial_discretion_classification: str
     pretrial: PretrialReleaseDraft | None
     source_row_id: str
+    # True when the source never names the judicial officer who made this
+    # kind of decision (the Cook County bond decisions): the missing-judge
+    # check counts such decisions once instead of flagging each.
+    judge_not_recorded: bool = False
 
     @property
     def natural_key(self) -> NaturalKey:
@@ -654,3 +673,37 @@ class SupportsWorkDir(Protocol):
     """
 
     def use_work_dir(self, directory: Path) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RunIssue:
+    """A data-quality finding a connector reports about the run as a whole.
+
+    The description names a dataset, a column, and counts — never a
+    participant id, a raw row, or a restricted value. ``artifact_id`` links
+    the issue to that artifact's ``source_record`` (none: a run-level issue
+    keyed on its code and description); ``rejected_rows`` is the number of
+    source rows the connector left out because of it, which the run counts
+    as rejected.
+    """
+
+    issue_code: str
+    severity: IssueSeverity
+    entity_type: str
+    description: str
+    artifact_id: str | None = None
+    rejected_rows: int = 0
+
+
+@runtime_checkable
+class SupportsRunIssues(Protocol):
+    """Optional hook: findings the connector collected while it normalized.
+
+    The runner calls ``run_issues`` once, after every artifact of the run has
+    been parsed and normalized, and persists the issues with the run's
+    others (step 14). A connector that normalizes a record by grouping the
+    rows of a case cannot reject a single row with ``NormalizationError``;
+    it leaves the row out and reports it here instead.
+    """
+
+    def run_issues(self) -> Sequence[RunIssue]: ...

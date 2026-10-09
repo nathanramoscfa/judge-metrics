@@ -1,8 +1,9 @@
 # src/judgemetrics/ingest/cook_sao/connector.py
 """``CookSaoConnector``: the Cook County State's Attorney case-level datasets.
 
-Parser version ``0`` fetches and stores; it parses nothing (Phase 5 Step 4
-bumps the version and adds the mapping, after Step 3's rule tables).
+Parser version ``1+<RULE_VERSION_TAG>`` (Phase 5 Step 4): it fetches, stores, parses,
+and normalizes the five exports through Step 3's rule tables, and a change to any
+table's version re-derives every stored export (``rules.RULE_VERSIONS``).
 
 ``discover`` lists the five current datasets from constants and makes no
 network call (the runner calls it in fixture mode too). ``fetch`` first
@@ -18,6 +19,18 @@ hashed while it is written, with the previous ``ETag`` and
 the header row only and checks it, and the metadata's column list, against
 the verified headers (missing → error naming the header, extra → warning).
 
+``load_context`` (the runner calls it with all five artifacts whenever any is to be
+parsed) validates the headers, reads every export into a sorted Polars frame, and
+derives the judges and their services (``context.py``). ``parse`` then walks the exports
+together in case-id order and yields, for each case and export, one record standing for
+that export's rows of the case, attributed to that export's ``source_record``;
+``normalize`` returns the drafts ``case.build_case`` assigned to it. Every entity of a
+case spans several exports (a charge's offense is in Initiation, its disposition in
+Dispositions), so a run that parses any export re-derives them all, and the upserts
+write only what changed. The first ``parse`` call of a run streams the whole corpus; the
+later calls of the same run yield nothing. Rows a rule table cannot place are left out
+and reported as findings (``findings.py``, ``run_issues``), never as exceptions.
+
 Nothing here logs a participant id, a case id, or a restricted value: the
 fetch logs dataset names, sizes, and digests only.
 """
@@ -28,14 +41,16 @@ import asyncio
 import csv
 import io
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
+from judgemetrics.config import Settings, get_settings
 from judgemetrics.ingest.base import (
     HEADER_ROWS_UPDATED_AT,
     PREVIOUS_ETAG,
@@ -43,8 +58,15 @@ from judgemetrics.ingest.base import (
     PREVIOUS_ROWS_UPDATED_AT,
     PREVIOUS_SHA256,
     CanonicalRecord,
+    CourtDraft,
     FetchError,
+    IngestError,
+    JudgeDraft,
+    JudgeServiceDraft,
+    JurisdictionDraft,
+    NaturalKey,
     RawArtifact,
+    RunIssue,
     SourceArtifact,
     SourceInfo,
     SourceRecordDraft,
@@ -52,7 +74,17 @@ from judgemetrics.ingest.base import (
     utc_now,
 )
 from judgemetrics.ingest.cook_sao import sources
-from judgemetrics.ingest.cook_sao.schema import VERIFIED_HEADERS
+from judgemetrics.ingest.cook_sao.case import Env, build_case
+from judgemetrics.ingest.cook_sao.context import CookContext
+from judgemetrics.ingest.cook_sao.findings import Findings
+from judgemetrics.ingest.cook_sao.rules import RULE_VERSION_TAG, CookSaoRules, load_rules
+from judgemetrics.ingest.cook_sao.schema import (
+    COVERAGE_END,
+    COVERAGE_START,
+    DATASET_ORDER,
+    DISPOSITIONS_FILE,
+    VERIFIED_HEADERS,
+)
 from judgemetrics.ingest.http import (
     DEFAULT_RETRIES,
     Sleep,
@@ -62,6 +94,9 @@ from judgemetrics.ingest.http import (
 )
 from judgemetrics.ingest.registry import register
 from judgemetrics.logging import get_logger
+from judgemetrics.normalization import vocabulary
+from judgemetrics.normalization.names import normalize_person_name
+from judgemetrics.security.identifiers import require_identifier_pepper
 
 log = get_logger(__name__)
 
@@ -173,7 +208,8 @@ def _header_problems(
 @register
 class CookSaoConnector:
     source_id = sources.SOURCE_ID
-    parser_version = "0"
+    # "1+<table versions>": a rule-table edit bumps a version, which re-derives every row.
+    parser_version = f"1+{RULE_VERSION_TAG}"
     source_info = SourceInfo(
         owner="Cook County State's Attorney's Office",
         source_type="government_open_data",
@@ -188,7 +224,9 @@ class CookSaoConnector:
             "redistribution": REDISTRIBUTION,
             "datasets": {d.external_id: d.portal_id for d in sources.DATASETS},
         },
-        observable_outcomes=(),
+        # A probation-violation sentencing is a within-case revocation; no cross-case outcome
+        # (new case, new charge, reconviction) is observable: the corpus has no person key.
+        observable_outcomes=("revocation",),
     )
 
     def __init__(
@@ -199,12 +237,21 @@ class CookSaoConnector:
         retries: int = DEFAULT_RETRIES,
         sleep: Sleep = asyncio.sleep,
         work_dir: Path | None = None,
+        pepper: SecretStr | None = None,
+        settings: Settings | None = None,
+        rules: CookSaoRules | None = None,
     ) -> None:
         self._client_factory = client_factory or (lambda: make_client(EXPORT_TIMEOUT_SECONDS))
         self._max_bytes = max_bytes
         self._retries = retries
         self._sleep = sleep
         self._work_dir = work_dir
+        self._pepper = pepper
+        self._settings = settings
+        self._rules = rules
+        self._context: CookContext | None = None
+        self._findings = Findings()
+        self._streamed = False
 
     def use_work_dir(self, directory: Path) -> None:
         self._work_dir = directory
@@ -307,14 +354,131 @@ class CookSaoConnector:
             return ValidationResult.failed(errors, warnings)
         return ValidationResult.passed(warnings)
 
-    def parse(self, artifact: RawArtifact) -> Iterable[SourceRecordDraft]:
-        """Parser version ``0`` parses nothing.
+    # --- context, coverage, parsing, normalization ---------------------------------------
 
-        Phase 5 Step 4 bumps ``parser_version`` and maps the five datasets
-        through Step 3's rule tables; the runner then re-parses every stored
-        artifact from the lake under the new version.
-        """
-        return []
+    def _rule_tables(self) -> CookSaoRules:
+        if self._rules is None:
+            self._rules = load_rules()
+        return self._rules
+
+    def _identifier_pepper(self) -> SecretStr:
+        if self._pepper is None:
+            settings = self._settings if self._settings is not None else get_settings()
+            self._pepper = require_identifier_pepper(settings)
+        return self._pepper
+
+    def load_context(self, artifacts: Sequence[RawArtifact]) -> None:
+        """Read all five exports into the indexes ``parse`` walks (``SupportsContext``)."""
+        by_id = {raw.artifact.external_id: raw for raw in artifacts}
+        sources_by_name: dict[str, Path | bytes] = {}
+        problems: list[str] = []
+        for name in DATASET_ORDER:
+            raw = by_id.get(name)
+            if raw is None:
+                problems.append(f"{name}: not retrieved")
+                continue
+            result = self.validate_raw(raw)
+            problems.extend(result.errors)
+            sources_by_name[name] = raw.path_or_bytes
+        if problems:
+            msg = "the Cook County exports cannot be read: " + "; ".join(problems)
+            raise IngestError(msg)
+        self._findings = Findings()
+        self._streamed = False
+        self._context = CookContext.build(sources_by_name, self._rule_tables(), self._findings)
+
+    def coverage_window(self) -> tuple[date, date] | None:
+        """The corpus window: Intake and Initiation begin on 2011-01-01, the SAO stopped on 2024-12-30."""
+        return COVERAGE_START, COVERAGE_END
+
+    def run_issues(self) -> Sequence[RunIssue]:
+        """What the run left out or flagged (``SupportsRunIssues``), after it has been parsed."""
+        return self._findings.issues()
+
+    def parse(self, artifact: RawArtifact) -> Iterable[SourceRecordDraft]:
+        """The whole corpus, once per run (see the module docstring); later calls yield nothing."""
+        if self._context is None or self._streamed:
+            return []
+        self._streamed = True
+        return self._records(self._context)
+
+    def _records(self, context: CookContext) -> Iterator[SourceRecordDraft]:
+        rules = self._rule_tables()
+        env = Env(rules=rules, pepper=self._identifier_pepper(), findings=self._findings)
+        yield SourceRecordDraft(
+            external_record_id="reference",
+            effective_at=None,
+            payload={"drafts": _reference_drafts(context, rules)},
+            record_type="reference",
+            artifact_id=DISPOSITIONS_FILE,
+            rows=0,
+        )
+        for case_id, rows in context.cases():
+            drafts = build_case(case_id, rows, env)
+            for name in DATASET_ORDER:
+                count = len(rows.get(name, ()))
+                mine = drafts[name] if drafts is not None else []
+                if count or mine:
+                    yield SourceRecordDraft(
+                        external_record_id=case_id,
+                        effective_at=None,
+                        payload={"drafts": mine},
+                        record_type=name,
+                        artifact_id=name,
+                        rows=count,
+                    )
+        self._context = None
 
     def normalize(self, record: SourceRecordDraft) -> Iterable[CanonicalRecord]:
-        return []
+        drafts: list[CanonicalRecord] = record.payload["drafts"]
+        return drafts
+
+
+JUDGE_IDENTITY_SYSTEM = "cook_sao_judge"
+COURT_IDENTITY_SYSTEM = "cook_sao_court"
+SERVICE_BASIS = "first and last attributed disposition or sentence date"
+
+
+def _reference_drafts(context: CookContext, rules: CookSaoRules) -> list[CanonicalRecord]:
+    """The jurisdiction, the courts, the referenced judges, and their derived services."""
+    tables = rules.courts
+    jurisdiction = JurisdictionDraft(
+        name=tables.jurisdiction.name,
+        type=tables.jurisdiction.jurisdiction_type,
+        state_code=tables.jurisdiction.state_code,
+        fips_code=tables.jurisdiction.fips_code,
+    )
+    drafts: list[CanonicalRecord] = [jurisdiction]
+    court_keys: dict[str, NaturalKey] = {}
+    for court in tables.courts.values():
+        draft = CourtDraft(
+            canonical_name=court.name,
+            court_type=court.court_type,
+            jurisdiction_key=jurisdiction.natural_key,
+            external_ids={COURT_IDENTITY_SYSTEM: court.key},
+            state_code=tables.jurisdiction.state_code,
+        )
+        drafts.append(draft)
+        court_keys[court.key] = draft.natural_key
+    for judge_key in sorted(context.services):
+        entry = rules.judges.judges[judge_key]
+        judge = JudgeDraft(
+            canonical_name=entry.display_name,
+            normalized_name=normalize_person_name(entry.display_name),
+            identity_key=(JUDGE_IDENTITY_SYSTEM, judge_key),
+            external_ids={JUDGE_IDENTITY_SYSTEM: judge_key},
+            status="unknown",
+        )
+        drafts.append(judge)
+        for court_key, span in sorted(context.services[judge_key].items()):
+            drafts.append(
+                JudgeServiceDraft(
+                    judge_key=judge.natural_key,
+                    court_key=court_keys[court_key],
+                    position_type=vocabulary.require("position", entry.position),
+                    start_date=span.start,
+                    end_date=span.end,
+                    metadata={"derived": True, "basis": SERVICE_BASIS},
+                )
+            )
+    return drafts

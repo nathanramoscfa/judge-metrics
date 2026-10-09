@@ -11,6 +11,14 @@ same text never share a digest, and the normalization per kind makes the
 formatting variants of one source value (``"FOG MORAVA "`` and
 ``"Fog Morava"``, ``" pt-000005 "`` and ``"PT-000005"``) collide on purpose.
 
+The source-qualified form (Phase 5 Step 4) hashes
+``pepper || "\\x00" || kind || "\\x00" || source || "\\x00" || normalized value``:
+two sources that reuse an identifier value (a real clerk system's ids and
+the Cook County State's Attorney's per-case participant ids) never resolve
+to one person, and no digest of the unqualified form ever moves, so the
+synthetic connector's hashes are unchanged. A value may not contain a NUL
+byte, which is the separator and would let the two forms collide.
+
 Kinds and their normalization:
 
 - ``source_participant_id`` — stripped, upper-cased;
@@ -79,6 +87,9 @@ def normalize_identifier(kind: str, value: str | date) -> str:
     if not normalized:
         msg = f"{kind}: empty identifier value"
         raise ValueError(msg)
+    if "\x00" in normalized:
+        msg = f"{kind}: an identifier value may not contain a NUL byte"
+        raise ValueError(msg)
     return normalized
 
 
@@ -88,8 +99,14 @@ def name_dob_value(full_name: str, date_of_birth: str | date) -> str:
     return f"{name}{_NAME_DOB_SEPARATOR}{_iso_date(date_of_birth)}"
 
 
-def hash_identifier(pepper: SecretStr, kind: str, value: str | date) -> str:
-    """The 64-character hex digest of ``value`` under ``kind`` and ``pepper``."""
+def hash_identifier(
+    pepper: SecretStr, kind: str, value: str | date, *, source: str | None = None
+) -> str:
+    """The 64-character hex digest of ``value`` under ``kind`` and ``pepper``.
+
+    With ``source`` the digest is the source-qualified form (see the module
+    docstring); without it, the form every earlier connector uses.
+    """
     secret = pepper.get_secret_value()
     if not secret.strip():
         msg = "the identifier pepper is empty"
@@ -100,6 +117,12 @@ def hash_identifier(pepper: SecretStr, kind: str, value: str | date) -> str:
     digest.update(_SEPARATOR)
     digest.update(kind.encode("utf-8"))
     digest.update(_SEPARATOR)
+    if source is not None:
+        if not source or "\x00" in source:
+            msg = "a source qualifier must be a non-empty source id without a NUL byte"
+            raise ValueError(msg)
+        digest.update(source.encode("utf-8"))
+        digest.update(_SEPARATOR)
     digest.update(normalized.encode("utf-8"))
     return digest.hexdigest()
 

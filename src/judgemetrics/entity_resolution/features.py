@@ -30,9 +30,11 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from judgemetrics.db.arrays import fetch_by_values
 from judgemetrics.db.models import Base
 from judgemetrics.security.identifiers import (
     KIND_DATE_OF_BIRTH,
@@ -165,29 +167,35 @@ def load_profiles(
     if not wanted:
         return {}
     hashes: dict[uuid.UUID, dict[str, set[str]]] = {pid: {} for pid in wanted}
-    rows = session.execute(
-        select(
+    for person_id, kind, value_hash in fetch_by_values(
+        session,
+        lambda condition: select(
             PERSON_IDENTIFIER.c.person_id,
             PERSON_IDENTIFIER.c.identifier_type,
             PERSON_IDENTIFIER.c.value_hash,
-        ).where(PERSON_IDENTIFIER.c.person_id.in_(wanted))
-    ).all()
-    for person_id, kind, value_hash in rows:
+        ).where(condition),
+        PERSON_IDENTIFIER.c.person_id,
+        wanted,
+    ):
         hashes[person_id].setdefault(kind, set()).add(value_hash)
     cases: dict[uuid.UUID, list[CaseRef]] = {pid: [] for pid in wanted}
-    case_rows = session.execute(
-        select(
-            CASE_PARTY.c.person_id,
-            COURT_CASE.c.id,
-            COURT_CASE.c.court_id,
-            COURT_CASE.c.filed_date,
-            COURT_CASE.c.case_number_normalized,
-            COURT_CASE.c.related_case_number_normalized,
-        )
-        .join(COURT_CASE, COURT_CASE.c.id == CASE_PARTY.c.case_id)
-        .where(CASE_PARTY.c.person_id.in_(wanted))
-    ).all()
-    for person_id, case_id, court_id, filed, number, related in case_rows:
+    for person_id, case_id, court_id, filed, number, related in fetch_by_values(
+        session,
+        lambda condition: (
+            select(
+                CASE_PARTY.c.person_id,
+                COURT_CASE.c.id,
+                COURT_CASE.c.court_id,
+                COURT_CASE.c.filed_date,
+                COURT_CASE.c.case_number_normalized,
+                COURT_CASE.c.related_case_number_normalized,
+            )
+            .join(COURT_CASE, COURT_CASE.c.id == CASE_PARTY.c.case_id)
+            .where(condition)
+        ),
+        CASE_PARTY.c.person_id,
+        wanted,
+    ):
         cases[person_id].append(CaseRef(case_id, court_id, filed, number, related))
     return {
         pid: PersonProfile(
@@ -206,13 +214,17 @@ def blocking_hashes(session: Session, person_ids: Iterable[uuid.UUID]) -> set[tu
     wanted = set(person_ids)
     if not wanted:
         return set()
-    rows = session.execute(
-        select(PERSON_IDENTIFIER.c.identifier_type, PERSON_IDENTIFIER.c.value_hash).where(
-            PERSON_IDENTIFIER.c.person_id.in_(wanted),
-            PERSON_IDENTIFIER.c.identifier_type.in_(BLOCKING_KINDS),
+    return {
+        (kind, value_hash)
+        for kind, value_hash in fetch_by_values(
+            session,
+            lambda condition: select(
+                PERSON_IDENTIFIER.c.identifier_type, PERSON_IDENTIFIER.c.value_hash
+            ).where(condition, PERSON_IDENTIFIER.c.identifier_type.in_(BLOCKING_KINDS)),
+            PERSON_IDENTIFIER.c.person_id,
+            wanted,
         )
-    ).all()
-    return {(kind, value_hash) for kind, value_hash in rows}
+    }
 
 
 def blocks_for(
@@ -222,27 +234,39 @@ def blocks_for(
 
     The hash is used only to group persons; it never leaves this function.
     """
-    stmt = (
-        select(
-            PERSON_IDENTIFIER.c.identifier_type,
-            PERSON_IDENTIFIER.c.value_hash,
-            PERSON_IDENTIFIER.c.person_id,
+
+    def statement(condition: sa.ColumnElement[bool] | None) -> sa.Select[Any]:
+        stmt = (
+            select(
+                PERSON_IDENTIFIER.c.identifier_type,
+                PERSON_IDENTIFIER.c.value_hash,
+                PERSON_IDENTIFIER.c.person_id,
+            )
+            .join(PERSON, PERSON.c.id == PERSON_IDENTIFIER.c.person_id)
+            .where(
+                PERSON_IDENTIFIER.c.identifier_type.in_(BLOCKING_KINDS),
+                PERSON.c.merged_into_person_id.is_(None),
+            )
         )
-        .join(PERSON, PERSON.c.id == PERSON_IDENTIFIER.c.person_id)
-        .where(
-            PERSON_IDENTIFIER.c.identifier_type.in_(BLOCKING_KINDS),
-            PERSON.c.merged_into_person_id.is_(None),
-        )
-    )
-    if keys is not None:
+        return stmt if condition is None else stmt.where(condition)
+
+    blocks: dict[tuple[str, str], set[uuid.UUID]] = {}
+    if keys is None:
+        rows: Iterable[Any] = session.execute(statement(None)).all()
+        wanted: set[tuple[str, str]] | None = None
+    else:
         wanted = set(keys)
         if not wanted:
             return {}
-        stmt = stmt.where(PERSON_IDENTIFIER.c.value_hash.in_({value for _, value in wanted}))
-    blocks: dict[tuple[str, str], set[uuid.UUID]] = {}
-    for kind, value_hash, person_id in session.execute(stmt).all():
+        rows = fetch_by_values(
+            session,
+            statement,
+            PERSON_IDENTIFIER.c.value_hash,
+            {value for _, value in wanted},
+        )
+    for kind, value_hash, person_id in rows:
         key = (kind, value_hash)
-        if keys is not None and key not in wanted:
+        if wanted is not None and key not in wanted:
             continue
         blocks.setdefault(key, set()).add(person_id)
     return {key: members for key, members in blocks.items() if len(members) > 1}

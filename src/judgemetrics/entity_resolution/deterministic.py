@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from typing import Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from judgemetrics.db.arrays import fetch_by_values
 from judgemetrics.db.models import Base
 from judgemetrics.db.models.enums import ResolutionDecision
 from judgemetrics.entity_resolution.config import STAGE_DETERMINISTIC
@@ -48,15 +51,17 @@ def lookup_by_identity(session: Session, keys: Iterable[NaturalKey]) -> dict[Nat
     """Persons by ``("person", <stable kind>, <hash>)`` through their identifier rows."""
     wanted = {key for key in set(keys) if len(key) == 3 and key[1] in STABLE_KINDS}
     found: dict[NaturalKey, uuid.UUID] = {}
-    for kind in {key[1] for key in wanted}:
+    for kind in sorted({key[1] for key in wanted}):
         hashes = {key[2] for key in wanted if key[1] == kind}
-        rows = session.execute(
-            select(PERSON_IDENTIFIER.c.person_id, PERSON_IDENTIFIER.c.value_hash).where(
-                PERSON_IDENTIFIER.c.identifier_type == kind,
-                PERSON_IDENTIFIER.c.value_hash.in_(hashes),
+
+        def statement(condition: sa.ColumnElement[bool], kind: str = kind) -> sa.Select[Any]:
+            return select(PERSON_IDENTIFIER.c.person_id, PERSON_IDENTIFIER.c.value_hash).where(
+                PERSON_IDENTIFIER.c.identifier_type == kind, condition
             )
-        ).all()
-        for person_id, value_hash in rows:
+
+        for person_id, value_hash in fetch_by_values(
+            session, statement, PERSON_IDENTIFIER.c.value_hash, hashes
+        ):
             key = ("person", kind, str(value_hash))
             if key in wanted:
                 found[key] = person_id

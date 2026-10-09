@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import difflib
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date, time
+from datetime import time
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +60,8 @@ from judgemetrics.ingest.cook_sao.schema import (
     CHARGE_ID,
     CHARGE_VERSION_ID,
     CODED_COLUMNS,
+    COVERAGE_END,
+    COVERAGE_START,
     DATE_COLUMNS,
     DATE_FORMATS,
     IDENTIFIER_COLUMNS,
@@ -84,8 +86,8 @@ HEADER = (
     "# `--check` exits 1 when this file differs from the render. Race and gender are\n"
     "# listed as values only, the age as a range: no restricted value carries a count.\n"
 )
-CORPUS_END = date(2024, 12, 30)
-EARLIEST_EXPECTED_RECEIPT = date(2011, 1, 1)
+CORPUS_END = COVERAGE_END
+EARLIEST_EXPECTED_RECEIPT = COVERAGE_START
 EXAMPLES = 5
 SHARE_DIGITS = 6
 CHARGE_DATASETS = ("initiation.csv", "dispositions.csv", "sentencing.csv")

@@ -50,37 +50,24 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, select, update
+from sqlalchemy import Engine, delete, select
 from sqlalchemy.orm import Session
 
 from judgemetrics.config import Settings
 from judgemetrics.db.models import (
     Case,
-    CaseParty,
-    Charge,
     Court,
-    CourtEvent,
     DataQualityIssue,
-    Decision,
-    EntityResolutionCandidate,
     IngestRun,
     IngestRunStatus,
     Judge,
-    JudgeAssignment,
     JudgeService,
     Jurisdiction,
-    JusticeEvent,
-    MetricObservation,
-    MetricSnapshot,
-    OutcomeModel,
-    Person,
-    PersonIdentifier,
-    PretrialRelease,
-    Sentence,
     Source,
     SourceRecord,
 )
 from judgemetrics.db.session import make_engine
+from judgemetrics.ingest.retire import retire_source
 from judgemetrics.ingest.runner import run_ingest
 from judgemetrics.ingest.store import FilesystemRawObjectStore
 from judgemetrics.main import create_app
@@ -182,13 +169,16 @@ CASE_LEVEL_ISSUE_ENTITIES = ("decision", "court_event", "charge")
 def purge_source(session: Session, name: str) -> None:
     """Delete every row derived from source ``name`` (FK order), and the source itself.
 
-    Resolution bookkeeping goes first: candidates, then the merge pointers
-    (a self reference with RESTRICT) before the person rows. ``audit_log``
-    rows cannot be deleted (append-only trigger) and are left as history.
-    Run-level data-quality issues (``unknown_category_measured``) carry no
-    source record, so they are matched by the case-level entity types only a
-    case-level source produces; left behind, they leaked into every later
-    module's and session's issue counts.
+    The rows go through ``judgemetrics.ingest.retire.retire_source`` (Phase 5 Step 4:
+    ``judgemetrics ingest retire``), which owns the dependency order — metrics,
+    issues, case-level rows, persons, unreferenced reference rows, source records —
+    and appends one ``ingest.retire`` audit row; ``audit_log`` rows cannot be deleted
+    (append-only trigger) and are left as history, with the merges' rows. Then the
+    run history and the source row, which a retire keeps, are removed too.
+    Run-level data-quality issues (``unknown_category_measured``) carry no source
+    record, so they are matched by the case-level entity types only a case-level
+    source produces; left behind, they leaked into every later module's and
+    session's issue counts.
     """
     session.execute(
         delete(DataQualityIssue).where(
@@ -199,53 +189,7 @@ def purge_source(session: Session, name: str) -> None:
     source_id = session.scalar(select(Source.id).where(Source.name == name))
     if source_id is None:
         return
-    records = select(SourceRecord.id).where(SourceRecord.source_id == source_id)
-    # Metrics first: observations (members cascade) reference the source and
-    # runs reference snapshots; a snapshot nothing cites any more is dropped.
-    session.execute(delete(MetricObservation).where(MetricObservation.source_id == source_id))
-    # Phase 4: the source's fitted models reference its snapshots (RESTRICT), and its
-    # adjusted observations reference the models (0010, RESTRICT): models after them.
-    session.execute(delete(OutcomeModel).where(OutcomeModel.source_id == source_id))
-    session.execute(
-        update(IngestRun).where(IngestRun.source_id == source_id).values(metrics_snapshot_id=None)
-    )
-    session.execute(
-        delete(MetricSnapshot).where(
-            ~MetricSnapshot.id.in_(select(MetricObservation.snapshot_id)),
-            ~MetricSnapshot.id.in_(select(OutcomeModel.snapshot_id)),
-            ~MetricSnapshot.id.in_(
-                select(IngestRun.metrics_snapshot_id).where(
-                    IngestRun.metrics_snapshot_id.is_not(None)
-                )
-            ),
-        )
-    )
-    session.execute(delete(DataQualityIssue).where(DataQualityIssue.source_record_id.in_(records)))
-    session.execute(delete(JusticeEvent).where(JusticeEvent.source_record_id.in_(records)))
-    decisions = select(Decision.id).where(Decision.source_record_id.in_(records))
-    session.execute(delete(PretrialRelease).where(PretrialRelease.decision_id.in_(decisions)))
-    for model in (Sentence, Decision, CourtEvent, Charge, JudgeAssignment, CaseParty):
-        session.execute(delete(model).where(model.source_record_id.in_(records)))
-    session.execute(delete(Case).where(Case.source_record_id.in_(records)))
-    persons = select(Person.id).where(Person.source_record_id.in_(records))
-    session.execute(delete(PersonIdentifier).where(PersonIdentifier.person_id.in_(persons)))
-    session.execute(
-        delete(EntityResolutionCandidate).where(
-            EntityResolutionCandidate.left_record_id.in_(persons)
-            | EntityResolutionCandidate.right_record_id.in_(persons)
-        )
-    )
-    session.execute(
-        update(Person)
-        .where(Person.source_record_id.in_(records))
-        .values(merged_into_person_id=None)
-    )
-    session.execute(delete(Person).where(Person.source_record_id.in_(records)))
-    session.execute(delete(JudgeService).where(JudgeService.source_record_id.in_(records)))
-    session.execute(delete(Judge).where(Judge.source_record_id.in_(records)))
-    session.execute(delete(Court).where(Court.source_record_id.in_(records)))
-    session.execute(delete(Jurisdiction).where(Jurisdiction.source_record_id.in_(records)))
-    session.execute(delete(SourceRecord).where(SourceRecord.source_id == source_id))
+    retire_source(session, name, settings=Settings(env="test"), actor="tests:purge")
     session.execute(delete(IngestRun).where(IngestRun.source_id == source_id))
     session.execute(delete(Source).where(Source.id == source_id))
     session.flush()
