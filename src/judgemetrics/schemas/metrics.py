@@ -105,7 +105,7 @@ class AttributionOut(BaseModel):
     assignment_gate: str = Field(
         description=(
             "How a row is tied to the subject: deciding_judge, assigned_at_time, "
-            "assigned_ever, sentencing_judge, or court_of_case."
+            "assigned_ever, sentencing_judge, disposing_judge, or court_of_case."
         )
     )
 

@@ -7,18 +7,29 @@ value of the vocabulary's ``restricted_attribute`` kind), an excluded
 variable or column, or an unknown field is rejected with ``SpecError``
 naming the feature and the field; every feature states its known-at
 instant and a leakage justification, and the code implements exactly the
-features the file names.
+features the file names. Version 3 (Phase 5 Step 5): ``availability`` states
+the three conditions a source must meet, the person-history features are
+marked as their builders read, the first failing condition is the reason a
+target is unavailable, and an unavailable model's artifact reads back as
+unfitted parameters.
 """
 
 from __future__ import annotations
 
 import copy
+import json
+from datetime import date
 from typing import Any
 
 import pytest
 import yaml
 
+from judgemetrics.capabilities import CASE, CROSS_CASE, JUDGE_GATES, SourceCapabilities
+from judgemetrics.metrics.adjustment.artifacts import content_hash
+from judgemetrics.metrics.adjustment.availability import unavailable_reason
+from judgemetrics.metrics.adjustment.expected import ModelParameters
 from judgemetrics.metrics.adjustment.features import FEATURE_BUILDERS
+from judgemetrics.metrics.adjustment.fit import UNAVAILABLE, UnavailableModel, model_rows
 from judgemetrics.metrics.adjustment.spec import (
     DEFAULT_PATH,
     FEATURE_CONTRACTS,
@@ -30,6 +41,7 @@ from judgemetrics.metrics.adjustment.spec import (
     parse_spec,
 )
 from judgemetrics.metrics.registry import WINDOWS_DAYS
+from judgemetrics.metrics.snapshot import SourceRow
 from judgemetrics.normalization import vocabulary
 
 pytestmark = pytest.mark.unit
@@ -59,9 +71,18 @@ def _feature(payload: dict[str, Any], name: str) -> dict[str, Any]:
     raise AssertionError(name)
 
 
+def _feature_entry(payload: dict[str, Any], name: str) -> dict[str, Any]:
+    """The feature's own entry in ``payload`` (edited in place)."""
+    for entry in payload["features"]:
+        if entry["name"] == name:
+            found: dict[str, Any] = entry
+            return found
+    raise AssertionError(name)
+
+
 def test_the_specification_loads_and_validates() -> None:
     spec = load_spec()
-    assert spec.version == 2
+    assert spec.version == 3
     assert spec.model_version == "expected-logit-v1"
     assert [target.name for target in spec.targets] == [
         "pretrial_release",
@@ -233,3 +254,89 @@ def test_targets_are_tied_to_the_registry() -> None:
     payload["recovery"]["fits"][1] = {"target": "new_case", "window_days": 45}
     with pytest.raises(SpecError, match="45 is not a window of new_case"):
         parse_spec(payload, DEFAULT_PATH)
+
+
+# --- specification version 3: availability (Phase 5 Step 5) ---------------------------------
+
+PERSON_HISTORY = ("prior_cases", "prior_convictions", "prior_failures_to_appear", "pending_case")
+
+
+def _source(
+    gates: tuple[str, ...], scope: str | None, outcomes: set[str], name: str = "source"
+) -> SourceRow:
+    return SourceRow(
+        id="00000000-0000-0000-0000-000000000001",
+        name=name,
+        source_type="fixture",
+        coverage_start=date(2020, 1, 1),
+        coverage_end=date(2020, 12, 31),
+        observable_outcomes=frozenset(outcomes),
+        capabilities=SourceCapabilities(gates, scope, ()),
+    )
+
+
+def test_specification_three_declares_availability_and_the_person_history_features() -> None:
+    spec = load_spec()
+    assert spec.person_history_features == PERSON_HISTORY
+    for feature in spec.features:
+        assert feature.person_history == FEATURE_CONTRACTS[feature.name].person_history
+    availability = spec.availability
+    assert "assignment gate" in availability.gate
+    assert "outcome" in availability.outcome
+    assert "person key" in availability.person_key
+
+
+def test_a_misdeclared_person_history_or_a_missing_availability_is_rejected() -> None:
+    hidden = _payload()
+    del _feature_entry(hidden, "prior_cases")["person_history"]
+    with pytest.raises(SpecError, match=r"feature 'prior_cases': field 'person_history'"):
+        parse_spec(hidden, DEFAULT_PATH)
+    claimed = _payload()
+    _feature_entry(claimed, "court")["person_history"] = True
+    with pytest.raises(SpecError, match=r"feature 'court': field 'person_history'"):
+        parse_spec(claimed, DEFAULT_PATH)
+    missing = _payload()
+    del missing["availability"]
+    with pytest.raises(SpecError, match="availability"):
+        parse_spec(missing, DEFAULT_PATH)
+    unknown = _payload()
+    unknown["availability"]["registry"] = "x"
+    with pytest.raises(SpecError, match="availability"):
+        parse_spec(unknown, DEFAULT_PATH)
+
+
+def test_the_first_failing_condition_is_the_reason_a_target_is_unavailable() -> None:
+    spec = load_spec()
+    release, new_case = spec.target("pretrial_release"), spec.target("new_case")
+    synthetic = _source(JUDGE_GATES, CROSS_CASE, {"new_case", "failure_to_appear"})
+    assert unavailable_reason(spec, release, synthetic) is None
+    assert unavailable_reason(spec, new_case, synthetic) is None
+    cook = _source(("disposing_judge", "sentencing_judge"), CASE, {"revocation"})
+    for target in spec.targets:
+        assert unavailable_reason(spec, target, cook) == spec.availability.gate
+    unobserved = _source(JUDGE_GATES, CROSS_CASE, set())
+    assert unavailable_reason(spec, new_case, unobserved) == spec.availability.outcome
+    # The release target's outcome is the decision itself: always documented.
+    assert unavailable_reason(spec, release, unobserved) is None
+    per_case = _source(JUDGE_GATES, CASE, {"new_case", "failure_to_appear"})
+    assert unavailable_reason(spec, release, per_case) == spec.availability.person_key
+    assert unavailable_reason(spec, new_case, per_case) == spec.availability.person_key
+
+
+def test_an_unavailable_model_reads_back_as_unfitted_parameters() -> None:
+    model = UnavailableModel(
+        source="cook_sao",
+        target="new_case",
+        window_days=365,
+        seed=1,
+        spec_version=3,
+        model_version="expected-logit-v1",
+        reason="the reason",
+    )
+    data = model.render(snapshot="a" * 64, code_version="test")
+    parameters = ModelParameters.from_artifact(json.loads(data), content_hash(data))
+    assert parameters.status == UNAVAILABLE and not parameters.fitted
+    assert parameters.columns == () and parameters.coefficients is None
+    assert model.diagnostics_row() == {"status": UNAVAILABLE, "reason": "the reason"}
+    assert model.coefficient_rows() is None and model_rows(model) == (0, 0)
+    assert model.split.train_rows == model.split.test_rows == 0

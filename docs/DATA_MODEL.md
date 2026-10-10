@@ -47,7 +47,22 @@ created by the Alembic revisions under `alembic/versions/`:
   key), `charge.judge_id` (nullable, indexed, `RESTRICT`: the judge who
   entered the charge's disposition, as the source records it), and
   `REVOKE ALL ON data_quality_issue FROM judgemetrics_app` (an issue
-  describes source rows; no API route reads the table).
+  describes source rows; no API route reads the table);
+- `0012_real_data_semantics` — `source.capabilities` (JSONB, default
+  `{}`: the judge gates the source records, its person-key scope, the
+  revocation scopes it documents), the `coverage_statistic` table (the
+  brief's six coverage statistics and the unknown-actor share per snapshot,
+  source, and scope — `source`, `jurisdiction`, or `court` — with numerator,
+  denominator, the share at six decimals, and the methodology version; unique
+  per snapshot, source, scope, and statistic; checks on the scope, the
+  statistic, and `0 <= numerator <= denominator`; `SELECT` for the app role,
+  DML for the ingest role), `metric_observation.calendar_year` (smallint,
+  null for the whole coverage window; checked to name the year's first and
+  last days as the period) added to `uq_metric_observation_key`, and the
+  `outcome_model` status `unavailable`. A downgrade deletes the
+  calendar-year observations and the `unavailable` models (with the
+  suppressed observations that cite one) before restoring the earlier key
+  and check.
 
 `uv run alembic check` must report no drift between the models and the
 head; `alembic/env.py` sets `include_schemas` (filtered to `public` and
@@ -83,10 +98,11 @@ observation).
 | `entity_resolution_candidate`  | One ordered pair per model version: features (booleans, counts, the stage trace), score, decision, `stage`, `decided_at`/`decided_by` (`system:<model version>` or a reviewer label), `reason`, `ingest_run_id` (0004). **Restricted.** | `ingest_run_id` |
 | `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions, and (0005) the registry columns `kind`, `subject_types`, `attribution`, `index_event`, `outcome`, `windows_days`, `dimension`, `suppression_threshold`, `unit`, `registry_version`, `methodology_version`, mirrored from `data/reference/metric_registry.yaml` by `sync_definitions`. | — |
 | `metric_snapshot`              | One hashed export of the canonical tables that observations are computed from (0005): `content_hash` (unique), `label`, `exported_at`, `code_version`, `registry_version`, `methodology_version`, `row_counts`, `coverage` (per source id: `coverage_start`, `coverage_end`), `storage_uri`. | — |
-| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. An `observed_expected` observation (0010, Phase 4 Step 3) keeps O in `observed_count`, n (the members in the ratio: followed for the window and every excluded-on-missing model feature known) in `cohort_size`, the cohort before the follow-up restriction in `eligible_count`, O / n in `observed_rate`, the model-expected count E in `expected_count` (Numeric(14, 4)), E / n in `expected_rate`, the pooled ratio (α + O) / (α + E) in `standardized_ratio`, its bootstrap percentile interval in the bounds, E / (E + α) in `pooling_weight` (Numeric(9, 6)), and the fitted model it was computed with in `outcome_model_id` (→ `outcome_model`, RESTRICT; null for every other kind); without a fitted model the expected and pooled figures are null. Every suppressed row carries `suppression_reason` — `below_threshold` for the descriptive kinds (0010 backfilled the stored rows), `below_threshold`, `expected_below_minimum`, or `model_unavailable` for an adjusted one — and no other row does (two check constraints). `period_start`/`period_end` are the source's coverage window. | via `metric_snapshot` and its members (and, adjusted, the model's artifact) |
+| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. An `observed_expected` observation (0010, Phase 4 Step 3) keeps O in `observed_count`, n (the members in the ratio: followed for the window and every excluded-on-missing model feature known) in `cohort_size`, the cohort before the follow-up restriction in `eligible_count`, O / n in `observed_rate`, the model-expected count E in `expected_count` (Numeric(14, 4)), E / n in `expected_rate`, the pooled ratio (α + O) / (α + E) in `standardized_ratio`, its bootstrap percentile interval in the bounds, E / (E + α) in `pooling_weight` (Numeric(9, 6)), and the fitted model it was computed with in `outcome_model_id` (→ `outcome_model`, RESTRICT; null for every other kind); without a fitted model the expected and pooled figures are null. Every suppressed row carries `suppression_reason` — `below_threshold` for the descriptive kinds (0010 backfilled the stored rows), `below_threshold`, `expected_below_minimum`, or `model_unavailable` for an adjusted one — and no other row does (two check constraints). `period_start`/`period_end` are the source's coverage window, or (0012, Phase 5 Step 5) one calendar year of it — `calendar_year` (smallint) names that year and is null for the whole window; it is part of the unique key, and a check ties it to the year's first and last days. | via `metric_snapshot` and its members (and, adjusted, the model's artifact) |
 | `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
-| `outcome_model`                | One fitted expected-outcome model (0009, Phase 4 Step 2) per snapshot, source, specification version, target, window, and seed: `content_hash` (the sha256 of its canonical JSON artifact, unique), `snapshot_id` and `source_id` (RESTRICT), `spec_version`, `model_version`, `target`, `window_days` (null for the release target), `seed`, `status` (`fitted`, `insufficient_events`, `not_converged`), the temporal split's `n_train`/`events_train` (before the cutoff) and `n_test`/`events_test` (at or after it; the published fit is over both), `train_start`/`train_end` (the index-time range) and `split_cutoff`, `diagnostics` and `coefficients` (JSONB, so a model card needs no artifact), `storage_uri` (the artifact under the snapshot directory; never returned by a public surface), `code_version`, `fitted_at`. No person-level column. | via `metric_snapshot` and its artifact |
+| `outcome_model`                | One fitted expected-outcome model (0009, Phase 4 Step 2) per snapshot, source, specification version, target, window, and seed: `content_hash` (the sha256 of its canonical JSON artifact, unique), `snapshot_id` and `source_id` (RESTRICT), `spec_version`, `model_version`, `target`, `window_days` (null for the release target), `seed`, `status` (`fitted`, `insufficient_events`, `not_converged`; 0012 adds `unavailable`: a target the source cannot support, its reason in `diagnostics`, no fit), the temporal split's `n_train`/`events_train` (before the cutoff) and `n_test`/`events_test` (at or after it; the published fit is over both), `train_start`/`train_end` (the index-time range) and `split_cutoff`, `diagnostics` and `coefficients` (JSONB, so a model card needs no artifact), `storage_uri` (the artifact under the snapshot directory; never returned by a public surface), `code_version`, `fitted_at`. No person-level column. | via `metric_snapshot` and its artifact |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
+| `coverage_statistic`           | One coverage statistic (0012, Phase 5 Step 5) per snapshot, source, scope, and statistic: `snapshot_id` and `source_id` (RESTRICT), `scope_type` (`source`, `jurisdiction`, `court`), `scope_id` (the source, jurisdiction, or court it covers), `statistic` (the brief's six — `cases_with_identified_judge`, `cases_with_final_disposition`, `cases_with_person_resolution`, `cases_with_adequate_follow_up`, `cases_with_complete_charge_classification`, `records_with_provenance` — and `unknown_actor_share`; defined in docs/METHODOLOGY.md "Coverage statistics"), `numerator`, `denominator`, `share` (Numeric(9, 6), null without a denominator), `methodology_version`. Aggregates only: no person id, no case list. | via `metric_snapshot` |
 | `correction_request`           | A public correction request (`POST /api/v1/corrections`): `target_type` (`judge`, `court`, `case`, `metric_observation`), `target_id`, `requester_contact` (Fernet ciphertext under `JUDGEMETRICS_CORRECTION_CONTACT_KEY`, never plaintext), `reason`, `supporting_material_path` (an optional http(s) URL), `status` (`received` at intake), `resolved_at`. **Restricted**: the app role inserts and never reads. | — |
 | `audit_log`                    | Append-only: `occurred_at`, `actor`, `action`, entity, JSON `payload`, `request_id`; a trigger rejects UPDATE and DELETE (0004). **Restricted.** | — |
 | `restricted.party_attribute`   | A case party's restricted attribute (0008): `case_party_id` (→ `case_party`, `ON DELETE CASCADE`), `attribute` (a `restricted_attribute` value), `value` (a value of that kind). In the `restricted` schema, which the app role cannot use. | `source_record_id` |
@@ -294,11 +310,11 @@ extend it silently: adding, renaming, or removing a value bumps
 
 ### Metric registry
 
-`data/reference/metric_registry.yaml` (`version: 2`,
-`methodology_version: "1.0"` since Phase 4 Step 4 published the adjusted
-statistics' methodology; `0.3` added the observed-to-expected ratios,
-`0.2` deferred exposure by every incarceration term of the person) is the
-second versioned reference file:
+`data/reference/metric_registry.yaml` (`version: 3`,
+`methodology_version: "1.1"` since Phase 5 Step 5 gave the first real source
+its semantics; `1.0` published the adjusted statistics' methodology, `0.3`
+added the observed-to-expected ratios, `0.2` deferred exposure by every
+incarceration term of the person) is the second versioned reference file:
 the contract every published number is computed against
 (`docs/METHODOLOGY.md` is rendered from it; `docs/ARCHITECTURE.md`
 "Metrics engine"). `judgemetrics.metrics.registry.load_registry` loads it
@@ -311,7 +327,7 @@ vocabulary (`attribution.decision_type` → `decision_type`,
 `windowed_rate`, `survival`, `distribution`, `median`,
 `observed_expected`; `subject_types`: `judge`, `court`; `assignment_gate`:
 `deciding_judge`, `assigned_at_time`, `assigned_ever`, `sentencing_judge`,
-`court_of_case`; `index_event`: `pretrial_release`, `disposition`,
+`disposing_judge`, `court_of_case`; `index_event`: `pretrial_release`, `disposition`,
 `sentence`; `dimension`: `disposition`, `offense_category`; `unit`:
 `count`, `share`, `days`, `ratio`; `windows_days`: the brief's 30, 90, 180,
 365, 730, 1095). `sync_definitions` mirrors every entry into
@@ -337,14 +353,37 @@ no dimension and no `counted` conditions. The API serves the three since
 Phase 4 Step 5, with their `adjustment` on the definition (docs/API.md
 "Metrics").
 
+Registry version 3 (Phase 5 Step 5, methodology `1.1`) adds the gate
+`disposing_judge` (the judge the source records on a charge's disposition,
+`charge.judge_id`; for a case, the judge on the charge whose disposal sets the
+case disposition time) and moves the disposition family to it; counts each
+sentencing decision once (the sentencing family's prose); reads the
+vocabulary's finality in every disposed population; and adds three blocks the
+loader validates: `periods` (the whole window, and the calendar years of the
+descriptive kinds with each population's anchor, which must equal
+`registry.POPULATION_ANCHORS`), `revocation_scopes` (`release` after a pretrial
+release, `supervision` after a disposition or a sentence; every revocation
+metric carries its scope as `revocation_scope`), and in `suppression` the
+`thresholds` (every metric exactly once, at the threshold its entry carries,
+with the reason), the `measurements` (the cohort sizes measured on the Cook
+County corpus and the demo, as nearest-rank quantiles per cohort, source,
+subject type, period, and window — never a subject — which every suppressed
+metric's threshold must carry), and `eligible_count` (Phase 3 finding 3.5: a
+suppressed observation keeps its eligible count). Sixteen entries changed
+(`version: "2"`): the seven of the disposition family, the eight of the
+sentencing family, and `revocation_rate`.
+
 ### Outcome model specification
 
-`data/reference/outcome_model.yaml` (`version: 2`, `model_version:
+`data/reference/outcome_model.yaml` (`version: 3`, `model_version:
 expected-logit-v1`, Phase 4 Step 2; version 2, Phase 5 Step 3, lists case
 vocabulary 3's new severities and offense categories as levels of
 `lead_severity` and `lead_category`, each reference and every earlier
-level's order unchanged, so a source without them encodes as before) is the
-third versioned reference file:
+level's order unchanged, so a source without them encodes as before;
+version 3, Phase 5 Step 5, adds `availability` — the three conditions a
+source must meet for a target to be fitted, each with the reason the
+catalogue records when it fails — and marks the four person-history
+features `person_history: true`) is the third versioned reference file:
 the contract every risk-adjusted figure is computed against
 (`docs/ARCHITECTURE.md` "Risk adjustment"). `metrics.adjustment.spec.load_spec`
 loads it once with `yaml.safe_load` and validates it: the targets
@@ -384,13 +423,14 @@ features.
 | `audit_log.payload`        | Ids, counts, decision, reason, model version of the recorded action; never a restricted value. |
 | `decision.decision_value`  | `{"release_type": …, "detained": …}` for a pretrial decision; `{}` otherwise (the type and actor columns say the rest). |
 | `pretrial_release.conditions` | `{"<release_condition>": true, …}` — one key per condition, containment-queryable.        |
-| `sentence.sentence_components` | `{"<sentence_component>": true, …}`.                                                     |
+| `sentence.sentence_components` | `{"<sentence_component>": true, …}`; a Cook County sentence also carries `phase`, `current`, `superseded`, `components`, `terms`, and (Phase 5 Step 5) `replaced` — true when a later amended or corrected sentencing replaced it, which the metrics engine leaves out of the frame. |
 | `source.terms_metadata`    | Terms and redistribution answers copied from the connector's `source_info`.                   |
 | `source.observable_outcomes` | `["new_case", "failure_to_appear", …]`: the `justice_event_type` values the source can document (default `[]`). |
+| `source.capabilities`      | `{"judge_gates": [...], "person_key_scope": "cross_case" \| "case" \| null, "revocation_scopes": [...]}` (0012): what the source records about judges and persons (`judgemetrics.capabilities`); `{}` records nothing. |
 | `metric_definition.subject_types`, `.attribution`, `.windows_days` | `["judge", "court"]`; `{"decision_type": …, "actor_types": […], "discretion": […], "assignment_gate": …}`; `[30, 90, 180, 365, 730, 1095]` or null. |
 | `metric_snapshot.row_counts`, `.coverage` | `{"<table>": <rows>}` over the eleven exported tables; `{"<source id>": {"name": …, "coverage_start": …, "coverage_end": …}}`. |
 | `metric_observation.distribution` | `{"<dimension value>": <count>, …}` for a distribution observation; null otherwise. |
-| `outcome_model.diagnostics` | `{"status": …, "base_rate_train", "brier", "brier_skill", "auc", "calibration_in_the_large", "calibration_slope", "bins": [{"bin", "count", "mean_predicted", "observed_rate"} × 10]}` — the temporal-split test set's diagnostics; `status` alone when the split could not be fitted. |
+| `outcome_model.diagnostics` | `{"status": …, "base_rate_train", "brier", "brier_skill", "auc", "calibration_in_the_large", "calibration_slope", "bins": [{"bin", "count", "mean_predicted", "observed_rate"} × 10]}` — the temporal-split test set's diagnostics; `status` alone when the split could not be fitted; `{"status": "unavailable", "reason": …}` for a target the source cannot support (0012). |
 | `outcome_model.coefficients` | `[{"column", "feature", "level", "reference", "estimate", "sd", "sign_agreement"}, …]` per design column of a fitted model (the bootstrap standard deviation and sign agreement); a court's `level` and `reference` are its id, the artifact keeps the rank label (`column`); null unless `fitted`. |
 
 Restricted attributes never appear in any of these columns.
@@ -399,8 +439,8 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier` | `correction_request`                          | The `restricted` schema (0008)          | Every other table                       |
 |-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate`, `audit_log`, and (0011) `data_quality_issue` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; and `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value) |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables and 0009 `outcome_model` explicitly; the metrics engine and `models fit` write as this role) |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate`, `audit_log`, and (0011) `data_quality_issue` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value; and `coverage_statistic`, granted by 0012: aggregates per source, jurisdiction, and court) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables, 0009 `outcome_model`, and 0012 `coverage_statistic` explicitly; the metrics engine and `models fit` write as this role) |
 | `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all, and by default privilege on later tables | all |
 
 `PUBLIC` holds nothing on `restricted` (revoked by 0008).

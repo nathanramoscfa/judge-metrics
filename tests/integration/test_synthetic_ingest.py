@@ -279,7 +279,7 @@ def test_first_run_creates_the_manifest_counts_minus_duplicates_with_provenance(
     assert run.records_seen == sum(manifest["counts"][f"source/{name}"] for name in SOURCE_FILES)
     assert run.records_rejected == 0
     assert run.records_updated == 0
-    assert run.parser_version == "2"
+    assert run.parser_version == "3"
 
     expected = _expected_counts()
     assert _counts(session) == expected

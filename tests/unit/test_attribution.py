@@ -9,18 +9,27 @@ the subject; ``sentencing_judge`` keeps sentences whose judge is the
 subject; ``court_of_case`` keeps rows of the court's cases and is what a
 court subject always gets. A statutory release and an unknown-actor
 decision are never attributed to a judge, whatever the rule admits, and
-the court-level helpers count them explicitly.
+the court-level helpers count them explicitly. Registry version 3:
+``disposing_judge`` keeps the charges whose recorded judge is the subject and
+the cases whose disposing judge is (the judge on the charge that sets the case
+disposition time, ties by the source's charge id); a non-final disposition
+disposes of nothing; a gate the source does not record is ``NotAttributable``
+for a judge and never for a court; a judge with dispositions alone is a
+subject; a revocation is observable only in the scopes the source documents.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, date, datetime
 from typing import Any
 
 import polars as pl
 import pytest
 
+from judgemetrics.capabilities import CASE, SUPERVISION, SourceCapabilities
 from judgemetrics.metrics.attribution import (
+    DISPOSING_JUDGE,
     AttributionError,
     AttributionRule,
     Subject,
@@ -32,7 +41,16 @@ from judgemetrics.metrics.attribution import (
     statutory_releases,
     unknown_actor_pretrial_decisions,
 )
+from judgemetrics.metrics.compute import (
+    NotAttributableRecord,
+    NotObservableRecord,
+    compute_frame,
+    compute_metric,
+    not_attributable,
+    subjects_of,
+)
 from judgemetrics.metrics.frame import SCHEMAS, Frame, FrameError, resolve_dtype
+from judgemetrics.metrics.index_events import DISPOSITION_AT, disposed_cases, disposed_charges
 from judgemetrics.metrics.registry import load_registry
 
 pytestmark = pytest.mark.unit
@@ -313,3 +331,158 @@ def test_frames_validate_their_schemas() -> None:
         Frame.empty(date(2020, 1, 2), date(2020, 1, 1))
     with pytest.raises(FrameError, match="not justice_event_type"):
         Frame.empty(date(2020, 1, 1), date(2020, 1, 2), frozenset({"recidivism"}))
+
+
+# --- registry version 3: the disposing judge, finality, NotAttributable (Phase 5 Step 5) -------
+
+DISPOSING = AttributionRule(assignment_gate="disposing_judge")
+# The judge each charge's source records as entering its disposition (H4 is pending).
+DISPOSING_JUDGES: dict[str, str | None] = {
+    "H1": "J1",
+    "H2": "J2",
+    "H3": "J2",
+    "H4": None,
+    "H5": "J1",
+}
+
+
+def _with_disposing_judges(frame: Frame, judges: dict[str, str | None] | None = None) -> Frame:
+    mapping = DISPOSING_JUDGES if judges is None else judges
+    charges = frame.charges.with_columns(
+        pl.col("id").replace_strict(mapping, default=None, return_dtype=pl.String).alias("judge_id")
+    )
+    return frame.replace(charges=charges)
+
+
+def test_disposing_judge_keeps_the_charges_whose_recorded_judge_is_the_subject(
+    frame: Frame,
+) -> None:
+    disposed = _with_disposing_judges(frame)
+    assert _ids(attributed_charges(disposed, DISPOSING, Subject("judge", "J1"))) == ["H1", "H5"]
+    assert _ids(attributed_charges(disposed, DISPOSING, Subject("judge", "J2"))) == ["H2", "H3"]
+    # A court subject still takes the court's cases, whatever the gate.
+    assert _ids(attributed_charges(disposed, DISPOSING, Subject("court", "K1"))) == [
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+    ]
+
+
+def test_a_disposed_case_belongs_to_the_judge_on_the_charge_that_sets_its_time(
+    frame: Frame,
+) -> None:
+    disposed = _with_disposing_judges(frame)
+    cases = disposed_cases(disposed)
+    # The latest final disposition of C1 is H3 at day 20 (J2); C2 has only a pending
+    # charge; that of C3 is H5 (J1).
+    assert dict(cases.select("id", DISPOSING_JUDGE).iter_rows()) == {"C1": "J2", "C3": "J1"}
+    by_j2 = attributed_cases(
+        disposed, DISPOSING, Subject("judge", "J2"), rows=cases, time_column=DISPOSITION_AT
+    )
+    assert _ids(by_j2) == ["C1"]
+    # Two charges disposed at the same instant: the source's charge id breaks the tie.
+    tied = disposed.replace(
+        charges=disposed.charges.with_columns(
+            pl.when(pl.col("id") == "H2")
+            .then(pl.lit(_at(20)))
+            .otherwise(pl.col("disposed_at"))
+            .alias("disposed_at"),
+            pl.when(pl.col("id") == "H2")
+            .then(pl.lit("A-2"))
+            .otherwise(pl.col("source_row_id"))
+            .alias("source_row_id"),
+            pl.when(pl.col("id") == "H2")
+            .then(pl.lit("J1"))
+            .otherwise(pl.col("judge_id"))
+            .alias("judge_id"),
+        )
+    )
+    assert dict(disposed_cases(tied).select("id", DISPOSING_JUDGE).iter_rows())["C1"] == "J1"
+    # A case has no deciding or sentencing judge of its own.
+    for gate in ("deciding_judge", "sentencing_judge"):
+        with pytest.raises(AttributionError, match="cannot attribute a case"):
+            attributed_cases(
+                disposed, AttributionRule(assignment_gate=gate), Subject("judge", "J1")
+            )
+
+
+def test_a_non_final_disposition_never_disposes_of_a_charge(frame: Frame) -> None:
+    for value in ("superseded", "transferred", "pending"):
+        changed = frame.replace(
+            charges=frame.charges.with_columns(
+                pl.when(pl.col("id") == "H5")
+                .then(pl.lit(value))
+                .otherwise(pl.col("disposition"))
+                .alias("disposition")
+            )
+        )
+        assert "H5" not in _ids(disposed_charges(changed)), value
+        assert "C3" not in disposed_cases(changed)["id"].to_list(), value
+    assert _ids(disposed_charges(frame)) == ["H1", "H2", "H3", "H5"]
+
+
+def test_a_gate_the_source_does_not_record_is_not_attributable_for_a_judge_only(
+    frame: Frame,
+) -> None:
+    registry = load_registry()
+    cook_like = dataclasses.replace(
+        _with_disposing_judges(frame),
+        capabilities=SourceCapabilities(
+            ("disposing_judge", "sentencing_judge"), CASE, (SUPERVISION,)
+        ),
+    )
+    share = registry["pretrial_release_share"]
+    record = not_attributable(cook_like, share, Subject("judge", "J1"), "S")
+    assert record is not None and record.gate == "deciding_judge"
+    assert "deciding judge" in record.reason
+    assert not_attributable(cook_like, share, Subject("court", "K1"), "S") is None
+    for slug in ("sentence_count", "judicial_dismissal_rate", "median_days_to_disposition"):
+        assert not_attributable(cook_like, registry[slug], Subject("judge", "J1"), "S") is None
+    computed = compute_metric(cook_like, share, Subject("judge", "J1"), "S")
+    assert isinstance(computed, NotAttributableRecord)
+    court = compute_metric(cook_like, share, Subject("court", "K1"), "S")
+    assert isinstance(court, list) and court and court[0].cohort_size == 2
+    result = compute_frame(cook_like, registry, "S")
+    unattributed = {(r.slug, r.subject_id) for r in result.not_attributable}
+    assert all(r.subject_type == "judge" for r in result.not_attributable)
+    for judge in ("J1", "J2"):
+        for slug in ("pretrial_decisions", "pretrial_release_share", "eligible_cases"):
+            assert (slug, judge) in unattributed
+    judge_slugs = {d.slug for d in result.drafts if d.subject_type == "judge"}
+    assert not judge_slugs & {"pretrial_decisions", "eligible_cases", "new_case_rate"}
+    assert {"judicial_dismissal_rate", "sentence_count"} <= judge_slugs
+    # A source that records every gate leaves nothing unattributable.
+    assert compute_frame(_with_disposing_judges(frame), registry, "S").not_attributable == []
+
+
+def test_a_judge_with_dispositions_and_no_sentence_is_a_subject(frame: Frame) -> None:
+    only_disposing = _with_disposing_judges(frame, {**DISPOSING_JUDGES, "H5": "J9"})
+    judges = {s.subject_id for s in subjects_of(only_disposing) if s.subject_type == "judge"}
+    assert "J9" in judges  # no assignment, decision, or sentence: a disposition only
+    assert "J9" not in {s.subject_id for s in subjects_of(frame) if s.subject_type == "judge"}
+
+
+def test_a_revocation_is_observable_only_in_the_scopes_the_source_documents(
+    frame: Frame,
+) -> None:
+    registry = load_registry()
+    supervision_only = dataclasses.replace(
+        _with_disposing_judges(frame),
+        observable_outcomes=frozenset({"revocation"}),
+        capabilities=SourceCapabilities(
+            ("disposing_judge", "sentencing_judge"), CASE, (SUPERVISION,)
+        ),
+    )
+    court = Subject("court", "K1")
+    release = compute_metric(supervision_only, registry["revocation_rate"], court, "S")
+    assert isinstance(release, NotObservableRecord)
+    assert "scope release" in release.reason
+    for slug in ("revocation_rate_after_sentence", "revocation_rate_after_disposition"):
+        drafts = compute_metric(supervision_only, registry[slug], court, "S")
+        assert isinstance(drafts, list) and drafts, slug
+    # A source that documents no revocation at all observes none of them.
+    none = dataclasses.replace(supervision_only, observable_outcomes=frozenset())
+    blocked = compute_metric(none, registry["revocation_rate_after_sentence"], court, "S")
+    assert isinstance(blocked, NotObservableRecord)
+    assert blocked.reason == "the source does not document revocation events"

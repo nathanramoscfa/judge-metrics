@@ -18,8 +18,8 @@ tables:
     sha256: 9866452ffe5fdec13d24b7c3a0d67023224c625b4250aec323c282a57216b1fb
   sentence_rules:
     file: sentence_rules.yaml
-    version: 1
-    sha256: 0850df8a3e9758f3e8fdd2017f3173f2cb6f11b9b0f168ab2070025b28ebecdb
+    version: 2
+    sha256: 6acf8028b892308bb0a52e5b88bdf01ccbd2f80dcd6ed5fae84e477d8cc5b01b
   offense_map:
     file: offense_map.csv
     version: 1

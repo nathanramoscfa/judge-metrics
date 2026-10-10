@@ -164,13 +164,14 @@ uv run judgemetrics er review list [--json]       # the manual-review queue: pub
 uv run judgemetrics er review decide <id> --decision matched|rejected --reviewer <label> --reason <text>
 uv run judgemetrics methodology render [--out docs/METHODOLOGY.md] [--check]   # docs/METHODOLOGY.md from the metric registry; --check exits 1 on drift
 uv run poe compute-metrics                       # judgemetrics metrics compute: snapshot → fit the snapshot's missing outcome models → every registry metric for every judge and court → observations (ingest role)
-uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--json]
-uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation from its snapshot; exit 1 on any mismatch
+uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--source SOURCE ...] [--json]   # --source: those sources' observations only (the snapshot and the coverage statistics still cover every source)
+uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation and coverage statistic from its snapshot; exit 1 on any mismatch
+uv run judgemetrics metrics coverage [--source SOURCE ...] [--json]   # the latest snapshot's coverage statistics per source, jurisdiction, and court (app role)
 uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role; an adjusted observation's model artifact is checked under JUDGEMETRICS_SNAPSHOT_DIR); exit 1 when incomplete
 uv run judgemetrics models fit [--snapshot HASH] [--json]       # fit and record every expected-outcome model the latest (or named) snapshot lacks (ingest role); idempotent
 uv run judgemetrics models list|show <id or hash> [--json]      # the model catalogue and a model card (app role); never the storage URI
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
-uv run judgemetrics validation report [--out docs/VALIDATION.md] [--check] [--truth DIR]   # the model validation from the latest snapshot (ingest role); --check exits 1 with a diff, 2 without a snapshot or model
+uv run judgemetrics validation report [--out docs/VALIDATION.md] [--check] [--truth DIR] [--source SOURCE ...]   # the model validation from the latest snapshot (ingest role; default: every source with an attempted fit); --check exits 1 with a diff, 2 without a snapshot or model
 uv run judgemetrics validation recovery --truth DIR [--json]   # the planted-effect recovery of the published figures; exit 1 below a tolerance, 2 for a truth no source ingested
 # GET /api/v1/models/{id}: the model card an adjusted observation cites (docs/API.md "Models")
 uv run poe bootstrap                             # up → migrate → ingest-fjc → seed → compute-metrics: the one-command startup (idempotent; `make bootstrap` runs `uv sync` first)
@@ -1288,6 +1289,72 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   first when the dataset on disk was written by an older `GENERATOR_VERSION`
   (issue #36). The `ingest-cook` poe task is an inline table with an `env`
   entry turning pipeline step 13 off.
+
+- Real-data metric semantics (Phase 5 Step 5, docs/ARCHITECTURE.md "Real-data
+  semantics", docs/METHODOLOGY.md, docs/DATA_MODEL.md "Revision 0012"): registry
+  `version` 3, methodology `1.1`, specification `version` 3, migration
+  `0012_real_data_semantics`. **The disposition family is gated on
+  `disposing_judge`** (`charge.judge_id`; a disposed case's judge is the one on
+  the charge whose disposal sets the case disposition time, ties by
+  `source_row_id` then id: `index_events.case_dispositions`,
+  `attribution.DISPOSING_JUDGE`); the synthetic connector (parser version `3`)
+  fills `charge.judge_id` with the judge assigned at the disposition, so every
+  golden number is unchanged — a synthetic change that makes two assignments
+  overlap would break that equality. **Capabilities**
+  (`judgemetrics/capabilities.py`, `SourceInfo.capabilities` →
+  `source.capabilities` → snapshot `sources` columns → `Frame.capabilities`;
+  a frame built without them records everything): a judge metric whose gate
+  the source does not record is `compute.NotAttributableRecord` (checked before
+  observability; counted in `PublishResult.not_attributable`), never a zero;
+  court subjects are never not attributable. A connector must declare its
+  capabilities and `limitations` (rendered as docs/METHODOLOGY.md "Source
+  limitations" through `ingest.registry.registered_connectors`), and a source
+  row keeps `{}` — every gate unrecorded — until its connector runs once after
+  0012, so a deploy reruns every ingest (`ingest-fjc`, `seed`, `ingest-cook`).
+  **Finality**: `disposed_charges` keeps final (`final_charge_disposition`),
+  dated charges only. **Each sentencing decision once**: a sentence a later
+  amended/corrected sentencing replaced carries `sentence_components.replaced`
+  (Cook `sentence_rules.yaml` version 2, `corrects_earlier`; parser `1+1.1.2.1.1.1.1`),
+  exported as the snapshot column `replaced` and left out of the frame.
+  **Revocation scopes** (registry `revocation_scopes`;
+  `MetricDefinitionSpec.revocation_scope`; capability `revocation_scopes`):
+  Cook County documents `supervision` only, so `revocation_rate` (after a
+  pretrial release) is not observable for it. **Periods** (`metrics/periods.py`):
+  a row enters a population only when its anchor (`registry.POPULATION_ANCHORS`,
+  restated by the registry's `periods`) lies inside the coverage window; every
+  descriptive kind adds one observation per calendar year (UTC) with anchors
+  (`calendar_year`, in `uq_metric_observation_key`); compute functions split the
+  whole window's rows by year (`_Context.periods`), so year members partition
+  the whole window's (`tests/property/test_period_consistency.py`; a median by
+  category publishes a category-year only when it has a value). The public API
+  holds the years back until Step 7 (`repositories.metrics`: `calendar_year IS
+  NULL` for a subject; compare without a period compares whole windows, with an
+  exact period still matches a year) — a test that keys observations by window
+  and dimension must filter `calendar_year IS NULL`. **Coverage statistics**
+  (`metrics/coverage.py`, `coverage_statistic`) are computed for every source on
+  every compute (step 13 included) and checked by `metrics verify` (also the
+  latest snapshot holding statistics); `metrics coverage` prints them (app
+  role); `ingest retire` deletes a source's statistics before the snapshots and
+  keeps a snapshot another source's statistics cite. **`--source`** on `metrics
+  compute` and `validation report` is checked against the connector registry
+  before any connection; the snapshot still exports every source and
+  `fit_snapshot` records every source's unavailable models (no frame needed),
+  fitting only the selected sources. **Spec 3 availability**
+  (`adjustment/availability.py`): gate, then outcome, then a cross-case person
+  key when person-history features exist; a failing target is an
+  `fit.UnavailableModel` with a small canonical artifact (`status:
+  unavailable`, `reason`), which `ModelParameters.from_artifact` reads as
+  unfitted; the validation report defaults to sources with an attempted fit.
+  `Snapshot.frame` caches one frame per source per opened snapshot; building
+  Cook County's takes about 4 minutes on an idle machine and up to 9 under
+  load (Python row construction: Step 6's streamed export). Issue #42: a reused `metric_snapshot` row takes the
+  versions of the latest publish; issue #40: `models fit` prints `new=N
+  existing=N status ...`. Thresholds stayed 0/10/30 after measuring Cook
+  County's cohorts (registry `suppression.measurements`, 88 rows, regenerate
+  them with the step's measurement procedure if a threshold is revisited);
+  `under_threshold` is against the metrics' own threshold. Tests:
+  `test_cook_sao_restricted.py` matches restricted values as whole tokens (an
+  age band's digits occur inside random UUIDs in audit payloads).
 
 ## End-of-session report (from the brief)
 

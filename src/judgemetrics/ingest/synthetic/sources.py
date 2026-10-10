@@ -9,11 +9,14 @@ public surface labels. ``OBSERVABLE_OUTCOMES`` are the justice events the
 generator documents (``synthetic/truth.py`` ``WINDOWED_OUTCOMES``);
 ``release_violation`` and ``rearrest`` are not among them, so the
 registry's metrics over those outcomes are never published for this
-source.
+source. Its capabilities (Phase 5 Step 5) are complete by construction: the
+generator records every judge gate, one participant id per person across
+courts (a cross-case person key), and revocations of both scopes.
 """
 
 from __future__ import annotations
 
+from judgemetrics.capabilities import SourceCapabilities
 from judgemetrics.ingest.base import SourceInfo
 
 SOURCE_ID = "synthetic"
@@ -36,4 +39,14 @@ SOURCE_INFO = SourceInfo(
         "documentation": "docs/SYNTHETIC_DATA.md",
     },
     observable_outcomes=OBSERVABLE_OUTCOMES,
+    capabilities=SourceCapabilities.full(),
+    limitations=(
+        "Labelled synthetic data generated in this repository from a seed: no court, judge, "
+        "or person in it is real, and every figure describes the generator, not a justice "
+        "system (docs/SYNTHETIC_DATA.md).",
+        "The generator records every judge gate, one participant id per person across "
+        "courts, failures to appear, and revocations; it generates no release violation and "
+        "no separately sourced arrest, so the metrics over those outcomes are not observable "
+        "for it.",
+    ),
 )

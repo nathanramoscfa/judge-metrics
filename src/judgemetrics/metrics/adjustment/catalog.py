@@ -4,11 +4,14 @@
 ``fit_snapshot(session, settings, snapshot_hash=None)`` takes the latest
 snapshot (``exported_at`` descending, as ``/api/v1/ready`` reports it) or
 the named one, works out which ``(source, target, window)`` models of the
-current specification version and seed it lacks — a source's targets whose
-outcome it cannot document are never wanted — fits only those
+current specification version and seed it lacks, fits only those
 (``fit.fit_models``), writes their artifacts, and inserts one row per model
 (``ON CONFLICT DO NOTHING``), so a second run fits nothing. The caller owns
-the transaction (the CLI commits).
+the transaction (the CLI commits). Specification version 3: a target a source
+cannot support (``availability``) is recorded ``unavailable`` with its reason
+instead of being fitted — it needs no frame, so every source's unavailable
+targets are recorded even when ``sources`` (the ``--source`` of ``metrics
+compute``) restricts the fit to some sources' frames.
 
 ``snapshot_parameters`` (Phase 4 Step 3) reads the models of a snapshot's
 current specification version and seed back from their artifacts
@@ -52,11 +55,18 @@ from judgemetrics.metrics.adjustment.artifacts import (
     first_difference,
     read_artifact,
 )
+from judgemetrics.metrics.adjustment.availability import unavailable_reason
 from judgemetrics.metrics.adjustment.expected import ExpectationError, ModelParameters
 from judgemetrics.metrics.adjustment.features import instant
-from judgemetrics.metrics.adjustment.fit import FittedModel, ModelKey, fit_models
-from judgemetrics.metrics.adjustment.spec import DECISION, OutcomeModelSpec, load_spec
+from judgemetrics.metrics.adjustment.fit import (
+    CatalogModel,
+    ModelKey,
+    fit_models,
+    model_rows,
+)
+from judgemetrics.metrics.adjustment.spec import OutcomeModelSpec, load_spec
 from judgemetrics.metrics.snapshot import (
+    Snapshot,
     code_version,
     open_snapshot,
     snapshot_root,
@@ -73,7 +83,7 @@ class CatalogError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class FitSummary:
     snapshot: str
-    fitted: tuple[FittedModel, ...]
+    fitted: tuple[CatalogModel, ...]
     existing: int
 
     def as_dict(self) -> dict[str, Any]:
@@ -91,8 +101,8 @@ class FitSummary:
                     "target": model.target,
                     "window_days": model.window_days,
                     "status": model.status,
-                    "rows": model.design.rows,
-                    "events": model.design.events,
+                    "rows": model_rows(model)[0],
+                    "events": model_rows(model)[1],
                     "content_hash": model.content_hash,
                 }
                 for model in self.fitted
@@ -118,6 +128,8 @@ class ModelRow:
     n_test: int
     events_test: int
     fitted_at: datetime
+    # Why an unavailable target was not fitted (specification version 3); else null.
+    reason: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -135,6 +147,7 @@ class ModelRow:
             "n_test": self.n_test,
             "events_test": self.events_test,
             "fitted_at": self.fitted_at.isoformat(),
+            "reason": self.reason,
         }
 
 
@@ -220,7 +233,7 @@ def _existing_keys(
 
 
 def _row_values(
-    model: FittedModel, snapshot: MetricSnapshot, settings: Settings, fitted_at: datetime
+    model: CatalogModel, snapshot: MetricSnapshot, settings: Settings, fitted_at: datetime
 ) -> dict[str, Any]:
     split = model.split
     path = artifact_path(snapshot_root(settings), snapshot.content_hash, model.content_hash)
@@ -249,27 +262,53 @@ def _row_values(
     }
 
 
+def _missing_keys(
+    snapshot: Snapshot,
+    spec: OutcomeModelSpec,
+    existing: set[ModelKey],
+    sources: frozenset[str] | None,
+) -> set[ModelKey]:
+    """The keys to fit or record: every source's unavailable ones, the selected sources' rest."""
+    missing: set[ModelKey] = set()
+    for source in snapshot.sources_with_cases():
+        if not source.has_coverage:
+            continue
+        for target in spec.targets:
+            selected = sources is None or source.name in sources
+            if not selected and unavailable_reason(spec, target, source) is None:
+                continue
+            missing.update(
+                key
+                for key in ((source.name, target.name, window) for window in target.windows)
+                if key not in existing
+            )
+    return missing
+
+
 def fit_snapshot(
     session: Session,
     settings: Settings,
     *,
     snapshot_hash: str | None = None,
     spec: OutcomeModelSpec | None = None,
+    sources: frozenset[str] | None = None,
+    opened: Snapshot | None = None,
 ) -> FitSummary:
-    """Fit and record every model the snapshot lacks (see the module docstring)."""
+    """Fit and record every model the snapshot lacks (see the module docstring).
+
+    ``sources`` (register names) restricts the fits to those sources' frames;
+    ``opened`` is the caller's open view of the same snapshot (its frames are
+    reused).
+    """
     spec = spec or load_spec()
     snapshot_row = resolve_snapshot(session, snapshot_hash)
     existing = _existing_keys(session, snapshot_row.id, spec)
-    with open_snapshot(settings, snapshot_row.content_hash) as snapshot:
-        wanted: set[ModelKey] = set()
-        for source in snapshot.sources_with_cases():
-            if not source.has_coverage:
-                continue
-            for target in spec.targets:
-                if target.index != DECISION and target.outcome not in source.observable_outcomes:
-                    continue
-                wanted.update((source.name, target.name, window) for window in target.windows)
-        missing = wanted - existing
+    if opened is not None and opened.content_hash != snapshot_row.content_hash:
+        msg = "the opened snapshot is not the one to fit"
+        raise CatalogError(msg)
+    snapshot = opened or open_snapshot(settings, snapshot_row.content_hash)
+    try:
+        missing = _missing_keys(snapshot, spec, existing, sources)
         if not missing:
             log.info(
                 "models.fit.nothing_to_do",
@@ -284,6 +323,9 @@ def fit_snapshot(
             code_version=code_version(settings),
             only=missing,
         )
+    finally:
+        if opened is None:
+            snapshot.close()
     fitted_at = datetime.now(tz=UTC)
     rows = [_row_values(model, snapshot_row, settings, fitted_at) for model in models]
     if rows:
@@ -395,6 +437,7 @@ def list_models(
             n_test=model.n_test,
             events_test=model.events_test,
             fitted_at=model.fitted_at,
+            reason=(model.diagnostics or {}).get("reason"),
         )
         for model, name in rows
     ]

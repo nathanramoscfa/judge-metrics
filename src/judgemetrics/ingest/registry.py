@@ -13,7 +13,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 
-from judgemetrics.ingest.base import SourceConnector
+from judgemetrics.ingest.base import SourceConnector, SourceInfo
 
 BUILTIN_CONNECTOR_MODULES: tuple[str, ...] = (
     "judgemetrics.ingest.fjc.connector",
@@ -77,3 +77,13 @@ def registered_sources() -> list[RegisteredSource]:
         RegisteredSource(source_id=source_id, parser_version=cls.parser_version)
         for source_id, cls in sorted(_REGISTRY.items())
     ]
+
+
+def registered_connectors() -> list[tuple[str, SourceInfo]]:
+    """Every registered source id with its connector's ``SourceInfo``, by source id.
+
+    The methodology's "Source limitations" renders from it (no instance, no
+    network, no setting: ``source_info`` is a class attribute).
+    """
+    load_builtin_connectors()
+    return [(source_id, cls.source_info) for source_id, cls in sorted(_REGISTRY.items())]

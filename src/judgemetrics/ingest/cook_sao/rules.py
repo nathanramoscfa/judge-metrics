@@ -89,7 +89,8 @@ RULE_VERSIONS: Mapping[str, int] = MappingProxyType(
     {
         ATTRIBUTION: 1,
         PRETRIAL: 1,
-        SENTENCE: 1,
+        # 2 (Phase 5 Step 5): `corrects_earlier` per phase and the `counting` rule.
+        SENTENCE: 2,
         OFFENSE: 1,
         COURTS: 1,
         JUDGE_ALIASES: 1,
@@ -272,6 +273,8 @@ class PhaseRule:
     supersedes_earlier: bool
     revocation: bool
     rationale: str
+    # Version 2: the phase's sentence replaces the one it follows as a correction.
+    corrects_earlier: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,6 +321,8 @@ class SentenceRowMatch:
     days: int | None
     flags: tuple[str, ...]
     terminates_probation: str | None
+    # Version 2: the row's phase replaces the sentence it follows as a correction.
+    corrects_earlier: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -950,6 +955,7 @@ def _parse_sentence(block: Mapping[str, Any]) -> SentenceTables:
             "terms",
             "current",
             "supersedes",
+            "counting",
             "rounding",
             "maximum_days",
             "maximum_days_reason",
@@ -959,7 +965,7 @@ def _parse_sentence(block: Mapping[str, Any]) -> SentenceTables:
             "commitment_types",
         ),
     )
-    for field in ("grain", "terms", "current", "supersedes", "maximum_days_reason"):
+    for field in ("grain", "terms", "current", "supersedes", "counting", "maximum_days_reason"):
         _text(block, file, file, field)
     if block["rounding"] != "half_up":
         raise _fail(file, file, "rounding", "must be half_up")
@@ -995,7 +1001,15 @@ def _parse_sentence(block: Mapping[str, Any]) -> SentenceTables:
             phase,
             file,
             key,
-            ("sentence_phase", "phase", "ignored", "supersedes_earlier", "revocation", "rationale"),
+            (
+                "sentence_phase",
+                "phase",
+                "ignored",
+                "supersedes_earlier",
+                "corrects_earlier",
+                "revocation",
+                "rationale",
+            ),
         )
         ignored = _flag(phase, file, key, "ignored")
         canonical = _vocab_or_none(phase.get("phase"), "sentence_phase", file, key, "phase")
@@ -1011,6 +1025,7 @@ def _parse_sentence(block: Mapping[str, Any]) -> SentenceTables:
             supersedes_earlier=_flag(phase, file, key, "supersedes_earlier"),
             revocation=_flag(phase, file, key, "revocation"),
             rationale=_text(phase, file, key, "rationale"),
+            corrects_earlier=_flag(phase, file, key, "corrects_earlier"),
         )
     types: dict[str, SentenceTypeRule] = {}
     for index, entry in enumerate(_list(block["sentence_types"], file, "sentence_types")):
@@ -1425,6 +1440,7 @@ class CookSaoRules:
             phase=phase_rule.phase if phase_rule else None,
             ignored=phase_rule.ignored if phase_rule else False,
             supersedes_earlier=phase_rule.supersedes_earlier if phase_rule else False,
+            corrects_earlier=phase_rule.corrects_earlier if phase_rule else False,
             revocation=phase_rule.revocation if phase_rule else False,
             components=tuple(components),
             term_component=term_component,

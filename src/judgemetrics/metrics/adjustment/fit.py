@@ -28,6 +28,13 @@ spec, *, seed)`` builds each source's frame from an opened snapshot, calls
 snapshot (``artifacts.write_artifact``); ``write=False`` renders without
 writing (``models verify --refit``). Log lines name the source's register
 name, the target, the window, the status, and counts only.
+
+Specification version 3: ``fit_models`` first asks
+``availability.unavailable_reason`` of every wanted ``(source, target,
+window)``; a target the source cannot support becomes an ``UnavailableModel``
+— no frame is built for it — whose small canonical artifact records the
+reason (``status: unavailable``), so the catalogue, ``models verify``, and
+``--refit`` treat it like any other model.
 """
 
 from __future__ import annotations
@@ -72,7 +79,7 @@ from judgemetrics.metrics.adjustment.logistic import (
 from judgemetrics.metrics.adjustment.resample import replicate_stream, replicates
 from judgemetrics.metrics.adjustment.spec import OutcomeModelSpec
 from judgemetrics.metrics.frame import Frame
-from judgemetrics.metrics.snapshot import Snapshot, SnapshotError
+from judgemetrics.metrics.snapshot import Snapshot, SnapshotError, SourceRow
 from judgemetrics.metrics.windows import NotObservable
 
 log = get_logger(__name__)
@@ -80,7 +87,9 @@ log = get_logger(__name__)
 FITTED = "fitted"
 INSUFFICIENT_EVENTS = "insufficient_events"
 NOT_CONVERGED = "not_converged"
-STATUSES: tuple[str, ...] = (FITTED, INSUFFICIENT_EVENTS, NOT_CONVERGED)
+# Specification version 3: a target the source cannot support (``availability``).
+UNAVAILABLE = "unavailable"
+STATUSES: tuple[str, ...] = (FITTED, INSUFFICIENT_EVENTS, NOT_CONVERGED, UNAVAILABLE)
 NO_TEST_ROWS = "no_test_rows"
 
 ModelKey = tuple[str, str, int | None]  # (source name, target, window)
@@ -377,6 +386,92 @@ class FittedModel:
 # --- fitting ----------------------------------------------------------------------------
 
 
+EMPTY_SPLIT = SplitSummary(None, 0, 0, 0, 0)
+
+
+@dataclass(frozen=True, slots=True)
+class UnavailableModel:
+    """A target the source cannot support: its reason instead of a fit (specification 3).
+
+    It answers what the catalogue reads of a ``FittedModel`` — the key, the
+    status, the empty split, no coefficients, the diagnostics (which carry the
+    reason), and the canonical artifact — so one row shape serves both.
+    """
+
+    source: str
+    target: str
+    window_days: int | None
+    seed: int
+    spec_version: int
+    model_version: str
+    reason: str
+    source_id: str = ""
+    artifact_data: bytes = field(default=b"", repr=False)
+    status: str = UNAVAILABLE
+    split: SplitSummary = EMPTY_SPLIT
+    train_start: int | None = None
+    train_end: int | None = None
+    rows: int = 0
+    events: int = 0
+
+    @property
+    def key(self) -> ModelKey:
+        return (self.source, self.target, self.window_days)
+
+    @property
+    def content_hash(self) -> str:
+        if not self.artifact_data:
+            msg = "the model has no rendered artifact"
+            raise FitError(msg)
+        return content_hash(self.artifact_data)
+
+    def payload(self, *, snapshot: str, code_version: str) -> dict[str, Any]:
+        """The artifact: the fields every model carries, the reason, and nothing fitted."""
+        return {
+            "artifact_version": ARTIFACT_VERSION,
+            "spec_version": self.spec_version,
+            "model_version": self.model_version,
+            "code_version": code_version,
+            "snapshot": snapshot,
+            "source": self.source,
+            "target": self.target,
+            "window_days": self.window_days,
+            "seed": self.seed,
+            "status": self.status,
+            "reason": self.reason,
+            "design": {"columns": [], "features": []},
+            "split": {
+                "cutoff": None,
+                "train_rows": 0,
+                "train_events": 0,
+                "test_rows": 0,
+                "test_events": 0,
+            },
+            "coefficients": None,
+            "replicates": None,
+        }
+
+    def render(self, *, snapshot: str, code_version: str) -> bytes:
+        return render(self.payload(snapshot=snapshot, code_version=code_version))
+
+    def coefficient_rows(self) -> list[dict[str, Any]] | None:
+        return None
+
+    def diagnostics_row(self) -> dict[str, Any]:
+        """``outcome_model.diagnostics``: the status and the reason, nothing measured."""
+        return {"status": self.status, "reason": self.reason}
+
+
+CatalogModel = FittedModel | UnavailableModel
+
+
+def model_rows(model: CatalogModel) -> tuple[int, int]:
+    """``(rows, events)`` of a model's design (zero for an unavailable target)."""
+    if isinstance(model, UnavailableModel):
+        return 0, 0
+    return model.design.rows, model.design.events
+
+
 def _limiting(events: int, rows: int) -> int:
     return min(events, rows - events)
 
@@ -548,6 +643,37 @@ def fit_frame(
     return models
 
 
+def unavailable_models(
+    source: SourceRow, spec: OutcomeModelSpec, *, seed: int, only: Collection[ModelKey] | None
+) -> tuple[list[UnavailableModel], set[ModelKey]]:
+    """The source's wanted targets it cannot support, and every key it can (spec 3)."""
+    from judgemetrics.metrics.adjustment.availability import unavailable_reason
+
+    unavailable: list[UnavailableModel] = []
+    available: set[ModelKey] = set()
+    for target in spec.targets:
+        reason = unavailable_reason(spec, target, source)
+        for window in target.windows:
+            key = (source.name, target.name, window)
+            if not _wanted(only, key):
+                continue
+            if reason is None:
+                available.add(key)
+                continue
+            unavailable.append(
+                UnavailableModel(
+                    source=source.name,
+                    target=target.name,
+                    window_days=window,
+                    seed=seed,
+                    spec_version=spec.version,
+                    model_version=spec.model_version,
+                    reason=reason,
+                )
+            )
+    return unavailable, available
+
+
 def fit_models(
     snapshot: Snapshot,
     spec: OutcomeModelSpec,
@@ -556,15 +682,23 @@ def fit_models(
     code_version: str = __version__,
     write: bool = True,
     only: Collection[ModelKey] | None = None,
-) -> list[FittedModel]:
+) -> list[CatalogModel]:
     """Fit every model of every source of the snapshot and render (and write) the artifacts.
 
     A source without case data or without a declared coverage window has
-    no model (nothing can be right-censored for it). Artifacts land under
-    ``<snapshot_dir>/<snapshot hash>/models/<content hash>.json``.
+    no model (nothing can be right-censored for it); a target the source
+    cannot support is an ``UnavailableModel`` and builds no frame. Artifacts
+    land under ``<snapshot_dir>/<snapshot hash>/models/<content hash>.json``.
     """
     root = artifact_root(snapshot)
-    fitted: list[FittedModel] = []
+    fitted: list[CatalogModel] = []
+
+    def keep(model: CatalogModel, source: SourceRow) -> None:
+        data = model.render(snapshot=snapshot.content_hash, code_version=code_version)
+        if write:
+            write_artifact(root, snapshot.content_hash, data)
+        fitted.append(replace(model, source_id=source.id, artifact_data=data))
+
     for source in snapshot.sources_with_cases():
         if not source.has_coverage:
             log.warning(
@@ -573,16 +707,24 @@ def fit_models(
             continue
         if only is not None and not any(key[0] == source.name for key in only):
             continue
+        unavailable, available = unavailable_models(source, spec, seed=seed, only=only)
+        for missing in unavailable:
+            log.info(
+                "models.fit.unavailable",
+                source=source.name,
+                target=missing.target,
+                window=missing.window_days,
+            )
+            keep(missing, source)
+        if not available:
+            continue
         try:
             frame = snapshot.frame(source.id)
         except SnapshotError as exc:
             msg = f"cannot build the frame of source {source.name}: {exc}"
             raise FitError(msg) from exc
-        for model in fit_frame(frame, spec, seed=seed, source=source.name, only=only):
-            data = model.render(snapshot=snapshot.content_hash, code_version=code_version)
-            if write:
-                write_artifact(root, snapshot.content_hash, data)
-            fitted.append(replace(model, source_id=source.id, artifact_data=data))
+        for model in fit_frame(frame, spec, seed=seed, source=source.name, only=available):
+            keep(model, source)
     return fitted
 
 

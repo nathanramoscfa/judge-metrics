@@ -94,7 +94,7 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert set(CANONICAL_TABLES) <= set(snapshot.tables)
     # The brief's twenty-three, audit_log (0004), metric_snapshot and
     # metric_observation_member (0005), outcome_model (0009).
-    assert len(CANONICAL_TABLES) == 27
+    assert len(CANONICAL_TABLES) == 28
     assert EXPECTED_ENUMS <= set(snapshot.enums)
     assert "pg_trgm" in snapshot.extensions
     indexes = snapshot.indexes
@@ -183,7 +183,7 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     # Revision 0011: the Cook County judge identity, the charge's disposing judge.
     assert "uq_judge_external_ids_cook_sao_judge" in indexes["judge"]
     assert "ix_charge_judge_id" in indexes["charge"]
-    assert current_revision(migrated_database) == head_revision() == "0011"
+    assert current_revision(migrated_database) == head_revision() == "0012"
 
 
 def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
@@ -599,11 +599,17 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # 0011 and 0010 go first, then 0009: outcome_model goes and nothing else.
+    # 0012 goes first (coverage_statistic), then 0011 and 0010, then 0009: outcome_model.
+    downgrade(url, "0011")
+    assert current_revision(migrated_database) == "0011"
+    without_coverage = _snapshot(migrated_database)
+    assert without_coverage.tables == sorted(set(before.tables) - {"coverage_statistic"})
     downgrade(url, "0008")
     assert current_revision(migrated_database) == "0008"
     without_models = _snapshot(migrated_database)
-    assert without_models.tables == sorted(set(before.tables) - {"outcome_model"})
+    assert without_models.tables == sorted(
+        set(before.tables) - {"outcome_model", "coverage_statistic"}
+    )
     assert without_models.restricted == before.restricted
     # 0008 next: the restricted schema goes, the ordinal party keys stay.
     downgrade(url, "0007")

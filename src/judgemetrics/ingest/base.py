@@ -47,6 +47,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from judgemetrics.capabilities import SourceCapabilities
 from judgemetrics.db.models.enums import ActorType, IssueSeverity
 
 NaturalKey = tuple[str, ...]
@@ -251,6 +252,13 @@ class SourceInfo:
     outcome is not among them is not observable for the source and is
     never published for it, never as a zero (docs/METHODOLOGY.md). A
     reference-only source (FJC) documents none.
+
+    ``capabilities`` (Phase 5 Step 5, ``source.capabilities``) are the judge
+    gates the source records, its person-key scope, and the revocation scopes it
+    documents (``judgemetrics.capabilities``): a judge metric whose gate the
+    source does not record is ``NotAttributable`` for it. ``limitations`` are
+    the source's own notes the methodology's "Source limitations" section
+    renders beside its capabilities and observable outcomes.
     """
 
     owner: str
@@ -258,6 +266,8 @@ class SourceInfo:
     access_method: str
     terms_metadata: Mapping[str, Any] = field(default_factory=dict)
     observable_outcomes: tuple[str, ...] = ()
+    capabilities: SourceCapabilities = field(default_factory=SourceCapabilities)
+    limitations: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

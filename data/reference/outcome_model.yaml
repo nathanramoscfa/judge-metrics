@@ -25,7 +25,14 @@
 # `unclassified` categories) as levels of lead_severity and lead_category,
 # each reference unchanged and every earlier level in its earlier order: a
 # level with no rows is dropped from the design (features.py), so no fitted
-# model or published figure of a source without them moves.
+# model or published figure of a source without them moves. Version 3 (Phase
+# 5 Step 5) adds `availability` - a target is fitted for a source only when the
+# source records the judge its population is attributed to, documents its
+# outcome, and keys persons across cases (the person_history features read the
+# person's other cases); otherwise the catalogue records the target
+# `unavailable` with the failing condition's reason - and marks the four
+# person-history features. No value a fit reads changed: the demo's refit
+# reproduces every published figure.
 #
 # Terms: an *index event* is one row of a model - a pretrial decision for
 # the release target, a pretrial-release cohort member followed for the
@@ -35,8 +42,26 @@
 # included). The *index case* is the case of the index event; its *filing*
 # is 00:00 UTC of the filing date, the instant the analytic frame's
 # cases.filed_at carries.
-version: 2
+version: 3
 model_version: expected-logit-v1
+
+# Each condition's text is the reason the catalogue records (outcome_model.status
+# `unavailable`, diagnostics.reason) for a source that fails it, checked in this
+# order; docs/METHODOLOGY.md "Adjusted statistics" renders them.
+availability:
+  gate: >-
+    The source does not record the judge the target's population is attributed
+    to (the registry's assignment gate for the population), so no judge's
+    cohort could be scored.
+  outcome: >-
+    The source does not document the target's outcome, so a model of it would
+    learn from outcomes the source cannot see; an absent event would read as
+    "none" when it means "unobserved".
+  person_key: >-
+    The source's person key does not cross cases (a person is a case
+    participation), so the person-history features - prior cases, prior
+    convictions, prior failures to appear, a pending case - would read zero for
+    every person: "unobserved", not "none".
 
 targets:
   - name: pretrial_release
@@ -127,6 +152,7 @@ features:
     kind: banded_count
     bands: [0, 1, 2, 3]
     reference: '0'
+    person_history: true
     known_at: filed_at
     missing: level
     missing_level: unrecorded
@@ -142,6 +168,7 @@ features:
     kind: banded_count
     bands: [0, 1, 2]
     reference: '0'
+    person_history: true
     known_at: filed_at
     missing: level
     missing_level: unrecorded
@@ -157,6 +184,7 @@ features:
     kind: banded_count
     bands: [0, 1]
     reference: '0'
+    person_history: true
     known_at: filed_at
     missing: level
     missing_level: unrecorded
@@ -172,6 +200,7 @@ features:
     source: [cases.filed_at, charges.disposed_at, charges.disposition, charges.filed_at]
     kind: binary
     reference: 'false'
+    person_history: true
     known_at: filed_at
     missing: level
     missing_level: unrecorded
@@ -301,6 +330,16 @@ pooling:
   shape_bounds: [0.5, 1000.0]
   shape_grid: 200
 
+# minimum_events_per_column counts the limiting class (the fewer of outcomes
+# and non-outcomes) against every design column, the intercept included.
+# Revisited in Phase 5 Step 5 (2026-10-10) against the demo's models: the
+# smallest ratio is 9.4 (30-day new case, 302 events over 32 columns), then
+# 9.7 (30-day failure to appear); every other model is at 13.8 or more, the
+# release model at 49.5. A gate of 10, the common rule of thumb for an
+# unpenalized fit, would withdraw those two fitted models and move their
+# published figures, and the fit is L2-penalized, so 5 stays. No real source
+# fits a model under version 3 (Cook County's targets are unavailable), so
+# the first real source that fits one revisits it with its own cohorts.
 thresholds:
   minimum_events_per_column: 5
   minimum_cohort: 30

@@ -248,7 +248,12 @@ the header, extra → warning), and `normalize` maps rows onto the drafts
 conviction follows an earlier disposition of another case,
 `failure_to_appear` and `revocation` from the court events — and
 publishing each party's restricted `age_band` and `synthetic_group` into
-`restricted.party_attribute` (parser version 2). `judgemetrics
+`restricted.party_attribute` (parser version 2). Parser version 3 (Phase 5
+Step 5) also reads `assignments.csv` into the context and sets each disposed
+charge's `judge_id` to the judge assigned at its disposition
+(`SyntheticContext.judge_assigned_at`, `start <= t < end`): the
+`disposing_judge` gate's input, equal to what the old `assigned_at_time` gate
+selected. `judgemetrics
 ingest run synthetic --from-fixture tests/fixtures/golden` reads the
 golden fixture through the runner's fixture path, which accepts
 contained relative ids for this reason.
@@ -606,6 +611,7 @@ The run recorded 61,081 data-quality issues, none of which stopped it:
 | Rerun over unchanged exports   | 6 s       | 0.12 GiB    | Five metadata requests; nothing downloaded, read back, or parsed; no row created or updated. |
 | `--force` rerun                | 1,015 s (16 min 55 s) | 6.79 GiB | Everything parsed and compared again (1 min 43 s to the drafts, 14 min 29 s to compare them with the stored rows); no row created or updated, no issue added. |
 | `ingest retire cook_sao`       | 63 s      | —           | Measured once on the scratch database over the same corpus: about 5.5 million rows deleted in one transaction. |
+| Re-derive after a parser bump (Phase 5 Step 5) | 944 s (15 min 44 s) | not sampled | Sentence rules version 2 changed the parser version, so every export was read back and parsed again; 272,589 sentences updated (the new `replaced` key), nothing else written. |
 
 The **budget** is the measurement with a margin of 1.5: a fresh run or a
 `--force` rerun finishes within **40 minutes** and **10 GiB**; a rerun that
@@ -632,6 +638,33 @@ Decisions this measurement settled:
 - **Step 13 stays off.** Computing the impacted subjects' observations over
   this corpus is Step 6's work; `ingest-cook` turns it off through its `env`
   table.
+
+### The metrics engine with the corpus present (Phase 5 Step 5, 2026-10-10)
+
+Measured on the maintainer's database holding the demo seed, the FJC slice,
+and the full Cook County corpus; peak memory is the process's peak working set
+from the operating system's counters. Step 6 sets the engine's budget from
+its own measurements; these are the figures it starts from.
+
+| Run | Wall time | Peak memory | What it did |
+|-----|-----------|-------------|-------------|
+| Snapshot export alone (measured twice) | 72-79 s | 4.26 GiB | Every source's eleven tables to Parquet; the corpus is nearly all of it. |
+| `metrics compute --source synthetic` | 561.8 s (9 min 22 s) | 4.26 GiB | Export and model fits (13 fitted for the demo, 13 recorded `unavailable` for Cook County with no frame built): about 100 s. The demo's 28,564 observations (3,730 whole-window, the rest calendar years) for 29 subjects: 54 s. Publishing them with 1,618,083 members, superseding 3,730 (methodology `1.1`): 184 s. The 112 coverage statistics of every source, which builds Cook County's frame: 224 s. |
+| `metrics verify` | 291.1 s (4 min 51 s) | 3.15 GiB | Recomputed and matched all 28,564 observations and the 112 coverage statistics (Cook County's frame built again); exit 0. |
+| Building Cook County's frame alone | 314-564 s | — | Measured while other work ran on the machine; DuckDB rows become Polars frames through Python tuples, and persons are resolved row by row. |
+
+Decisions this measurement settled:
+
+- **The coverage statistics cover every source on every compute.** A compute
+  scoped with `--source` still writes them, so they never describe an older
+  snapshot than the observations; the price is Cook County's frame on every
+  compute, `verify`, and pipeline step 13 until Step 6 builds frames without
+  per-row Python objects.
+- **Observations and members go out with executemany.** One compiled insert
+  per table, executed over each 500-row batch, as the ingest's publishers do.
+- **Calendar years multiply the rows.** The demo's 3,418 descriptive
+  observations became 28,252 with the eight calendar years, and the members
+  roughly doubled; the corpus's years are Step 6's load to measure.
 
 ## Database roles
 
@@ -1486,10 +1519,11 @@ verification, and pipeline step 13 on top of them.
   suite turns the setting off (`tests/conftest.py`) and the step-13
   tests enable it per test.
 - **Commands.** `judgemetrics metrics compute [--label TEXT] [--subject
-  judge:<uuid> ...] [--json]` (export, compute, publish; prints the
-  snapshot hash and counts) and `metrics verify [--snapshot HASH]
-  [--json]`, both as the ingest role; `uv run poe compute-metrics` and
-  `make compute-metrics`.
+  judge:<uuid> ...] [--source SOURCE_ID ...] [--json]` (export, compute,
+  publish; prints the snapshot hash and counts) and `metrics verify
+  [--snapshot HASH] [--json]`, both as the ingest role, and `metrics
+  coverage [--source SOURCE_ID ...] [--json]` as the app role (Phase 5 Step
+  5); `uv run poe compute-metrics` and `make compute-metrics`.
 - **Coverage and observability.** `SourceInfo.observable_outcomes`
   (synthetic: `new_case`, `new_charge`, `reconviction`,
   `failure_to_appear`, `revocation`; FJC: none) fills
@@ -1510,6 +1544,117 @@ verification, and pipeline step 13 on top of them.
   and `tests/golden/test_golden_metrics.py` proves the database path
   equals it on the golden fixture (`tests/golden/truth_map.py` is the
   one table both read).
+
+### Real-data semantics (Phase 5 Step 5)
+
+Registry version 3 and methodology 1.1 give the first real source honest
+semantics without moving any synthetic number (the golden suite is the proof):
+
+- **The disposing judge.** The gate `disposing_judge` ties a charge to the
+  judge the source records as entering its disposition (`charge.judge_id`,
+  revision 0011) and a disposed case to the judge on the charge whose
+  disposal sets the case disposition time, ties broken by the source's charge
+  id and then the canonical id (`index_events.case_dispositions`, column
+  `disposing_judge_id`). The disposition family — the distribution, the
+  judicial dismissal rate, the median days to disposition, and the four rates
+  after a disposition — moved to it (each entry's `version` is `2`). The
+  synthetic connector (parser version `3`) fills `charge.judge_id` with the
+  judge assigned at the charge's disposition (the generator's own rule:
+  assignments never overlap), so the old `assigned_at_time` gate and the new
+  one select the same rows. `compute.subjects_of` adds the judges on
+  `charges.judge_id`, so a judge with dispositions and no sentence is a
+  subject.
+- **Capabilities and `NotAttributable`.** `SourceInfo.capabilities`
+  (`judgemetrics.capabilities.SourceCapabilities`: the judge gates the source
+  records, its person-key scope `cross_case`, `case`, or none, and the
+  revocation scopes it documents) is written to `source.capabilities` (JSONB,
+  revision 0012) by the runner when it differs, exported with the source, and
+  carried by the frame (`Frame.capabilities`; a frame built without them —
+  the in-memory world, a test — records everything). For a judge subject, a
+  metric whose gate the source does not record returns
+  `compute.NotAttributableRecord` (slug, subject, gate, reason) — no
+  observation, never a zero — checked before observability, and listed beside
+  `NotObservable` in `ComputeResult`, `PublishResult.not_attributable`, and
+  `metrics compute --json` (`not_attributable_by_slug`). A court subject is
+  never not attributable: its metrics are computed over the court's cases.
+  The adjusted kind is skipped for such a judge the same way, before any
+  model is asked for. Cook County records `disposing_judge` and
+  `sentencing_judge`, scope `case`, revocation scope `supervision`; the
+  synthetic source records everything; FJC records nothing.
+- **Finality.** `index_events.disposed_charges` keeps a charge only when its
+  disposition is one of the vocabulary's `final_charge_disposition` values
+  and it is dated: a pending, superseded, or transferred charge disposes of
+  nothing, in the disposed-charge and disposed-case populations, the
+  disposition index, and the distribution alike.
+- **Each sentencing decision once.** A sentence that a later amended or
+  corrected sentencing replaced carries `sentence_components.replaced`
+  (`data/reference/cook_sao/sentence_rules.yaml` version 2: the phase's
+  `corrects_earlier`), which the snapshot exports as the boolean `replaced`
+  and `Snapshot.frame` leaves out of the frame's `sentences`. A
+  probation-violation, resentencing, or remand sentencing supersedes without
+  replacing: both decisions count, each attributed to its own judge.
+- **Revocation scopes.** The registry's `revocation_scopes` gives the scope a
+  revocation has after each index event (`release` after a pretrial release;
+  `supervision` after a disposition or a sentence); every revocation metric
+  carries it (`MetricDefinitionSpec.revocation_scope`), and
+  `windows.not_observable(frame, outcome, scope)` blocks a scope the source
+  does not document. Cook County's within-case probation-violation revocation
+  therefore feeds the rates after a sentence and after a disposition and never
+  the rate after a pretrial release.
+- **Periods and anchors.** `metrics.periods`: every population's rows enter
+  only when their anchor (`registry.POPULATION_ANCHORS`, stated again by the
+  registry's `periods` block: filing, decision, disposition, case
+  disposition, sentence, index time) lies inside the coverage window — a row
+  the source dates outside its own window (a 1901 or 2924 typo, a disposition
+  before the corpus starts) enters no observation. Every descriptive metric
+  publishes its whole-window observation and one more per calendar year (UTC)
+  in which the population has an anchor (`ObservationDraft.calendar_year`,
+  `metric_observation.calendar_year` — part of `uq_metric_observation_key`,
+  checked to name the year's first and last days). Each kind computes its
+  population once and splits it by year, so the years' members partition the
+  whole window's and the additive figures sum to it
+  (`tests/property/test_period_consistency.py`, and the golden suite on the
+  database path). Follow-up is still censored at the coverage end;
+  suppression applies per year; the adjusted kind is whole-window only.
+  Until Phase 5 Step 7 serves them, the public routes hold the years back
+  (`repositories.metrics`: a subject's observations are `calendar_year IS
+  NULL`; `/metrics/compare` without a period compares whole windows, with an
+  explicit `period_start`/`period_end` it still matches a year exactly).
+- **Out-of-order dates.** A case disposed before its filing date has no
+  `days_to_disposition` (counted among the eligible cases only); the
+  disposition kind's exposure never starts before the index time when the
+  source dates the case's own sentence earlier (`exposure._own_terms`). The
+  other contradictions the Cook County checks report (a charge disposed before
+  it was filed, a case closed before it was received, a sentence before the
+  first conviction) leave the rows in their populations: no published metric
+  reads that order.
+- **Coverage statistics** (`metrics.coverage`). Every compute — the CLI's and
+  pipeline step 13 — computes from the snapshot's frames, for every source
+  with case data and a coverage window (whatever `--source` scopes), the
+  brief's six statistics and the unknown-actor share per source, per
+  jurisdiction of its courts, and per court (`case_flags` once per case, then
+  sums), and upserts them into `coverage_statistic` (revision 0012; unique per
+  snapshot, source, scope, and statistic; written only when they differ).
+  `metrics verify` recomputes the statistics of every snapshot it verifies and
+  of the latest snapshot holding statistics, and reports a stored one that
+  differs, is missing, or is no longer produced by source, scope, and name
+  (`coverage_mismatches`). `judgemetrics metrics coverage [--source]
+  [--json]` (app role) prints the latest snapshot's, with each source's
+  person-key scope. The definitions (`coverage.DEFINITIONS`) are rendered into
+  docs/METHODOLOGY.md "Coverage statistics".
+- **`--source`.** `metrics compute --source SOURCE_ID` (repeatable, checked
+  against the registered connectors before any connection) fits and computes
+  the named sources' frames only; the snapshot still exports every source, as
+  provenance requires, and the coverage statistics and every source's
+  unavailable models are still recorded. `compute_all(..., sources=)` takes
+  source ids; `metrics verify` builds only the frames of the sources its
+  observations belong to (plus every frame its coverage check needs).
+  `Snapshot.frame` caches one frame per source per opened snapshot.
+- **Issue #42.** `publish.upsert_snapshot` records on a reused
+  `metric_snapshot` row the registry and methodology versions a compute
+  publishes under, so `/api/v1/ready` and `/api/v1/coverage` report the
+  current ones. **Issue #40.** `models fit` prints `new=<n> existing=<n>
+  status <status>=<n> ...`: `fitted` appears once, as a status.
 
 ## Risk adjustment
 

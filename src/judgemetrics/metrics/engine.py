@@ -8,8 +8,9 @@ ingest transaction at step 13, so the run's own rows are included),
 ``publish``. The caller owns the transaction: the CLI commits on
 success and rolls back on ``ProvenanceError``; the runner commits the
 whole ingest or rolls it back on any failure. The result carries the
-snapshot reference, the fitted models, the compute counts, and the
-publish counts; the snapshot is closed before returning.
+snapshot reference, the fitted models, the compute counts, the publish
+counts, and the coverage statistics; the snapshot is closed before
+returning.
 
 ``kinds`` names the registry kinds the call computes and publishes (every
 kind by default). When it includes ``observed_expected`` (Phase 4 Step 3),
@@ -24,6 +25,13 @@ passes the descriptive kinds only: an adjusted figure depends on a model
 and a shape fitted over every judge, so the full ``metrics compute``
 recomputes it, and ``publish`` leaves the kinds a run does not compute in
 place.
+
+Phase 5 Step 5: ``sources`` (register names; the CLI's ``--source``)
+restricts the fit and the compute to those sources' frames — the snapshot
+still exports every source, as provenance requires, and the catalogue still
+records every source's unavailable targets (they need no frame). Every call
+computes and stores the coverage statistics of every source the snapshot
+holds (``metrics.coverage``), whatever ``sources`` scopes.
 """
 
 from __future__ import annotations
@@ -37,9 +45,10 @@ from judgemetrics.config import Settings
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
 from judgemetrics.metrics.compute import ComputeError, ComputeResult, compute_all
+from judgemetrics.metrics.coverage import CoverageResult, compute_statistics, publish_statistics
 from judgemetrics.metrics.publish import PublishResult, publish, upsert_snapshot
 from judgemetrics.metrics.registry import KINDS, OBSERVED_EXPECTED, Registry, load_registry
-from judgemetrics.metrics.snapshot import SnapshotRef, export_snapshot, open_snapshot
+from judgemetrics.metrics.snapshot import Snapshot, SnapshotRef, export_snapshot, open_snapshot
 
 log = get_logger(__name__)
 
@@ -53,6 +62,13 @@ class EngineResult:
     # when the call computed no adjusted kind); the models the compute read.
     models_fitted: int = 0
     models_read: int = 0
+    coverage: CoverageResult | None = None
+
+
+def source_ids(snapshot: Snapshot, names: Collection[str]) -> frozenset[str]:
+    """The ids of the snapshot's sources registered under ``names`` (absent ones skipped)."""
+    wanted = set(names)
+    return frozenset(source.id for source in snapshot.sources() if source.name in wanted)
 
 
 def compute_and_publish(
@@ -63,6 +79,7 @@ def compute_and_publish(
     label: str | None = None,
     registry: Registry | None = None,
     kinds: Collection[str] | None = None,
+    sources: Collection[str] | None = None,
 ) -> EngineResult:
     """Export, fit (when adjusted kinds are wanted), compute, and publish; the caller commits."""
     registry = registry or load_registry()
@@ -76,6 +93,8 @@ def compute_and_publish(
     fitted = 0
     read = 0
     with open_snapshot(settings, ref.content_hash) as snapshot:
+        selected = None if sources is None else source_ids(snapshot, sources)
+        snapshot_id = upsert_snapshot(session, snapshot, registry, settings, label)
         models = None
         if adjusted:
             from judgemetrics.metrics.adjustment.artifacts import ArtifactError
@@ -87,10 +106,16 @@ def compute_and_publish(
             from judgemetrics.metrics.adjustment.fit import FitError
             from judgemetrics.metrics.adjustment.spec import SpecError, load_spec
 
-            snapshot_id = upsert_snapshot(session, snapshot, registry, settings, label)
             try:
                 spec = load_spec()
-                summary = fit_snapshot(session, settings, snapshot_hash=ref.content_hash, spec=spec)
+                summary = fit_snapshot(
+                    session,
+                    settings,
+                    snapshot_hash=ref.content_hash,
+                    spec=spec,
+                    sources=None if sources is None else frozenset(sources),
+                    opened=snapshot,
+                )
                 models = snapshot_parameters(
                     session,
                     settings,
@@ -103,7 +128,9 @@ def compute_and_publish(
                 raise ComputeError(msg) from exc
             fitted = len(summary.fitted)
             read = sum(len(by_target) for by_target in models.values())
-        computed = compute_all(snapshot, registry, subjects, kinds=wanted, models=models)
+        computed = compute_all(
+            snapshot, registry, subjects, kinds=wanted, models=models, sources=selected
+        )
         published = publish(
             session,
             snapshot,
@@ -111,8 +138,12 @@ def compute_and_publish(
             registry,
             settings,
             not_observable=computed.not_observable,
+            not_attributable=computed.not_attributable,
             label=label,
             kinds=wanted,
+        )
+        coverage = publish_statistics(
+            session, snapshot_id, compute_statistics(snapshot), registry.methodology_version
         )
     log.info(
         "metrics.compute_and_publish",
@@ -122,6 +153,7 @@ def compute_and_publish(
         models_fitted=fitted,
         models_read=read,
         **published.as_log(),
+        **coverage.as_log(),
     )
     return EngineResult(
         snapshot=ref,
@@ -129,4 +161,5 @@ def compute_and_publish(
         published=published,
         models_fitted=fitted,
         models_read=read,
+        coverage=coverage,
     )

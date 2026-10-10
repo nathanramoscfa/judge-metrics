@@ -162,6 +162,8 @@ class _SentenceGroup:
     revocation: bool
     rows: tuple[tuple[Row, Any], ...]
     charges: frozenset[tuple[str, str]]
+    # The phase replaces the sentence it follows as a correction (sentence_rules version 2).
+    corrects: bool = False
 
 
 def _utc(value: datetime | None) -> datetime | None:
@@ -903,6 +905,7 @@ def _sentences(
                 when=when,
                 phase=phase,
                 supersedes=phase_rule,
+                corrects=members[0][1].corrects_earlier,
                 revocation=members[0][1].revocation,
                 rows=tuple(members),
                 charges=frozenset(
@@ -955,14 +958,17 @@ def _sentences(
             for r, m in group.rows
             if m.terminates_probation is None
         ]
-        superseded = any(
-            other.participant == participant
-            and other.supersedes
+        later = [
+            other
+            for other in groups
+            if other.participant == participant
             and (other.when, SENTENCE_PHASES.index(other.phase))
             > (group.when, SENTENCE_PHASES.index(group.phase))
             and group.charges & other.charges
-            for other in groups
-        )
+        ]
+        superseded = any(other.supersedes for other in later)
+        # Replaced by a correction: not a sentencing decision of its own (the engine skips it).
+        replaced = any(other.corrects for other in later)
         judge = _sentence_judge(group, rules, findings)
         out[SENTENCING_FILE].append(
             SentenceDraft(
@@ -977,6 +983,7 @@ def _sentences(
                     "phase": group.phase,
                     "current": bool(current),
                     "superseded": superseded,
+                    "replaced": replaced,
                     "components": components,
                     "terms": terms,
                 },

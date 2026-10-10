@@ -878,6 +878,30 @@ def methodology_render(
 VERIFY_REPORT_LINES = 40
 
 
+def _registered_sources(names: list[str] | None) -> frozenset[str] | None:
+    """``--source`` values checked against the registered connectors before any query (exit 2)."""
+    from judgemetrics.ingest.registry import registered_sources
+
+    if not names:
+        return None
+    known = {item.source_id for item in registered_sources()}
+    unknown = sorted(set(names) - known)
+    if unknown:
+        typer.echo(
+            f"error: unknown source {', '.join(unknown)}; registered: {', '.join(sorted(known))}",
+            err=True,
+        )
+        raise typer.Exit(EXIT_USAGE)
+    return frozenset(names)
+
+
+def _count_by_slug(records: Any) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        counts[record.slug] = counts.get(record.slug, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 @metrics_app.command("compute")
 def metrics_compute(
     label: Annotated[
@@ -890,6 +914,14 @@ def metrics_compute(
             help="Only these subjects (judge:<uuid> or court:<uuid>; repeatable).",
         ),
     ] = None,
+    source: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--source",
+            help="Only these sources' observations (a registered source id; repeatable). "
+            "The snapshot still exports every source and the coverage statistics cover them all.",
+        ),
+    ] = None,
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
 ) -> None:
     """Export a snapshot, fit its missing outcome models, compute every metric, and publish.
@@ -899,7 +931,8 @@ def metrics_compute(
     does), a subject whose numbers did not change is left in place, so a
     second run over unchanged data fits and publishes nothing. Refuses to
     publish, and rolls back, when an observation's members are not all in
-    the snapshot.
+    the snapshot. `--source` limits the fit and the compute to those
+    sources; the coverage statistics of every source are recorded either way.
     """
     import json
 
@@ -914,6 +947,7 @@ def metrics_compute(
     from judgemetrics.metrics.registry import RegistryError
     from judgemetrics.metrics.snapshot import SnapshotError
 
+    sources = _registered_sources(source)
     settings = get_settings()
     configure_logging(settings)
     try:
@@ -925,7 +959,9 @@ def metrics_compute(
     try:
         with Session(engine) as session:
             try:
-                result = compute_and_publish(session, settings, subjects=subjects, label=label)
+                result = compute_and_publish(
+                    session, settings, subjects=subjects, label=label, sources=sources
+                )
             except (PublishError, SnapshotError, ComputeError, RegistryError) as exc:
                 session.rollback()
                 typer.echo(f"error: {exc}", err=True)
@@ -936,11 +972,15 @@ def metrics_compute(
     summary = {
         "snapshot": result.snapshot.content_hash,
         "snapshot_reused": result.snapshot.reused,
+        "sources": None if sources is None else sorted(sources),
         "subjects": len(result.computed.subjects),
         "sources_skipped": list(result.computed.sources_skipped),
         "models_fitted": result.models_fitted,
         "models_read": result.models_read,
+        "not_observable_by_slug": _count_by_slug(result.computed.not_observable),
+        "not_attributable_by_slug": _count_by_slug(result.computed.not_attributable),
         **{k: v for k, v in result.published.as_log().items() if k != "snapshot"},
+        **({} if result.coverage is None else result.coverage.as_log()),
     }
     if as_json:
         typer.echo(json.dumps(summary, indent=2, sort_keys=True))
@@ -950,10 +990,15 @@ def metrics_compute(
     typer.echo(
         f"subjects={summary['subjects']} observations={summary['observations']} "
         f"suppressed={summary['suppressed']} not_observable={summary['not_observable']} "
+        f"not_attributable={summary['not_attributable']} "
         f"superseded={summary['superseded']} members={summary['members']} "
         f"subjects_published={summary['subjects_published']} "
         f"subjects_unchanged={summary['subjects_unchanged']}"
     )
+    if result.coverage is not None:
+        typer.echo(
+            f"coverage statistics={result.coverage.statistics} written={result.coverage.written}"
+        )
     if summary["sources_skipped"]:
         typer.echo(f"sources skipped (no coverage window): {len(summary['sources_skipped'])}")
 
@@ -996,26 +1041,93 @@ def metrics_verify(
         typer.echo(
             f"snapshots={len(result.snapshots)} observations={result.observations} "
             f"verified={result.verified} mismatches={len(result.mismatches)} "
-            f"unverifiable={len(result.unverifiable)}"
+            f"unverifiable={len(result.unverifiable)} "
+            f"coverage_statistics={result.coverage_statistics} "
+            f"coverage_mismatches={len(result.coverage_mismatches)}"
         )
-        lines = [
-            f"mismatch: {m.slug} {m.subject_type}:{m.subject_id}"
-            + ("" if m.window_days is None else f"@{m.window_days}")
-            + ("" if m.dimension_value is None else f"[{m.dimension_value}]")
-            + f" column={m.column} stored={m.as_dict()['stored']} "
-            f"recomputed={m.as_dict()['recomputed']} observation={m.observation_id}"
-            for m in result.mismatches
-        ] + [
-            f"unverifiable: {u.slug} observation={u.observation_id} snapshot={u.snapshot}: "
-            f"{u.reason}"
-            for u in result.unverifiable
-        ]
+        lines = (
+            [
+                f"mismatch: {m.slug} {m.subject_type}:{m.subject_id}"
+                + ("" if m.window_days is None else f"@{m.window_days}")
+                + ("" if m.dimension_value is None else f"[{m.dimension_value}]")
+                + f" column={m.column} stored={m.as_dict()['stored']} "
+                f"recomputed={m.as_dict()['recomputed']} observation={m.observation_id}"
+                for m in result.mismatches
+            ]
+            + [
+                f"unverifiable: {u.slug} observation={u.observation_id} snapshot={u.snapshot}: "
+                f"{u.reason}"
+                for u in result.unverifiable
+            ]
+            + [
+                f"coverage mismatch: {c.statistic} {c.scope_type}:{c.scope_id} source={c.source_id} "
+                f"column={c.column} stored={c.stored} recomputed={c.recomputed} snapshot={c.snapshot}"
+                for c in result.coverage_mismatches
+            ]
+        )
         for line in lines[:VERIFY_REPORT_LINES]:
             typer.echo(line, err=True)
         if len(lines) > VERIFY_REPORT_LINES:
             typer.echo(f"... {len(lines) - VERIFY_REPORT_LINES} more", err=True)
     if not result.ok:
         raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+
+
+@metrics_app.command("coverage")
+def metrics_coverage(
+    source: Annotated[
+        list[str] | None,
+        typer.Option("--source", help="Only these sources (a registered source id; repeatable)."),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Print the latest snapshot's coverage statistics (read-only role).
+
+    Per source, jurisdiction, and court: the brief's six coverage statistics
+    and the unknown-actor share, each numerator over denominator with its
+    share, beside the source's person-key scope (docs/METHODOLOGY.md
+    "Coverage statistics"). Exits 1 when no snapshot holds statistics.
+    """
+    import json
+
+    from sqlalchemy.orm import Session
+
+    from judgemetrics.config import get_settings
+    from judgemetrics.db.session import make_engine
+    from judgemetrics.logging import configure_logging
+    from judgemetrics.metrics.coverage import latest_statistics
+
+    sources = _registered_sources(source)
+    settings = get_settings()
+    configure_logging(settings)
+    engine = make_engine(settings.database_url)
+    try:
+        with Session(engine) as session:
+            content_hash, rows = latest_statistics(
+                session, sources=None if sources is None else sorted(sources)
+            )
+            session.rollback()
+    finally:
+        engine.dispose()
+    if content_hash is None:
+        typer.echo("error: no snapshot holds coverage statistics: run `metrics compute`", err=True)
+        raise typer.Exit(EXIT_RUN_NOT_SUCCEEDED)
+    if as_json:
+        payload = {"snapshot": content_hash, "statistics": [row.as_dict() for row in rows]}
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(f"snapshot {content_hash}")
+    current: tuple[str, str, str] | None = None
+    for row in rows:
+        scope = (row.source, row.scope_type, row.scope_id)
+        if scope != current:
+            current = scope
+            typer.echo(
+                f"{row.source} {row.scope_type} {row.scope_name} "
+                f"(person key: {row.person_key_scope or 'none'})"
+            )
+        share = "-" if row.share is None else f"{row.share:.6f}"
+        typer.echo(f"  {row.statistic}\t{row.numerator}/{row.denominator}\t{share}")
 
 
 # --- provenance: the chain behind one observation ----------------------------------------
@@ -1137,9 +1249,12 @@ def models_fit(
         typer.echo(json.dumps(payload, indent=2, sort_keys=True))
         return
     typer.echo(f"snapshot {summary.snapshot}")
+    # Issue #40: the run's count is `new`; the statuses are labelled as such, so the
+    # word `fitted` appears once, as a status.
+    statuses = " ".join(f"{status}={count}" for status, count in payload["statuses"].items())
     typer.echo(
-        f"fitted={payload['fitted']} existing={payload['existing']} "
-        + " ".join(f"{status}={count}" for status, count in payload["statuses"].items())
+        f"new={payload['fitted']} existing={payload['existing']}"
+        + (f" status {statuses}" if statuses else "")
     )
     for model in payload["models"]:
         window = "-" if model["window_days"] is None else model["window_days"]
@@ -1187,12 +1302,15 @@ def models_list(
     if not rows:
         typer.echo("no models: run `judgemetrics models fit`")
         return
-    typer.echo("id\tsource\ttarget\twindow\tstatus\tn_train\tevents_train\tn_test\tevents_test")
+    typer.echo(
+        "id\tsource\ttarget\twindow\tstatus\tn_train\tevents_train\tn_test\tevents_test\treason"
+    )
     for row in rows:
         window = "-" if row.window_days is None else str(row.window_days)
         typer.echo(
             f"{row.id}\t{row.source}\t{row.target}\t{window}\t{row.status}\t"
-            f"{row.n_train}\t{row.events_train}\t{row.n_test}\t{row.events_test}"
+            f"{row.n_train}\t{row.events_train}\t{row.n_test}\t{row.events_test}\t"
+            f"{row.reason or '-'}"
         )
 
 
@@ -1215,6 +1333,7 @@ def render_model_card(card: dict[str, Any]) -> list[str]:
             f"{name}={diagnostics[name]}"
             for name in (
                 "status",
+                "reason",
                 "brier",
                 "brier_skill",
                 "auc",
@@ -1369,6 +1488,14 @@ def validation_report(
             file_okay=False,
         ),
     ] = None,
+    source: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--source",
+            help="Only these sources (a registered source id; repeatable; default: every "
+            "source with a model whose fit was attempted).",
+        ),
+    ] = None,
 ) -> None:
     """Render docs/VALIDATION.md from the latest snapshot's expected-outcome models.
 
@@ -1393,6 +1520,7 @@ def validation_report(
         write_report,
     )
 
+    sources = _registered_sources(source)
     settings = get_settings()
     configure_logging(settings)
     if truth is not None and not truth.is_dir():
@@ -1404,7 +1532,12 @@ def validation_report(
     try:
         with Session(engine) as session:
             try:
-                report = build_report(session, settings, truth_dir=truth_dir)
+                report = build_report(
+                    session,
+                    settings,
+                    truth_dir=truth_dir,
+                    sources=None if sources is None else sorted(sources),
+                )
             except (ReportError, FairnessError, SnapshotError) as exc:
                 typer.echo(f"error: {exc}", err=True)
                 raise typer.Exit(EXIT_USAGE) from exc

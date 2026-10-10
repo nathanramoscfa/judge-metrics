@@ -42,7 +42,10 @@ from judgemetrics.db.models.enums import (
     SubjectType,
 )
 from judgemetrics.db.models.metrics import (
+    COVERAGE_SCOPES,
+    COVERAGE_STATISTICS,
     MEMBER_KINDS,
+    CoverageStatistic,
     MetricDefinition,
     MetricObservation,
     MetricObservationMember,
@@ -86,6 +89,7 @@ CANONICAL_TABLES: tuple[str, ...] = (
     "metric_snapshot",
     "metric_observation_member",
     "outcome_model",
+    "coverage_statistic",
     "data_quality_issue",
     "correction_request",
     "audit_log",
@@ -111,6 +115,8 @@ RESTRICTED_SCHEMA_TABLES: frozenset[str] = frozenset({"party_attribute"})
 
 __all__ = [
     "CANONICAL_TABLES",
+    "COVERAGE_SCOPES",
+    "COVERAGE_STATISTICS",
     "MEMBER_KINDS",
     "OUTCOME_MODEL_STATUSES",
     "PG_ENUM_NAMES",
@@ -128,6 +134,7 @@ __all__ = [
     "CorrectionStatus",
     "Court",
     "CourtEvent",
+    "CoverageStatistic",
     "DataQualityIssue",
     "Decision",
     "EntityResolutionCandidate",

@@ -53,6 +53,13 @@ async function compareItems(
   return (await response.json()).items as CompareItem[];
 }
 
+/** The methodology version the API serves (never a literal: a registry bump changes it). */
+async function methodologyVersion(request: APIRequestContext): Promise<string> {
+  const response = await request.get(`${API_BASE_URL}/api/v1/metrics`);
+  expect(response.ok(), await response.text()).toBe(true);
+  return (await response.json()).methodology_version as string;
+}
+
 /** A synthetic court whose 365-day new-case ratio has a published row, and that row's judge. */
 async function findPublished(request: APIRequestContext): Promise<{ judgeId: string; judgeName: string; courtId: string }> {
   for (const courtId of await syntheticCourts(request)) {
@@ -101,7 +108,7 @@ test("the judge's risk-adjusted panel shows a ratio, its interval, the methodolo
   await expect(stat.getByTestId("adjusted-expected")).toHaveText(/^[\d,]+\.\d$/);
   await expect(stat.getByTestId("adjusted-pooling")).toContainText("estimate pooled toward 1.0");
   await expect(stat.getByTestId("adjusted-sample")).toContainText("in the ratio");
-  await expect(stat.getByTestId("methodology-version")).toHaveText("Methodology 1.0");
+  await expect(stat.getByTestId("methodology-version")).toHaveText(`Methodology ${await methodologyVersion(request)}`);
   await expect(stat.getByTestId("methodology-link")).toHaveAttribute("href", `/methodology#${METRIC}`);
   await expect(stat.getByTestId("adjusted-cohort")).toContainText("Expected counts from model expected-logit-v1");
   await expect(stat.getByTestId("adjusted-interpretation")).toContainText("An O/E ratio above 1 means");
@@ -182,5 +189,5 @@ test("a judge whose adjusted row is suppressed shows the reason", async ({ page,
   await expect(stat).toHaveAttribute("data-reason", scenario.reason);
   await expect(stat.getByTestId("adjusted-suppression")).toContainText("Suppressed:");
   expect(await stat.getByTestId("adjusted-figures").count()).toBe(0);
-  await expect(stat.getByTestId("methodology-version")).toHaveText("Methodology 1.0");
+  await expect(stat.getByTestId("methodology-version")).toHaveText(`Methodology ${await methodologyVersion(request)}`);
 });

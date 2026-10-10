@@ -10,7 +10,13 @@
 # changed in a way that changes a published number; a changed entry also
 # bumps its own `version` (old definition rows stay as history);
 # `methodology_version` is bumped when the semantics stated in the
-# methodology change (0.1 is the first registry; 1.0 is Phase 4's).
+# methodology change (0.1 is the first registry; 1.0 is Phase 4's; 1.1 is
+# Phase 5 Step 5's real-data semantics). Version 3 (methodology 1.1) adds the
+# assignment gate disposing_judge and moves the disposition family to it, reads
+# the vocabulary's finality in every disposed population, counts each
+# sentencing decision once, declares the calendar-year periods and the
+# revocation scopes, and states every threshold's rationale beside the cohort
+# sizes it was decided against.
 #
 # Fields per metric: slug (snake_case, unique), name, kind (count, share,
 # windowed_rate, survival, distribution, median, observed_expected),
@@ -19,8 +25,10 @@
 # sentences, index_events), description, numerator, denominator,
 # eligibility (prose the methodology publishes), attribution (decision_type, actor_types,
 # discretion, assignment_gate: deciding_judge, assigned_at_time,
-# assigned_ever, sentencing_judge, court_of_case - the gate applies to a
-# judge subject; a court subject always takes the court's cases),
+# assigned_ever, sentencing_judge, disposing_judge, court_of_case - the gate
+# applies to a judge subject, and a source that does not record it publishes no
+# observation of the metric for its judges (NotAttributable); a court subject
+# always takes the court's cases),
 # counted (optional column conditions a row must meet to enter the
 # numerator or the count), measure (medians: the quantity), index_event
 # (pretrial_release, disposition, sentence, or null), outcome (a
@@ -34,23 +42,16 @@
 # outcome_model.yaml; minimum_expected: the model-expected count below which
 # the ratio is withheld).
 #
-# Suppression rationale: the brief asks that judge-level measures over
-# too small a sample be suppressed or flagged and the thresholds
-# documented publicly. Every share, windowed rate, survival estimate, and
-# median is suppressed below a denominator of 10 (a single event moves a
-# rate by ten points or more; a median of fewer than ten values is one or
-# two cases). Counts and distributions carry threshold 0: they are the
-# sample sizes the presentation rules require beside every rate, and a
-# count is not an unstable estimate of anything. An observed-to-expected
-# ratio (registry version 2) is suppressed below a cohort of 30 and below a
-# model-expected count of 5, and whenever its model is not fitted: a ratio
-# of two small counts is unstable well above the ten members a share needs
-# (its numerator and its denominator both move by chance), and an expected
-# count below five makes the ratio a function of a handful of predicted
-# events. Every suppressed row records why (suppression_reason:
-# below_threshold, expected_below_minimum, model_unavailable).
-version: 2
-methodology_version: "1.0"
+# Top-level blocks beside the metrics (version 3): periods (the whole window
+# and the calendar years, with each population's anchor), revocation_scopes
+# (what a revocation is after each index event), and suppression (the rule,
+# every threshold's rationale, the measured cohort sizes, and the published
+# eligible count). The loader checks that every metric appears in exactly one
+# threshold group at the threshold its entry carries, that every suppressed
+# metric's threshold carries a measured cohort, and that the anchors are the
+# engine's.
+version: 3
+methodology_version: "1.1"
 
 known_limitations:
   - >-
@@ -78,6 +79,55 @@ known_limitations:
     Never conceal these limitations merely because a simplified number is
     easier to market.
 
+periods:
+  whole_window: >-
+    Every metric publishes one observation over the source's whole coverage
+    window: period_start is the source's coverage_start and period_end its
+    coverage_end. A row enters a period only when its anchor (below) falls
+    inside the coverage window, so every counted row lies within the dates the
+    observation states; a row whose anchor the source dates outside its own
+    window (a typo date, a disposition before the corpus begins) enters no
+    observation and stays in the data-quality issues.
+  calendar_year:
+    kinds: [count, share, windowed_rate, survival, distribution, median]
+    anchors:
+      cases: filed_at
+      defendants: filed_at
+      pretrial_decisions: decision_at
+      disposed_charges: disposed_at
+      disposed_cases: disposition_at
+      sentences: sentence_at
+      index_events: index_at
+    rule: >-
+      Beside the whole window, every metric of these kinds publishes one
+      observation per calendar year (UTC) in which its population has an
+      anchor: the filing for the case counts, the decision for the pretrial
+      decisions, the disposition for a disposed charge, the case disposition
+      for a disposed case, the sentence for a sentence, and the index time for
+      a windowed rate or a survival estimate. period_start and period_end are
+      the year's first and last days. A year holds exactly the rows of the
+      whole window whose anchor falls in it, so the years' counts,
+      numerators, denominators, and followed and counted members add up to the
+      whole window's (a distinct count of persons and a median or survival
+      estimate do not add). Follow-up is still censored at the coverage end,
+      and suppression applies to each year as to any cohort. An
+      observed-to-expected ratio is published over the whole window only:
+      its cohorts are too small per year.
+
+revocation_scopes:
+  definitions:
+    release: >-
+      A revoked pretrial release: the court revokes the release (or the bond)
+      it granted the person before the case was disposed.
+    supervision: >-
+      A revoked supervision a sentence imposed: probation, conditional
+      discharge, parole, or mandatory supervised release revoked for a
+      violation of its conditions.
+  by_index_event:
+    pretrial_release: release
+    disposition: supervision
+    sentence: supervision
+
 suppression:
   default_threshold: 10
   rule: >-
@@ -87,20 +137,458 @@ suppression:
     small and withholds the numerator, denominator, value, and interval. An
     observed-to-expected ratio is also suppressed when its model-expected count
     is below the metric's minimum (expected_below_minimum) or its outcome model
-    is not fitted (model_unavailable). The stored row keeps its numbers so
-    `metrics verify` can reproduce it.
+    is not fitted (model_unavailable). The rule applies to every period: a
+    calendar year whose cohort is below the threshold is withheld like any
+    small cohort. The stored row keeps its numbers so `metrics verify` can
+    reproduce it.
   rationale: >-
-    Shares, windowed rates, survival estimates, and medians are suppressed
-    below a denominator of 10: with fewer than ten followed members a single
-    event moves a rate by ten percentage points or more, and a median of fewer
-    than ten values describes one or two cases. Counts and distributions carry
-    a threshold of 0 because they are the sample sizes the presentation rules
-    require beside every rate, and a count is not an unstable estimate.
-    Observed-to-expected ratios are suppressed below a cohort of 30 and below an
-    expected count of 5: a ratio of two small counts is unstable well above the
-    ten members a share needs, because both its numerator and its denominator
-    move by chance, and an expected count below five makes the ratio a function
-    of a handful of predicted events.
+    Every threshold below is stated with its reason and the cohort sizes it
+    was decided against (measurements): the measured quantiles of each
+    denominator per source, subject type, and period, never a subject's own
+    count.
+  eligible_count: >-
+    A suppressed observation keeps its eligible count public (Phase 3 finding
+    3.5, revisited on Cook County's cohorts). Suppression withholds an
+    unstable estimate, not the size of a cohort: the counts that are a share's
+    denominator and numerator are published as counts in their own right
+    (pretrial_decisions, pretrial_released, sentence_count, the disposition
+    distribution), every count names cases and decisions, never a person, and
+    a reader needs the eligible count to see why a figure is withheld and how
+    much of the cohort a window could follow.
+  thresholds:
+    - threshold: 0
+      metrics:
+        - eligible_cases
+        - eligible_defendants
+        - pretrial_decisions
+        - pretrial_released
+        - pretrial_detained
+        - statutory_release_count
+        - unknown_actor_pretrial_count
+        - disposition_distribution
+        - sentence_count
+      rationale: >-
+        Counts and the disposition distribution are never suppressed: they are
+        the sample sizes the presentation rules require beside every rate, a
+        count is not an estimate whose noise a threshold could tame, and no
+        count has a person-level dimension.
+    - threshold: 10
+      metrics:
+        - pretrial_release_share
+        - judicial_dismissal_rate
+      rationale: >-
+        Below 10 attributed rows one decision moves a share by ten percentage
+        points or more. Cook County's judge cohorts are bimodal: a quarter of
+        judge-years hold at most four disposed charges (judges the exports name
+        on a handful of rows) while the median judge-year holds 25 and the
+        upper quartile over 600, so the floor withholds that sparse tail (38%
+        of judge-years, 35% of whole windows) and almost nothing else; only 13%
+        of judge cohorts sit between 10 and 29, and they are published with
+        their 95% Wilson interval (about +/-0.28 at 10, +/-0.17 at 30), which
+        states the uncertainty a higher floor would hide. Court cohorts run to
+        the thousands. On the demo the floor withholds no whole-window judge
+        share and a quarter to a third of judge-years.
+    - threshold: 10
+      metrics:
+        - failure_to_appear_rate
+        - new_case_rate
+        - new_charge_rate
+        - reconviction_rate
+        - release_violation_rate
+        - revocation_rate
+        - rearrest_rate
+        - failure_to_appear_survival
+        - new_case_survival
+        - reconviction_survival
+        - new_case_rate_after_disposition
+        - new_charge_rate_after_disposition
+        - reconviction_rate_after_disposition
+        - revocation_rate_after_disposition
+        - new_case_rate_after_sentence
+        - new_charge_rate_after_sentence
+        - reconviction_rate_after_sentence
+        - revocation_rate_after_sentence
+      rationale: >-
+        A fixed-window rate is suppressed below 10 followed members and a
+        survival estimate below a cohort of 10: under it one outcome moves the
+        rate by ten points or more. The followed cohorts shrink with the window
+        and the period - Cook County's judge-years follow a median of 7
+        members for a year after a disposition and 4 for three years, and the
+        latest years follow none for the longest windows - so the floor
+        withholds the sparse tail (45% to 60% of judge-years, as the source
+        names many judges on a few rows) while the 6% to 15% of judge cohorts
+        between 10 and 29 are published with their interval. Raising the floor
+        to 30 would also withhold a third of the demo's whole-window judge
+        rates at the longest window without narrowing any published interval.
+    - threshold: 10
+      metrics:
+        - median_days_to_disposition
+        - incarceration_days_median
+        - probation_days_median
+        - incarceration_days_median_by_offense_category
+      rationale: >-
+        A median of fewer than ten values describes one or two cases. Cook
+        County's judges hold a median of 16 disposed cases over the whole
+        window and 10 per year, and of 7 to 16 sentences with a term; the floor
+        withholds the judges the exports name on a few rows (42% to 54% of
+        judge cohorts) and the thin offense categories of a year, while only 6%
+        to 15% of judge cohorts sit between 10 and 29 (24% of a category's
+        judge-years). A median carries no interval, so the floor is the only
+        guard against a single case.
+    - threshold: 30
+      metrics:
+        - pretrial_release_observed_expected
+        - new_case_observed_expected
+        - failure_to_appear_observed_expected
+      rationale: >-
+        An observed-to-expected ratio is suppressed below 30 members in the
+        ratio and below an expected count of 5: a ratio of two small counts is
+        unstable well above the ten members a share needs, because both its
+        numerator and its denominator move by chance, and an expected count
+        below five makes the ratio a function of a handful of predicted events.
+        On the demo the floor withholds 17% to 21% of whole-window judge
+        ratios. Cook County publishes no ratio: it does not record the
+        deciding judge a ratio is attributed to.
+  measurements:
+    measured_on: '2026-10-09'
+    method: >-
+      Counted from the canonical tables through the engine's own population
+      rules (the anchor inside the coverage window, finality, the disposing
+      and the sentencing judge), never from member rows: the full Cook County
+      corpus as ingested on 2026-10-09 (501,012 cases) and the demo seed's
+      world (seed 20260916, 5,200 cases). A cohort is one subject and one
+      period; its size is the metric's denominator - the attributed rows of a
+      share, the rows with a value of a median, the followed members of a
+      fixed-window rate at 365 and at 1095 days (a survival estimate's cohort
+      is its whole, at least as large). Quantiles are nearest-rank;
+      under_threshold is the share of the cohorts below the threshold their
+      metrics carry. A source is not measured for a metric it cannot attribute
+      or observe.
+    cohorts:
+      - name: pretrial_decisions
+        metrics:
+          - pretrial_release_share
+        sizes:
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 7, p10: 17499, p25: 21373, p50: 23389, p75: 51200, p90: 157851,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 94, p10: 873, p25: 1356, p50: 1865, p75: 2740, p90: 8764,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 28, p25: 59, p50: 106, p75: 183, p90: 473,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 177, p10: 3, p25: 7, p50: 14, p75: 34, p90: 66,
+             under_threshold: 0.333}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 5, p10: 844, p25: 889, p50: 908, p75: 939, p90: 954,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 40, p10: 82, p25: 95, p50: 107, p75: 128, p90: 145,
+             under_threshold: 0.0}
+      - name: release_cohort
+        metrics:
+          - failure_to_appear_rate
+          - new_case_rate
+          - new_charge_rate
+          - reconviction_rate
+          - release_violation_rate
+          - revocation_rate
+          - rearrest_rate
+          - failure_to_appear_survival
+          - new_case_survival
+          - reconviction_survival
+        sizes:
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 24, p10: 23, p25: 36, p50: 60, p75: 117, p90: 271,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 1095,
+             cohorts: 24, p10: 20, p25: 25, p50: 45, p75: 81, p90: 182,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 365,
+             cohorts: 177, p10: 0, p25: 4, p50: 8, p75: 19, p90: 37,
+             under_threshold: 0.559}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 1095,
+             cohorts: 177, p10: 0, p25: 0, p50: 5, p75: 13, p90: 30,
+             under_threshold: 0.689}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 365,
+             cohorts: 5, p10: 271, p25: 490, p50: 512, p75: 518, p90: 650,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 1095,
+             cohorts: 5, p10: 197, p25: 320, p50: 337, p75: 348, p90: 447,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 365,
+             cohorts: 40, p10: 0, p25: 40, p50: 67, p75: 82, p90: 92,
+             under_threshold: 0.125}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 1095,
+             cohorts: 40, p10: 0, p25: 0, p50: 41, p75: 69, p90: 82,
+             under_threshold: 0.375}
+      - name: disposed_charges
+        metrics:
+          - judicial_dismissal_rate
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 451, p10: 2, p25: 5, p50: 36, p75: 1363, p90: 8892,
+             under_threshold: 0.346}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 2596, p10: 1, p25: 4, p50: 25, p75: 615, p90: 1411,
+             under_threshold: 0.381}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 7, p10: 6241, p25: 55189, p50: 104094, p75: 108312, p90: 630610,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 98, p10: 160, p25: 3836, p50: 6019, p75: 8638, p90: 40450,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 43, p25: 71, p50: 133, p75: 263, p90: 498,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 174, p10: 6, p25: 10, p50: 18, p75: 41, p90: 72,
+             under_threshold: 0.247}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 5, p10: 1378, p25: 1464, p50: 1511, p75: 1540, p90: 1606,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 40, p10: 69, p25: 171, p50: 188, p75: 224, p90: 241,
+             under_threshold: 0.0}
+      - name: disposed_cases
+        metrics:
+          - median_days_to_disposition
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 451, p10: 1, p25: 3, p50: 16, p75: 646, p90: 2687,
+             under_threshold: 0.421}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 2568, p10: 1, p25: 2, p50: 10, p75: 209, p90: 409,
+             under_threshold: 0.496}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 7, p10: 1662, p25: 18862, p50: 27571, p75: 34862, p90: 211101,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 98, p10: 88, p25: 1251, p50: 1910, p75: 2581, p90: 12361,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 28, p25: 47, p50: 87, p75: 163, p90: 296,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 174, p10: 3, p25: 7, p50: 12, p75: 23, p90: 44,
+             under_threshold: 0.414}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 5, p10: 858, p25: 922, p50: 969, p75: 984, p90: 997,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 40, p10: 45, p25: 106, p50: 123, p75: 135, p90: 159,
+             under_threshold: 0.0}
+      - name: disposition_cohort
+        metrics:
+          - new_case_rate_after_disposition
+          - new_charge_rate_after_disposition
+          - reconviction_rate_after_disposition
+          - revocation_rate_after_disposition
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 451, p10: 1, p25: 2, p50: 15, p75: 468, p90: 2475,
+             under_threshold: 0.437}
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: 1095,
+             cohorts: 451, p10: 0, p25: 2, p50: 11, p75: 294, p90: 2272,
+             under_threshold: 0.488}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: 365,
+             cohorts: 2568, p10: 1, p25: 1, p50: 7, p75: 169, p90: 415,
+             under_threshold: 0.53}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: 1095,
+             cohorts: 2568, p10: 0, p25: 1, p50: 4, p75: 114, p90: 395,
+             under_threshold: 0.601}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: 365,
+             cohorts: 7, p10: 1605, p25: 17873, p50: 25319, p75: 32264, p90: 201843,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: 1095,
+             cohorts: 7, p10: 1506, p25: 15318, p50: 21555, p75: 27300, p90: 175820,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: 365,
+             cohorts: 98, p10: 29, p25: 988, p50: 1782, p75: 2643, p90: 10975,
+             under_threshold: 0.071}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: 1095,
+             cohorts: 98, p10: 0, p25: 42, p50: 1634, p75: 2515, p90: 9302,
+             under_threshold: 0.214}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 24, p10: 28, p25: 39, p50: 58, p75: 119, p90: 200,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 1095,
+             cohorts: 24, p10: 18, p25: 22, p50: 35, p75: 73, p90: 120,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 365,
+             cohorts: 174, p10: 0, p25: 4, p50: 9, p75: 16, p90: 33,
+             under_threshold: 0.534}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 1095,
+             cohorts: 174, p10: 0, p25: 0, p50: 4, p75: 11, p90: 23,
+             under_threshold: 0.713}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 365,
+             cohorts: 5, p10: 634, p25: 707, p50: 730, p75: 735, p90: 738,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 1095,
+             cohorts: 5, p10: 408, p25: 445, p50: 446, p75: 450, p90: 457,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 365,
+             cohorts: 40, p10: 0, p25: 49, p50: 107, p75: 118, p90: 121,
+             under_threshold: 0.125}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 1095,
+             cohorts: 40, p10: 0, p25: 0, p50: 48, p75: 97, p90: 112,
+             under_threshold: 0.375}
+      - name: incarceration_terms
+        metrics:
+          - incarceration_days_median
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 355, p10: 0, p25: 1, p50: 7, p75: 614, p90: 1697,
+             under_threshold: 0.507}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 1822, p10: 0, p25: 1, p50: 15, p75: 157, p90: 237,
+             under_threshold: 0.47}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 7, p10: 753, p25: 6898, p50: 11790, p75: 16291, p90: 89003,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 98, p10: 8, p25: 446, p50: 771, p75: 1318, p90: 4958,
+             under_threshold: 0.102}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 13, p25: 15, p50: 26, p75: 75, p90: 134,
+             under_threshold: 0.083}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 173, p10: 1, p25: 2, p50: 4, p75: 11, p90: 20,
+             under_threshold: 0.717}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 5, p10: 270, p25: 272, p50: 274, p75: 291, p90: 303,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 40, p10: 8, p25: 30, p50: 37, p75: 43, p90: 46,
+             under_threshold: 0.1}
+      - name: probation_terms
+        metrics:
+          - probation_days_median
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 355, p10: 0, p25: 1, p50: 9, p75: 501, p90: 1169,
+             under_threshold: 0.51}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 1822, p10: 0, p25: 1, p50: 16, p75: 114, p90: 170,
+             under_threshold: 0.464}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 7, p10: 274, p25: 8654, p50: 10526, p75: 14734, p90: 57847,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 98, p10: 5, p25: 485, p50: 757, p75: 1053, p90: 3315,
+             under_threshold: 0.112}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 20, p25: 33, p50: 53, p75: 121, p90: 197,
+             under_threshold: 0.042}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 173, p10: 2, p25: 4, p50: 8, p75: 16, p90: 29,
+             under_threshold: 0.601}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 5, p10: 413, p25: 441, p50: 442, p75: 458, p90: 475,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 40, p10: 19, p25: 45, p50: 58, p75: 65, p90: 72,
+             under_threshold: 0.0}
+      - name: incarceration_terms_by_category
+        metrics:
+          - incarceration_days_median_by_offense_category
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 1670, p10: 1, p25: 2, p50: 16, p75: 103, p90: 273,
+             under_threshold: 0.429}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 8293, p10: 1, p25: 2, p50: 8, p75: 26, p90: 48,
+             under_threshold: 0.541}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 66, p10: 10, p25: 132, p50: 726, p75: 2163, p90: 4307,
+             under_threshold: 0.076}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 814, p10: 3, p25: 13, p50: 60, p75: 169, p90: 406,
+             under_threshold: 0.201}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 154, p10: 1, p25: 2, p50: 5, p75: 11, p90: 24,
+             under_threshold: 0.688}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: null,
+             cohorts: 603, p10: 1, p25: 1, p50: 2, p75: 3, p90: 4,
+             under_threshold: 0.973}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: null,
+             cohorts: 35, p10: 22, p25: 25, p50: 30, p75: 56, p90: 67,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: null,
+             cohorts: 265, p10: 2, p25: 3, p50: 4, p75: 7, p90: 11,
+             under_threshold: 0.853}
+      - name: sentence_cohort
+        metrics:
+          - new_case_rate_after_sentence
+          - new_charge_rate_after_sentence
+          - reconviction_rate_after_sentence
+          - revocation_rate_after_sentence
+        sizes:
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 355, p10: 1, p25: 2, p50: 15, p75: 963, p90: 2730,
+             under_threshold: 0.462}
+          - {source: cook_sao, subject_type: judge, period: whole_window, window_days: 1095,
+             cohorts: 355, p10: 0, p25: 1, p50: 7, p75: 596, p90: 2355,
+             under_threshold: 0.535}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: 365,
+             cohorts: 1822, p10: 1, p25: 1, p50: 20, p75: 241, p90: 397,
+             under_threshold: 0.449}
+          - {source: cook_sao, subject_type: judge, period: calendar_year, window_days: 1095,
+             cohorts: 1822, p10: 0, p25: 1, p50: 6, p75: 209, p90: 384,
+             under_threshold: 0.53}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: 365,
+             cohorts: 7, p10: 853, p25: 14431, p50: 19239, p75: 27883, p90: 128291,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: whole_window, window_days: 1095,
+             cohorts: 7, p10: 802, p25: 12495, p50: 16730, p75: 24024, p90: 111954,
+             under_threshold: 0.0}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: 365,
+             cohorts: 98, p10: 3, p25: 662, p50: 1432, p75: 2169, p90: 5573,
+             under_threshold: 0.163}
+          - {source: cook_sao, subject_type: court, period: calendar_year, window_days: 1095,
+             cohorts: 98, p10: 0, p25: 3, p50: 1273, p75: 2066, p90: 3850,
+             under_threshold: 0.286}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 24, p10: 28, p25: 35, p50: 57, p75: 122, p90: 196,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 1095,
+             cohorts: 24, p10: 17, p25: 22, p50: 34, p75: 72, p90: 114,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 365,
+             cohorts: 173, p10: 0, p25: 4, p50: 9, p75: 17, p90: 32,
+             under_threshold: 0.549}
+          - {source: synthetic, subject_type: judge, period: calendar_year, window_days: 1095,
+             cohorts: 173, p10: 0, p25: 0, p50: 4, p75: 11, p90: 23,
+             under_threshold: 0.717}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 365,
+             cohorts: 5, p10: 435, p25: 467, p50: 478, p75: 483, p90: 499,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: whole_window, window_days: 1095,
+             cohorts: 5, p10: 280, p25: 284, p50: 286, p75: 293, p90: 307,
+             under_threshold: 0.0}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 365,
+             cohorts: 40, p10: 0, p25: 28, p50: 70, p75: 79, p90: 83,
+             under_threshold: 0.125}
+          - {source: synthetic, subject_type: court, period: calendar_year, window_days: 1095,
+             cohorts: 40, p10: 0, p25: 0, p50: 27, p75: 64, p90: 74,
+             under_threshold: 0.375}
+      - name: adjusted_decisions
+        metrics:
+          - pretrial_release_observed_expected
+        sizes:
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: null,
+             cohorts: 24, p10: 28, p25: 59, p50: 106, p75: 183, p90: 473,
+             under_threshold: 0.167}
+      - name: adjusted_release_cohort
+        metrics:
+          - new_case_observed_expected
+          - failure_to_appear_observed_expected
+        sizes:
+          - {source: synthetic, subject_type: judge, period: whole_window, window_days: 365,
+             cohorts: 24, p10: 23, p25: 36, p50: 60, p75: 117, p90: 271,
+             under_threshold: 0.208}
 
 metrics:
   # --- eligibility -------------------------------------------------------------
@@ -509,7 +997,10 @@ metrics:
       The pretrial-release cohort: attributed pretrial decisions (the gate of
       pretrial_decisions) with detained = false and a release time; the index
       time is the release time, and exposure starts there unless an
-      incarceration term of the person contains it (Exposure).
+      incarceration term of the person contains it (Exposure). The outcome is
+      a revocation of scope release - a revoked pretrial release (Revocation
+      scopes) - so it is published only for a source that documents revoked
+      releases.
     attribution:
       decision_type: pretrial_release
       actor_types: [judge]
@@ -521,7 +1012,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: rearrest_rate
     name: Rearrest rate after pretrial release
@@ -677,24 +1168,27 @@ metrics:
       before the coverage end).
     eligibility: >-
       The disposition cohort: one index event per defendant of every disposed
-      case attributed to the judge assigned at the case disposition time
-      (court: the court's disposed cases); the index time is the case
-      disposition time and the exposure start is deferred to sentence_at +
-      incarceration_days when the case's sentence carries a positive
-      incarceration_days, then past every other incarceration term of the
-      person that contains it (Exposure).
+      case - a case with a charge carrying a final disposition and a
+      disposition time - attributed to the case's disposing judge, the judge
+      the source records on the charge whose disposal sets the case
+      disposition time (ties broken by the source's charge id; court: the
+      court's disposed cases); the index time is the case disposition time and
+      the exposure start is deferred to the end of the case's own
+      incarceration term (sentence_at + incarceration_days) when that ends
+      later, then past every incarceration term of the person that contains
+      it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     index_event: disposition
     outcome: new_case
     windows_days: [30, 90, 180, 365, 730, 1095]
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: new_charge_rate_after_disposition
     name: New-charge rate after disposition
@@ -712,24 +1206,27 @@ metrics:
       before the coverage end).
     eligibility: >-
       The disposition cohort: one index event per defendant of every disposed
-      case attributed to the judge assigned at the case disposition time
-      (court: the court's disposed cases); the index time is the case
-      disposition time and the exposure start is deferred to sentence_at +
-      incarceration_days when the case's sentence carries a positive
-      incarceration_days, then past every other incarceration term of the
-      person that contains it (Exposure).
+      case - a case with a charge carrying a final disposition and a
+      disposition time - attributed to the case's disposing judge, the judge
+      the source records on the charge whose disposal sets the case
+      disposition time (ties broken by the source's charge id; court: the
+      court's disposed cases); the index time is the case disposition time and
+      the exposure start is deferred to the end of the case's own
+      incarceration term (sentence_at + incarceration_days) when that ends
+      later, then past every incarceration term of the person that contains
+      it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     index_event: disposition
     outcome: new_charge
     windows_days: [30, 90, 180, 365, 730, 1095]
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: reconviction_rate_after_disposition
     name: Reconviction rate after disposition
@@ -747,24 +1244,27 @@ metrics:
       before the coverage end).
     eligibility: >-
       The disposition cohort: one index event per defendant of every disposed
-      case attributed to the judge assigned at the case disposition time
-      (court: the court's disposed cases); the index time is the case
-      disposition time and the exposure start is deferred to sentence_at +
-      incarceration_days when the case's sentence carries a positive
-      incarceration_days, then past every other incarceration term of the
-      person that contains it (Exposure).
+      case - a case with a charge carrying a final disposition and a
+      disposition time - attributed to the case's disposing judge, the judge
+      the source records on the charge whose disposal sets the case
+      disposition time (ties broken by the source's charge id; court: the
+      court's disposed cases); the index time is the case disposition time and
+      the exposure start is deferred to the end of the case's own
+      incarceration term (sentence_at + incarceration_days) when that ends
+      later, then past every incarceration term of the person that contains
+      it (Exposure).
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     index_event: disposition
     outcome: reconviction
     windows_days: [30, 90, 180, 365, 730, 1095]
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: revocation_rate_after_disposition
     name: Revocation rate after disposition
@@ -782,24 +1282,29 @@ metrics:
       before the coverage end).
     eligibility: >-
       The disposition cohort: one index event per defendant of every disposed
-      case attributed to the judge assigned at the case disposition time
-      (court: the court's disposed cases); the index time is the case
-      disposition time and the exposure start is deferred to sentence_at +
-      incarceration_days when the case's sentence carries a positive
-      incarceration_days, then past every other incarceration term of the
-      person that contains it (Exposure).
+      case - a case with a charge carrying a final disposition and a
+      disposition time - attributed to the case's disposing judge, the judge
+      the source records on the charge whose disposal sets the case
+      disposition time (ties broken by the source's charge id; court: the
+      court's disposed cases); the index time is the case disposition time and
+      the exposure start is deferred to the end of the case's own
+      incarceration term (sentence_at + incarceration_days) when that ends
+      later, then past every incarceration term of the person that contains
+      it (Exposure). The outcome is a revocation of
+      scope supervision (Revocation scopes): it counts for a source that
+      documents revoked supervision.
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     index_event: disposition
     outcome: revocation
     windows_days: [30, 90, 180, 365, 730, 1095]
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   # --- windowed rates after sentence -------------------------------------------
   - slug: new_case_rate_after_sentence
@@ -817,8 +1322,9 @@ metrics:
       Cohort members followed for the window (exposure start + w days strictly
       before the coverage end).
     eligibility: >-
-      The sentence cohort: one index event per sentence attributed to the
-      sentencing judge (court: the court's cases); the index time is
+      The sentence cohort: one index event per sentencing decision attributed
+      to the sentencing judge (court: the court's cases) - a sentence a later
+      amended or corrected sentencing replaced is not one; the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
       incarceration_days, then past every other incarceration term of the
@@ -834,7 +1340,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: new_charge_rate_after_sentence
     name: New-charge rate after sentence
@@ -851,8 +1357,9 @@ metrics:
       Cohort members followed for the window (exposure start + w days strictly
       before the coverage end).
     eligibility: >-
-      The sentence cohort: one index event per sentence attributed to the
-      sentencing judge (court: the court's cases); the index time is
+      The sentence cohort: one index event per sentencing decision attributed
+      to the sentencing judge (court: the court's cases) - a sentence a later
+      amended or corrected sentencing replaced is not one; the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
       incarceration_days, then past every other incarceration term of the
@@ -868,7 +1375,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: reconviction_rate_after_sentence
     name: Reconviction rate after sentence
@@ -885,8 +1392,9 @@ metrics:
       Cohort members followed for the window (exposure start + w days strictly
       before the coverage end).
     eligibility: >-
-      The sentence cohort: one index event per sentence attributed to the
-      sentencing judge (court: the court's cases); the index time is
+      The sentence cohort: one index event per sentencing decision attributed
+      to the sentencing judge (court: the court's cases) - a sentence a later
+      amended or corrected sentencing replaced is not one; the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
       incarceration_days, then past every other incarceration term of the
@@ -902,7 +1410,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   - slug: revocation_rate_after_sentence
     name: Revocation rate after sentence
@@ -919,12 +1427,15 @@ metrics:
       Cohort members followed for the window (exposure start + w days strictly
       before the coverage end).
     eligibility: >-
-      The sentence cohort: one index event per sentence attributed to the
-      sentencing judge (court: the court's cases); the index time is
+      The sentence cohort: one index event per sentencing decision attributed
+      to the sentencing judge (court: the court's cases) - a sentence a later
+      amended or corrected sentencing replaced is not one; the index time is
       sentence_at and the exposure start is deferred to sentence_at +
       incarceration_days when the sentence carries a positive
       incarceration_days, then past every other incarceration term of the
-      person that contains it (Exposure).
+      person that contains it (Exposure). The outcome is a revocation of
+      scope supervision (Revocation scopes): it counts for a source that
+      documents revoked supervision.
     attribution:
       decision_type: null
       actor_types: null
@@ -936,7 +1447,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
 
   # --- dispositions ------------------------------------------------------------
   - slug: disposition_distribution
@@ -944,24 +1455,32 @@ metrics:
     kind: distribution
     subject_types: [judge, court]
     population: disposed_charges
-    description: The attributed disposed charges counted by disposition value.
-    numerator: Attributed disposed charges with the dimension's disposition value.
+    description: The attributed disposed charges counted by final disposition value.
+    numerator: Attributed disposed charges with the dimension's final disposition value.
     denominator: "Not applicable: a distribution of counts."
     eligibility: >-
-      Counts of the judicial_dismissal_rate denominator charges by disposition
-      value.
+      Counts of the judicial_dismissal_rate denominator charges by final
+      disposition value - dismissed, acquitted, convicted_plea,
+      convicted_verdict, zero counts included; a pending, superseded, or
+      transferred charge is not disposed and is no value of the distribution.
+      Judge: the charges whose disposing judge is the judge.
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     index_event: null
     outcome: null
     windows_days: null
     dimension: disposition
     suppression_threshold: 0
     unit: count
-    version: "1"
+    version: "2"
+    truth_note: >-
+      truth/metrics.json counts by disposition value; every disposition of the
+      synthetic world is final, and its connector records the judge assigned
+      at a charge's disposition as the disposing judge, so the counts are the
+      same.
 
   - slug: judicial_dismissal_rate
     name: Judicial dismissal rate
@@ -973,18 +1492,20 @@ metrics:
       prosecutor's dismissal is not a judicial dismissal.
     numerator: Attributed charges disposed as dismissed with disposition_actor judge.
     denominator: >-
-      Attributed charges with a disposition other than pending or missing.
+      Attributed charges with a final disposition (dismissed, acquitted,
+      convicted_plea, convicted_verdict) and a disposition time.
     eligibility: >-
       numerator = charges disposed as dismissed with disposition_actor judge;
-      denominator = charges with a disposition other than pending or missing.
-      Judge: charges whose disposed_at falls inside one of the judge's
-      assignment intervals on that case (start_at <= disposed_at < end_at).
-      Court: charges of the court's cases.
+      denominator = charges with a final disposition and a disposition time (a
+      pending, superseded, or transferred charge, or one without a
+      disposition, is not disposed). Judge: charges whose disposing judge -
+      the judge the source records as entering the charge's disposition - is
+      the judge. Court: charges of the court's cases.
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     counted:
       disposition: dismissed
       disposition_actor: judge
@@ -994,7 +1515,13 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: share
-    version: "1"
+    version: "2"
+    truth_note: >-
+      truth/metrics.json takes a judge's charges as those disposed inside one
+      of the judge's assignment intervals and the denominator as a disposition
+      other than pending or missing; the synthetic connector records the judge
+      assigned at the disposition as the disposing judge and every synthetic
+      disposition is final, so the numbers are the same.
 
   - slug: median_days_to_disposition
     name: Median days to disposition
@@ -1009,13 +1536,16 @@ metrics:
     eligibility: >-
       Median over disposed cases of (case disposition date - filed_date) in
       whole days, where the case disposition is the latest disposed_at among
-      its disposed charges. Judge: cases where the judge was assigned at the
-      case disposition time. Court: the court's disposed cases.
+      its charges with a final disposition; a case the source disposes before
+      its filing date has no value and is counted among the eligible cases
+      only. Judge: cases whose disposing judge - the judge on the charge
+      whose disposal sets the case disposition time, ties broken by the
+      source's charge id - is the judge. Court: the court's disposed cases.
     attribution:
       decision_type: null
       actor_types: null
       discretion: null
-      assignment_gate: assigned_at_time
+      assignment_gate: disposing_judge
     measure: days_to_disposition
     index_event: null
     outcome: null
@@ -1023,7 +1553,12 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: days
-    version: "1"
+    version: "2"
+    truth_note: >-
+      truth/metrics.json attributes a case to the judge assigned at the case
+      disposition time, whom the synthetic connector records as the disposing
+      judge of the charge that sets that time; no synthetic case is disposed
+      before its filing.
 
   # --- sentences ---------------------------------------------------------------
   - slug: sentence_count
@@ -1036,7 +1571,11 @@ metrics:
     denominator: "Not applicable: a count."
     eligibility: >-
       Sentence rows of the subject (judge: the sentencing judge; court: the
-      court's cases).
+      court's cases). Each sentencing decision is counted once: a
+      sentence a later amended or corrected sentencing replaced is not counted,
+      while an original sentence and a later probation-violation, resentencing,
+      or remand sentencing are separate decisions, each attributed to its own
+      sentencing judge.
     attribution:
       decision_type: null
       actor_types: null
@@ -1048,7 +1587,7 @@ metrics:
     dimension: null
     suppression_threshold: 0
     unit: count
-    version: "1"
+    version: "2"
     truth_note: >-
       truth/metrics.json describes every sentence metric in one sentences
       entry; the registry splits it into sentence_count,
@@ -1065,7 +1604,11 @@ metrics:
     denominator: The number of attributed sentences with a non-empty incarceration_days.
     eligibility: >-
       Sentence rows of the subject (judge: the sentencing judge; court: the
-      court's cases) with a non-empty incarceration_days.
+      court's cases) with a non-empty incarceration_days. Each sentencing decision is counted once: a
+      sentence a later amended or corrected sentencing replaced is not counted,
+      while an original sentence and a later probation-violation, resentencing,
+      or remand sentencing are separate decisions, each attributed to its own
+      sentencing judge.
     attribution:
       decision_type: null
       actor_types: null
@@ -1078,7 +1621,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: days
-    version: "1"
+    version: "2"
 
   - slug: probation_days_median
     name: Median probation days
@@ -1090,7 +1633,11 @@ metrics:
     denominator: The number of attributed sentences with a non-empty probation_days.
     eligibility: >-
       Sentence rows of the subject (judge: the sentencing judge; court: the
-      court's cases) with a non-empty probation_days.
+      court's cases) with a non-empty probation_days. Each sentencing decision is counted once: a
+      sentence a later amended or corrected sentencing replaced is not counted,
+      while an original sentence and a later probation-violation, resentencing,
+      or remand sentencing are separate decisions, each attributed to its own
+      sentencing judge.
     attribution:
       decision_type: null
       actor_types: null
@@ -1103,7 +1650,7 @@ metrics:
     dimension: null
     suppression_threshold: 10
     unit: days
-    version: "1"
+    version: "2"
 
   - slug: incarceration_days_median_by_offense_category
     name: Median incarceration days by offense category
@@ -1123,7 +1670,11 @@ metrics:
       Sentence rows of the subject (judge: the sentencing judge; court: the
       court's cases) with a non-empty incarceration_days, grouped by the
       offense_category of the case's lead convicted charge (most severe by
-      severity rank, ties broken by charge id).
+      severity rank, ties broken by charge id). Each sentencing decision is counted once: a
+      sentence a later amended or corrected sentencing replaced is not counted,
+      while an original sentence and a later probation-violation, resentencing,
+      or remand sentencing are separate decisions, each attributed to its own
+      sentencing judge.
     attribution:
       decision_type: null
       actor_types: null
@@ -1136,7 +1687,7 @@ metrics:
     dimension: offense_category
     suppression_threshold: 10
     unit: days
-    version: "1"
+    version: "2"
 
   # --- observed-to-expected ratios (registry version 2, methodology 0.3) -------
   # Computed by the full `metrics compute` only and not served by the API until

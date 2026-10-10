@@ -9,6 +9,16 @@ methodology page in the same pull request. The text is wrapped at 80
 columns; the brief's statistical warnings are rendered verbatim,
 unsoftened, as the "Known limitations" list. A relative output path is
 resolved under the repository root, never the working directory.
+
+Methodology 1.1 (Phase 5 Step 5) adds sections rendered from the registry's
+``periods`` and ``revocation_scopes``, from every registered connector's
+``SourceInfo`` ("Source limitations": its capabilities, observable outcomes,
+and notes), from ``metrics.coverage.DEFINITIONS`` ("Coverage statistics"),
+from the specification's ``availability``, and from the registry's threshold
+rationale and measured cohorts. ``GET /api/v1/metrics`` keeps serving the
+constants it served (``HOW_TO_READ``, ``SEMANTICS``, ``ATTRIBUTION_TEXT``,
+``GATE_TEXT``, ``CHANGELOG``, ``adjustment_prose``); the new sections reach the
+API with Phase 5 Step 7.
 """
 
 from __future__ import annotations
@@ -55,6 +65,11 @@ GATE_TEXT: dict[str, str] = {
     ),
     "assigned_ever": "any judge with at least one assignment on the case",
     "sentencing_judge": "the sentencing judge (the sentence's judge is the subject)",
+    "disposing_judge": (
+        "the disposing judge (the judge the source records as entering the charge's "
+        "disposition; for a case, the judge on the charge whose disposal sets the case "
+        "disposition time, ties broken by the source's charge id)"
+    ),
     "court_of_case": "the court of the case (a court-only metric)",
 }
 KIND_TEXT: dict[str, str] = {
@@ -84,9 +99,9 @@ HOW_TO_READ: tuple[tuple[str, str], ...] = (
     ),
     (
         "Date range",
-        "the period the observation covers: the source's coverage window "
-        "(period_start to period_end), the dates within which every counted "
-        "row falls.",
+        "the period the observation covers: the source's whole coverage window, "
+        "or one calendar year of it (period_start to period_end), the dates "
+        "within which every counted row's anchor falls.",
     ),
     (
         "Coverage",
@@ -134,13 +149,16 @@ SEMANTICS: tuple[tuple[str, str], ...] = (
         "pretrial_release: an attributed pretrial decision (the metric's "
         "attribution rule applies) with detained = false and a release time; "
         "the index time is the release time. disposition: a disposed case - "
-        "one whose charges carry a disposition other than pending or missing "
-        "and a disposition time - at the case disposition time, the latest "
-        "disposed_at among its disposed charges, attributed to the judge "
-        "assigned at that time; one index event per person with a disposed "
-        "charge in the case. sentence: an attributed sentence at sentence_at, "
-        "attributed to the sentencing judge. A court's index events are those "
-        "of the court's cases.",
+        "one with a charge whose disposition is final (dismissed, acquitted, "
+        "or a conviction; never pending, superseded, or transferred) and dated "
+        "- at the case disposition time, the latest disposed_at among its "
+        "disposed charges, attributed to the case's disposing judge, the judge "
+        "on the charge whose disposal sets that time; one index event per "
+        "person with a disposed charge in the case. sentence: an attributed "
+        "sentencing decision at sentence_at, attributed to the sentencing "
+        "judge. A court's index events are those of the court's cases. An index "
+        "event the source dates outside its coverage window is no cohort "
+        "member.",
     ),
     (
         "Exposure",
@@ -151,7 +169,9 @@ SEMANTICS: tuple[tuple[str, str], ...] = (
         "incarceration_days. For the disposition kind the start first moves "
         "to the end of the index case's own term (the sentence of the same "
         "case and person, the latest term end when there are several), "
-        "because the sentence follows the disposition. Then, for every kind - "
+        "because the sentence follows the disposition; when a source dates "
+        "that term to end at or before the disposition, the start stays at the "
+        "index time. Then, for every kind - "
         "pretrial_release included - while a term of the same person in any "
         "case contains the start, the start moves to the end of the "
         "containing term that ends last, so exposure begins at the first "
@@ -201,12 +221,13 @@ SEMANTICS: tuple[tuple[str, str], ...] = (
     ),
     (
         "Observable outcomes",
-        "Every source declares which outcome types it can document. A metric "
-        "whose outcome the source cannot observe is not observable for that "
-        "source: no observation is published for it, never a zero. The "
-        "synthetic source documents new_case, new_charge, reconviction, "
-        "failure_to_appear, and revocation; release_violation and rearrest "
-        "need a source that records them.",
+        "Every source declares which outcome types it can document, and for a "
+        "revocation which scope: a revoked pretrial release after a pretrial "
+        "release, a revoked supervision a sentence imposed after a disposition "
+        "or a sentence (Revocation scopes). A metric whose outcome - or "
+        "revocation scope - the source cannot observe is not observable for "
+        "that source: no observation is published for it, never a zero. "
+        "Source limitations lists what each source documents.",
     ),
 )
 
@@ -224,6 +245,13 @@ ATTRIBUTION_TEXT: tuple[str, ...] = (
     "prosecutor's dismissal is not a judicial dismissal: the judicial "
     "dismissal rate counts only charges dismissed with the judge as the "
     "disposing actor.",
+    "A source records only some gates: one may name the judge of a "
+    "disposition and of a sentencing but no judge assignment and no "
+    "deciding judge. A judge metric whose gate the source does not record "
+    "is not attributable for that source: no observation is published for "
+    "the judge, never a zero; the court-level metrics, computed over the "
+    "court's cases, still count the rows. Source limitations lists the gates "
+    "each source records.",
 )
 
 # (version, what changed) — oldest first; served by ``GET /metrics`` as ``changelog``.
@@ -253,6 +281,19 @@ CHANGELOG: tuple[tuple[str, str], ...] = (
         "The expected-outcome model, observed-to-expected ratios with partial "
         "pooling and bootstrap intervals, and their validation (docs/VALIDATION.md) "
         "are published; the known limitations are unchanged.",
+    ),
+    (
+        "1.1",
+        "Real-data semantics (registry version 3, specification version 3): the "
+        "disposition family is attributed to the disposing judge the source "
+        "records; a judge metric whose gate a source does not record is not "
+        "attributable and publishes nothing; only a final disposition disposes "
+        "of a charge; each sentencing decision counts once; a revocation is "
+        "observable per scope; every descriptive metric adds one observation per "
+        "calendar year, and a row outside the coverage window enters none; every "
+        "threshold carries its rationale and measured cohorts; coverage "
+        "statistics, source limitations, and per-source model availability are "
+        "published; the known limitations are unchanged.",
     ),
 )
 
@@ -579,9 +620,10 @@ def _metric_section(metric: MetricDefinitionSpec) -> list[str]:
     lines.append(_bullet(f"Eligibility: {metric.eligibility}"))
     lines.extend(_attribution_lines(metric))
     if metric.is_windowed:
+        scope = "" if metric.revocation_scope is None else f" (scope {metric.revocation_scope})"
         lines.append(
             _bullet(
-                f"Index event: {metric.index_event}; outcome: {metric.outcome}; "
+                f"Index event: {metric.index_event}; outcome: {metric.outcome}{scope}; "
                 f"windows: {', '.join(str(w) for w in metric.windows_days or ())} days."
             )
         )
@@ -651,6 +693,173 @@ def _adjustment_lines(prose: AdjustmentProse) -> list[str]:
     return lines
 
 
+def _periods_lines(registry: Registry) -> list[str]:
+    periods = registry.periods
+    kinds = ", ".join(kind for kind in KIND_TEXT if kind in periods.calendar_year_kinds)
+    lines = ["## Periods", "", _fill(f"**Whole window.** {periods.whole_window}"), ""]
+    lines.append(_fill(f"**Calendar years.** {periods.calendar_year}"))
+    lines.append("")
+    lines.append(_fill(f"Kinds with calendar years: {kinds}. Anchors:"))
+    lines.append("")
+    lines.extend(
+        _bullet(f"`{population}`: {anchor}") for population, anchor in periods.anchors.items()
+    )
+    lines.append("")
+    return lines
+
+
+def _revocation_lines(registry: Registry) -> list[str]:
+    scopes = registry.revocation_scopes
+    lines = ["## Revocation scopes", ""]
+    lines.append(
+        _fill(
+            "A revocation outcome means a different event after each index event. "
+            "Each revocation metric reads the scope of its index event, and a source "
+            "observes it only when it documents that scope:"
+        )
+    )
+    lines.append("")
+    lines.extend(_bullet(f"`{name}`: {text}") for name, text in scopes.definitions.items())
+    lines.append("")
+    lines.extend(
+        _bullet(f"After a `{index_event}` index event, a revocation is of scope `{scope}`.")
+        for index_event, scope in scopes.by_index_event.items()
+    )
+    lines.append("")
+    return lines
+
+
+def _source_lines(registry: Registry) -> list[str]:
+    """Every registered source: its gates, person key, observable outcomes, notes."""
+    from judgemetrics.ingest.registry import load_builtin_connectors, registered_connectors
+    from judgemetrics.metrics.registry import JUDGE_GATES
+    from judgemetrics.metrics.windows import ANY_CASE_OUTCOMES, OTHER_CASE_OUTCOMES
+
+    load_builtin_connectors()
+    outcomes = sorted(OTHER_CASE_OUTCOMES | ANY_CASE_OUTCOMES)
+    lines = ["## Source limitations", ""]
+    lines.append(
+        _fill(
+            "What each registered source can and cannot show, from the declaration of "
+            "its connector: the judge gates it records (a judge metric gated otherwise "
+            "is not attributable), its person-key scope, the outcomes and revocation "
+            "scopes it documents (a metric over any other is not observable), and its "
+            "own notes."
+        )
+    )
+    lines.append("")
+    for source_id, info in registered_connectors():
+        capabilities = info.capabilities
+        recorded = ", ".join(capabilities.judge_gates) or "none"
+        missing = ", ".join(g for g in JUDGE_GATES if g not in capabilities.judge_gates)
+        scope = capabilities.person_key_scope or "none (the source records no person)"
+        observed = ", ".join(o for o in outcomes if o in info.observable_outcomes) or "none"
+        unobserved = ", ".join(o for o in outcomes if o not in info.observable_outcomes)
+        revocations = ", ".join(capabilities.revocation_scopes) or "none"
+        lines.extend([f"### `{source_id}`", ""])
+        lines.append(_bullet(f"Owner: {info.owner}."))
+        lines.append(
+            _bullet(f"Judge gates recorded: {recorded}; not recorded: {missing or 'none'}.")
+        )
+        lines.append(_bullet(f"Person key: {scope}."))
+        lines.append(
+            _bullet(
+                f"Outcomes documented: {observed}; not documented: {unobserved or 'none'}; "
+                f"revocation scopes: {revocations}."
+            )
+        )
+        lines.extend(_bullet(note) for note in info.limitations)
+        lines.append("")
+    del registry
+    return lines
+
+
+def _coverage_lines() -> list[str]:
+    from judgemetrics.metrics.coverage import DEFINITIONS
+
+    lines = ["## Coverage statistics", ""]
+    lines.append(
+        _fill(
+            "Every compute records, per source, per jurisdiction of its courts, and per "
+            "court, the brief's six coverage statistics and the unknown-actor share - "
+            "each a numerator over a denominator with its share, aggregates only. "
+            "`judgemetrics metrics coverage` prints the latest; `metrics verify` "
+            "recomputes them."
+        )
+    )
+    lines.append("")
+    lines.extend(_bullet(f"`{name}`: {text}") for name, text in DEFINITIONS.items())
+    lines.append("")
+    return lines
+
+
+def _availability_lines(spec: OutcomeModelSpec) -> list[str]:
+    availability = spec.availability
+    lines = ["### Availability", ""]
+    lines.append(
+        _fill(
+            "A target is fitted for a source only when the source meets three "
+            "conditions; otherwise the catalogue records it unavailable with the reason "
+            "of the first condition it fails, and the adjusted metrics over it publish "
+            "nothing for that source:"
+        )
+    )
+    lines.append("")
+    lines.append(_numbered(1, f"It records the population's judge. {availability.gate}"))
+    lines.append(_numbered(2, f"It documents the outcome. {availability.outcome}"))
+    lines.append(
+        _numbered(
+            3,
+            "Its person key crosses cases (person-history features: "
+            f"{', '.join(spec.person_history_features)}). {availability.person_key}",
+        )
+    )
+    lines.append("")
+    return lines
+
+
+def _suppression_lines(registry: Registry) -> list[str]:
+    suppression = registry.suppression
+    lines = ["## Suppression", ""]
+    lines.append(_fill(f"Default threshold: {suppression.default_threshold}."))
+    lines.append("")
+    lines.append(_fill(suppression.rule))
+    lines.append("")
+    lines.append(_fill(suppression.rationale))
+    lines.append("")
+    lines.extend(["### Thresholds and their reasons", ""])
+    for group in suppression.thresholds:
+        slugs = ", ".join(f"`{slug}`" for slug in group.metrics)
+        lines.append(_bullet(f"**{group.threshold}** - {slugs}: {group.rationale}"))
+    lines.append("")
+    lines.extend(["### The eligible count of a suppressed observation", ""])
+    lines.append(_fill(suppression.eligible_count))
+    lines.append("")
+    lines.extend(["### Measured cohorts", ""])
+    lines.append(_fill(f"Measured on {suppression.measured_on}. {suppression.measurement_method}"))
+    lines.append("")
+    for item in suppression.measurements:
+        window = "" if item.window_days is None else f", {item.window_days}-day window"
+        quantiles = ", ".join(f"{name} {value:,}" for name, value in item.quantiles)
+        lines.append(
+            _bullet(
+                f"`{item.name}` ({item.source}, {item.subject_type}, "
+                f"{item.period.replace('_', ' ')}{window}): {item.cohorts:,} cohorts; "
+                f"{quantiles}; {item.under_threshold:.3f} under the threshold."
+            )
+        )
+    lines.append("")
+    named: dict[str, tuple[str, ...]] = {}
+    for item in suppression.measurements:
+        named.setdefault(item.name, item.metrics)
+    lines.extend(
+        _bullet(f"`{name}`: {', '.join(f'`{slug}`' for slug in slugs)}.")
+        for name, slugs in named.items()
+    )
+    lines.append("")
+    return lines
+
+
 def render_methodology(registry: Registry | None = None) -> str:
     """The Markdown document (LF line endings, one trailing newline, 80 columns)."""
     registry = registry or load_registry()
@@ -681,12 +890,20 @@ def render_methodology(registry: Registry | None = None) -> str:
     for term, text in SEMANTICS:
         lines.append(_fill(f"**{term}.** {text}"))
         lines.append("")
+    lines.extend(_periods_lines(registry))
+    lines.extend(_revocation_lines(registry))
     lines.extend(["## Attribution", ""])
     for paragraph in ATTRIBUTION_TEXT:
         lines.append(_fill(paragraph))
         lines.append("")
+    lines.extend(_source_lines(registry))
+    lines.extend(_coverage_lines())
     if registry.of_kind("observed_expected"):
-        lines.extend(_adjustment_lines(adjustment_prose(registry=registry)))
+        spec = load_spec()
+        adjustment = _adjustment_lines(adjustment_prose(spec=spec, registry=registry))
+        # The availability rules sit after the model description (methodology 1.1).
+        at = adjustment.index("### Targets")
+        lines.extend([*adjustment[:at], *_availability_lines(spec), *adjustment[at:]])
     lines.extend(["## Metrics", ""])
     lines.append(
         _fill(
@@ -698,13 +915,7 @@ def render_methodology(registry: Registry | None = None) -> str:
     lines.append("")
     for metric in registry.metrics.values():
         lines.extend(_metric_section(metric))
-    lines.extend(["## Suppression", ""])
-    lines.append(_fill(f"Default threshold: {registry.suppression.default_threshold}."))
-    lines.append("")
-    lines.append(_fill(registry.suppression.rule))
-    lines.append("")
-    lines.append(_fill(registry.suppression.rationale))
-    lines.append("")
+    lines.extend(_suppression_lines(registry))
     lines.extend(["## Known limitations", ""])
     lines.append(
         _fill(

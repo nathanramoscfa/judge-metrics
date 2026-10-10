@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
@@ -72,3 +73,56 @@ def test_compute_metrics_task_and_target_invoke_the_command() -> None:
     assert (Path(REPO_ROOT) / ".gitignore").read_text(encoding="utf-8").count(
         "data/snapshots/"
     ) == 1
+
+
+# --- Phase 5 Step 5: --source, metrics coverage, the models fit line (issue #40) -------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        ["metrics", "compute", "--source", "nowhere"],
+        ["metrics", "coverage", "--source", "nowhere"],
+        ["validation", "report", "--source", "nowhere", "--check"],
+    ],
+)
+def test_an_unregistered_source_is_refused_before_touching_the_database(
+    command: list[str],
+) -> None:
+    result = CliRunner().invoke(app, command, env=ENV)
+    assert result.exit_code == 2, result.output
+    assert "unknown source nowhere" in result.output
+    assert "cook_sao" in result.output and "synthetic" in result.output
+
+
+def test_help_lists_coverage_and_the_source_options() -> None:
+    # CI renders Typer's help with ANSI styling, one escape per character run of
+    # an option; drop each whole escape sequence before comparing.
+    plain = re.compile(r"\[[0-9;]*m")
+    result = CliRunner().invoke(app, ["metrics", "--help"])
+    assert result.exit_code == 0 and "coverage" in result.output
+    for command in (["metrics", "compute"], ["metrics", "coverage"], ["validation", "report"]):
+        result = CliRunner().invoke(app, [*command, "--help"])
+        assert result.exit_code == 0, command
+        assert "--source" in plain.sub("", result.output), command
+
+
+def test_models_fit_prints_fitted_once_as_a_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #40: the run's count is `new`; `fitted` appears once, as a status."""
+    from judgemetrics.metrics.adjustment import catalog
+
+    payload = {
+        "snapshot": "a" * 64,
+        "fitted": 13,
+        "existing": 0,
+        "statuses": {"fitted": 10, "unavailable": 3},
+        "models": [],
+    }
+    summary = SimpleNamespace(snapshot="a" * 64, as_dict=lambda: payload)
+    monkeypatch.setattr(catalog, "fit_snapshot", lambda *args, **kwargs: summary)
+    result = CliRunner().invoke(app, ["models", "fit"], env=ENV)
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert lines[0] == f"snapshot {'a' * 64}"
+    assert lines[1] == "new=13 existing=0 status fitted=10 unavailable=3"
+    assert result.stdout.count("fitted=") == 1

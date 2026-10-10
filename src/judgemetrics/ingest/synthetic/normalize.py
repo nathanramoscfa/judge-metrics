@@ -143,6 +143,27 @@ class SyntheticContext:
     # (case key, party type, normalized participant id) → the party's 1-based
     # ordinal within its case and party type, in normalized-id order.
     party_ordinals: dict[tuple[NaturalKey, str, str], int] = field(default_factory=dict)
+    # case key → its assignments as (start_at, end_at, judge code), from assignments.csv.
+    assignments: dict[NaturalKey, list[tuple[datetime, datetime | None, str]]] = field(
+        default_factory=dict
+    )
+
+    def judge_assigned_at(self, case_key: NaturalKey, moment: datetime) -> NaturalKey | None:
+        """The judge assigned to the case at ``moment`` (``start <= t < end``, open end).
+
+        The generator's own rule for the disposing judge: one assignment holds a
+        case at any instant (its reassignments end where the next begins); were
+        two to overlap, the later start wins, then the judge code.
+        """
+        holding = [
+            (start, code)
+            for start, end, code in self.assignments.get(case_key, ())
+            if start <= moment and (end is None or moment < end)
+        ]
+        if not holding:
+            return None
+        _, code = max(holding, key=lambda item: (item[0], item[1]))
+        return judge_key_for(code)
 
     def party_row_id(
         self, case_key: NaturalKey, party_type: str, participant_id: str, record_id: str
@@ -477,6 +498,10 @@ def charge_drafts(
             payload.get("disposition_actor"), record_id=record_id, required=False
         ),
         source_row_id=charge_id,
+        # The disposing judge (Phase 5 Step 5): the judge assigned at the disposition.
+        judge_key=(
+            None if disposed_at is None else context.judge_assigned_at(case_key, disposed_at)
+        ),
     )
     drafts: list[CanonicalRecord] = [charge]
     drafts.extend(derived_justice_events(context, participant_id, person_key, charge))
@@ -725,8 +750,9 @@ def build_context(
     judge_rows: Sequence[Mapping[str, Any]],
     charge_rows: Sequence[Mapping[str, Any]],
     participant_rows: Sequence[Mapping[str, Any]] = (),
+    assignment_rows: Sequence[Mapping[str, Any]] = (),
 ) -> SyntheticContext:
-    """The lookups ``normalize_record`` needs, from the parsed rows of four files.
+    """The lookups ``normalize_record`` needs, from the parsed rows of five files.
 
     Rows that cannot be read are skipped here; they are rejected with an
     issue when their own normalization runs.
@@ -783,4 +809,17 @@ def build_context(
         # Code-point order, the order revision 0008 ranks the old keys in (COLLATE "C").
         for ordinal, normalized in enumerate(sorted(members), start=1):
             context.party_ordinals[(case_key, party_type, normalized)] = ordinal
+    for row in assignment_rows:
+        code = clean(row.get("judge_code"))
+        if not code:
+            continue
+        try:
+            case_key = case_key_for(context, row, "assignment")
+            start = require_timestamp(
+                row.get("start_at"), column="start_at", record_id="assignment"
+            )
+            end = parse_timestamp(row.get("end_at"), column="end_at", record_id="assignment")
+        except NormalizationError:
+            continue
+        context.assignments.setdefault(case_key, []).append((start, end, code))
     return context

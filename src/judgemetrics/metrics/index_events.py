@@ -9,18 +9,24 @@ of a windowed metric — identified by the canonical row it comes from
   rule's filters and gate; a court takes the court's cases) with
   ``detained_flag = false`` and a non-null ``release_at``; ``index_at`` is
   the release time; the member is the decision.
-- ``disposition``: a disposed case — one whose charges carry a disposition
-  other than pending or missing with a disposition time — attributed by
-  the rule's gate at the case disposition time, the latest ``disposed_at``
-  among its disposed charges; one index event per person with a disposed
-  charge in the case; the member is the case.
+- ``disposition``: a disposed case — one with a charge whose disposition is
+  final (the vocabulary's ``final_charge_disposition``: dismissed,
+  acquitted, a conviction; never pending, superseded, or transferred) and
+  carries a disposition time — at the case disposition time, the latest
+  ``disposed_at`` among its disposed charges, attributed by the rule's gate:
+  ``disposing_judge`` (registry version 3) takes the judge on the charge
+  whose disposal sets that time, ties broken by the source's charge id and
+  then the canonical id; one index event per person with a disposed charge
+  in the case; the member is the case.
 - ``sentence``: an attributed sentence; ``index_at`` is ``sentence_at``;
   the member is the sentence.
 
-The same rules are stated in docs/METHODOLOGY.md "Index events, exposure,
-and censoring" and implemented identically by the synthetic truth
-generator (``synthetic/truth.py``, ``TRUTH_VERSION`` 2). Every function is
-pure over a ``Frame``; the result carries exactly ``INDEX_COLUMNS``.
+An index event whose ``index_at`` falls outside the source's coverage window
+is no cohort member (``periods.within_coverage``). The same rules are stated
+in docs/METHODOLOGY.md "Index events, exposure, and censoring" and
+implemented identically by the synthetic truth generator
+(``synthetic/truth.py``, ``TRUTH_VERSION`` 2). Every function is pure over a
+``Frame``; the result carries exactly ``INDEX_COLUMNS``.
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from __future__ import annotations
 import polars as pl
 
 from judgemetrics.metrics.attribution import (
+    DISPOSING_JUDGE,
     AttributionError,
     AttributionRule,
     Subject,
@@ -36,6 +43,8 @@ from judgemetrics.metrics.attribution import (
     pretrial_decisions_for,
 )
 from judgemetrics.metrics.frame import Frame
+from judgemetrics.metrics.periods import within_coverage
+from judgemetrics.normalization import vocabulary
 
 PRETRIAL_RELEASE = "pretrial_release"
 DISPOSITION = "disposition"
@@ -51,31 +60,50 @@ MEMBER_KIND_OF_INDEX: dict[str, str] = {
     SENTENCE: MEMBER_SENTENCE,
 }
 
-PENDING = "pending"
 INDEX_COLUMNS: tuple[str, ...] = ("member_kind", "member_id", "case_id", "person_id", "index_at")
 DISPOSITION_AT = "disposition_at"
+FINAL_DISPOSITION_KIND = "final_charge_disposition"
+
+
+def final_dispositions() -> tuple[str, ...]:
+    """The dispositions that end a charge on its merits (vocabulary finality)."""
+    return vocabulary.values(FINAL_DISPOSITION_KIND)
 
 
 def disposed_charges(frame: Frame) -> pl.DataFrame:
-    """Charges with a disposition other than pending or missing and a disposition time."""
+    """Charges with a final disposition and a disposition time (never a non-final one)."""
     return frame.charges.filter(
-        pl.col("disposition").is_not_null()
-        & (pl.col("disposition") != PENDING)
+        pl.col("disposition").is_in(list(final_dispositions()))
         & pl.col("disposed_at").is_not_null()
     )
 
 
 def case_dispositions(frame: Frame) -> pl.DataFrame:
-    """``(case_id, disposition_at)``: the latest ``disposed_at`` among each case's disposed charges."""
+    """``(case_id, disposition_at, disposing_judge_id)`` for every disposed case.
+
+    The case disposition time is the latest ``disposed_at`` among the case's
+    disposed charges; its disposing judge is the ``judge_id`` of the charge
+    whose disposal sets that time, ties broken by the source's charge id
+    (``source_row_id``) and then the canonical id.
+    """
     return (
         disposed_charges(frame)
-        .group_by("case_id")
-        .agg(pl.col("disposed_at").max().alias(DISPOSITION_AT))
+        .sort(
+            ["case_id", "disposed_at", "source_row_id", "id"],
+            descending=[False, True, False, False],
+            nulls_last=True,
+        )
+        .unique(subset=["case_id"], keep="first", maintain_order=True)
+        .select(
+            "case_id",
+            pl.col("disposed_at").alias(DISPOSITION_AT),
+            pl.col("judge_id").alias(DISPOSING_JUDGE),
+        )
     )
 
 
 def disposed_cases(frame: Frame) -> pl.DataFrame:
-    """The cases with a disposition time: the ``cases`` columns plus ``disposition_at``."""
+    """The disposed cases: ``cases`` columns, ``disposition_at``, the disposing judge."""
     return frame.cases.join(case_dispositions(frame), left_on="id", right_on="case_id", how="inner")
 
 
@@ -118,12 +146,17 @@ def sentence_index(frame: Frame, rule: AttributionRule, subject: Subject) -> pl.
 
 
 def index_events(frame: Frame, kind: str, rule: AttributionRule, subject: Subject) -> pl.DataFrame:
-    """The index events of ``kind`` the rule attributes to the subject (``INDEX_COLUMNS``)."""
+    """The index events of ``kind`` the rule attributes to the subject (``INDEX_COLUMNS``).
+
+    Only those whose ``index_at`` lies inside the coverage window.
+    """
     if kind == PRETRIAL_RELEASE:
-        return pretrial_release_index(frame, rule, subject)
-    if kind == DISPOSITION:
-        return disposition_index(frame, rule, subject)
-    if kind == SENTENCE:
-        return sentence_index(frame, rule, subject)
-    msg = f"unknown index event kind {kind!r}"
-    raise AttributionError(msg)
+        events = pretrial_release_index(frame, rule, subject)
+    elif kind == DISPOSITION:
+        events = disposition_index(frame, rule, subject)
+    elif kind == SENTENCE:
+        events = sentence_index(frame, rule, subject)
+    else:
+        msg = f"unknown index event kind {kind!r}"
+        raise AttributionError(msg)
+    return within_coverage(frame, events, "index_at")

@@ -82,13 +82,23 @@ def test_document_shape_and_width() -> None:
         "## Metrics",
         "## Adjusted statistics",
         "## Metrics",
+        "## Periods",
+        "## Revocation scopes",
+        "## Source limitations",
+        "### Availability",
+        "## Coverage statistics",
         "## Suppression",
+        "### Measured cohorts",
         "## Known limitations",
         "## Methodology changelog",
     ):
         assert f"\n{heading}\n" in document, heading
     registry = load_registry()
-    assert f"Registry version {registry.version}; methodology version 1.0" in document
+    assert (
+        f"Registry version {registry.version}; methodology version "
+        f"{registry.methodology_version}" in document
+    )
+    assert registry.methodology_version == "1.1"
     assert "## Observed-to-expected ratios" not in document
     adjusted = _normalize(_section(document, "Adjusted statistics"))
     for phrase in (
@@ -132,7 +142,8 @@ def test_document_shape_and_width() -> None:
     assert "- 0.2 - Exposure is deferred by every incarceration term" in changelog
     assert "- 0.3 - Observed-to-expected ratios with partial pooling and bootstrap" in changelog
     assert "- 1.0 - The expected-outcome model, observed-to-expected ratios" in changelog
-    assert [version for version, _ in CHANGELOG] == ["0.1", "0.2", "0.3", "1.0"]
+    assert "- 1.1 - Real-data semantics (registry version 3" in changelog
+    assert [version for version, _ in CHANGELOG] == ["0.1", "0.2", "0.3", "1.0", "1.1"]
     assert CHANGELOG[-1][0] == registry.methodology_version
     assert changelog.index("- 0.3 -") < changelog.index("- 1.0 -")
     for metric in registry.of_kind("observed_expected"):

@@ -132,7 +132,7 @@ def test_the_registry_response_lists_the_adjusted_definitions(adjusted_api: Test
         for item in body["definitions"]
         if item["slug"] not in ADJUSTED_SLUGS
     )
-    assert body["registry_version"] == 2 and body["methodology_version"] == "1.0"
+    assert body["registry_version"] == 3 and body["methodology_version"] == "1.1"
 
 
 def test_a_judges_adjusted_observations_carry_every_new_field_and_withhold_when_suppressed(

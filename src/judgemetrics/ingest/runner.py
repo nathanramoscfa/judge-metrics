@@ -595,6 +595,9 @@ def _upsert_source(session: Session, connector: SourceConnector) -> Source:
     # Written only when it differs (the IS DISTINCT FROM rule for ORM rows).
     if list(source.observable_outcomes or []) != list(info.observable_outcomes):
         source.observable_outcomes = list(info.observable_outcomes)
+    capabilities = info.capabilities.as_json()
+    if dict(source.capabilities or {}) != capabilities:
+        source.capabilities = capabilities
     session.flush()
     return source
 
