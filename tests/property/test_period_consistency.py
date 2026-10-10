@@ -1,7 +1,7 @@
 # tests/property/test_period_consistency.py
 """Calendar-year observations agree with the whole window (registry version 3, Phase 5 Step 5).
 
-For a Hypothesis-drawn seed the ``TINY`` world is built in memory and every
+For twelve fixed Hypothesis seeds (derandomized) the ``TINY`` world is built in memory and every
 descriptive metric computed for every judge and court (``compute_frame``).
 Per metric, subject, window, and dimension value:
 
@@ -25,9 +25,9 @@ from datetime import date
 from typing import Any
 
 import pytest
-from hypothesis import given
+from hypothesis import given, settings
 
-from judgemetrics.metrics.compute import ObservationDraft, compute_frame
+from judgemetrics.metrics.compute import ComputeResult, ObservationDraft, compute_frame
 from judgemetrics.metrics.registry import load_registry
 from judgemetrics.synthetic.config import TINY
 from tests.property.support import build_world, frame_from_world, seeds
@@ -60,11 +60,20 @@ def _groups(drafts: list[ObservationDraft]) -> dict[GroupKey, dict[str, Any]]:
     return groups
 
 
+# Each example computes every metric and every year of a world (about three
+# seconds), so the examples are few, fixed, and shared by both properties.
+@settings(max_examples=12, derandomize=True)
 @given(seed=seeds)
-def test_every_year_agrees_with_the_whole_window(seed: int) -> None:
+def test_every_year_agrees_with_the_whole_window_and_only_descriptive_kinds_have_years(
+    seed: int,
+) -> None:
     frame = frame_from_world(build_world(seed, TINY), TINY)
     result = compute_frame(frame, REGISTRY, "synthetic")
-    first, last = frame.coverage_start.year, frame.coverage_end.year
+    _years_partition_the_whole_window(frame.coverage_start.year, frame.coverage_end.year, result)
+    _only_descriptive_kinds_have_years(result)
+
+
+def _years_partition_the_whole_window(first: int, last: int, result: ComputeResult) -> None:
     for key, group in _groups(result.drafts).items():
         whole: ObservationDraft | None = group["whole"]
         years: list[ObservationDraft] = group["years"]
@@ -99,10 +108,7 @@ def test_every_year_agrees_with_the_whole_window(seed: int) -> None:
             assert sum(d.observed_count for d in years) == whole.observed_count, key
 
 
-@given(seed=seeds)
-def test_the_adjusted_kind_and_nothing_else_is_whole_window_only(seed: int) -> None:
-    frame = frame_from_world(build_world(seed, TINY), TINY)
-    result = compute_frame(frame, REGISTRY, "synthetic")
+def _only_descriptive_kinds_have_years(result: ComputeResult) -> None:
     kinds_with_years = {REGISTRY[d.slug].kind for d in result.drafts if d.calendar_year is not None}
     assert kinds_with_years <= REGISTRY.periods.calendar_year_kinds
     assert "observed_expected" not in kinds_with_years

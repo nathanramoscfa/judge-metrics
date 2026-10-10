@@ -96,7 +96,9 @@ def test_an_unregistered_source_is_refused_before_touching_the_database(
 
 
 def test_help_lists_coverage_and_the_source_options() -> None:
-    plain = re.compile(r"\[[0-9;]*m")
+    # CI renders Typer's help with ANSI styling, one escape per character run of
+    # an option; drop each whole escape sequence before comparing.
+    plain = re.compile(r"\[[0-9;]*m")
     result = CliRunner().invoke(app, ["metrics", "--help"])
     assert result.exit_code == 0 and "coverage" in result.output
     for command in (["metrics", "compute"], ["metrics", "coverage"], ["validation", "report"]):
