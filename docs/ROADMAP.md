@@ -198,6 +198,13 @@ thirty days.
   exports place in no district sit in the countywide court, where 0.9% name a
   judge and 1.1% are finally disposed, so that court's metrics are thin. The
   person-key scope is `case`: no outcome after the case is observable.
+- **CI's python job uses 14 of its 20 minutes** (PR #58, 2026-10-10: the
+  Tests step took 14 min 15 s, up from 10 min 30 s with Step 4, after calendar
+  years multiplied the golden compute and the period property arrived; the
+  first run of the period property, 50 full computes per test, hit the
+  timeout). A step that adds suites keeps the margin: derandomize and cap an
+  expensive property (`test_period_consistency.py` runs twelve fixed seeds) or
+  raise `timeout-minutes` with the measured reason.
 - **No real-data adjusted statistic.** Specification 3 records Cook County's
   three targets `unavailable` (the deciding judge is not recorded; new case
   and failure to appear are not observable; no cross-case key), so the first
