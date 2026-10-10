@@ -30,6 +30,7 @@ from typing import Any
 import polars as pl
 import pytest
 
+from judgemetrics.capabilities import SourceCapabilities
 from judgemetrics.config import REPO_ROOT, Settings
 from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.metrics import snapshot as snapshot_module
@@ -214,7 +215,15 @@ def _rows() -> dict[str, list[dict[str, Any]]]:
                 "source_type": "synthetic",
                 "coverage_start": date(2020, 1, 1),
                 "coverage_end": date(2020, 12, 31),
-                "observable_outcomes": ["failure_to_appear", "new_case"],
+                "observable_outcomes": [
+                    "failure_to_appear",
+                    "new_case",
+                    "new_charge",
+                    "reconviction",
+                ],
+                "judge_gates": ["deciding_judge", "assigned_at_time", "assigned_ever"],
+                "person_key_scope": "cross_case",
+                "revocation_scopes": ["release"],
             },
             {
                 "id": "22222222-2222-2222-2222-222222222222",
@@ -320,7 +329,16 @@ def test_the_frame_of_a_source_resolves_merges_and_derives_other_case_outcomes(
     # Phase 4 Step 2: the courts of the source's cases with their jurisdiction.
     assert frame.courts.to_dicts() == [{"id": "court-1", "jurisdiction_id": "jur"}]
     assert (frame.coverage_start, frame.coverage_end) == (date(2020, 1, 1), date(2020, 12, 31))
-    assert frame.observable_outcomes == {"failure_to_appear", "new_case"}
+    assert frame.observable_outcomes == {
+        "failure_to_appear",
+        "new_case",
+        "new_charge",
+        "reconviction",
+    }
+    # Phase 5 Step 5: the source's capabilities travel with its frame.
+    assert frame.capabilities == SourceCapabilities(
+        ("deciding_judge", "assigned_at_time", "assigned_ever"), "cross_case", ("release",)
+    )
     events = {
         (
             row["event_type"],
@@ -341,6 +359,47 @@ def test_the_frame_of_a_source_resolves_merges_and_derives_other_case_outcomes(
     }
     assert frame.justice_events["person_id"].to_list() == [SURVIVOR] * len(events)
     assert "e2" not in frame.justice_events["id"].to_list()  # the stored new_case row is replaced
+
+
+def test_only_the_outcomes_a_source_observes_are_derived(tmp_path: Path) -> None:
+    """A source that documents no cross-case outcome gets no derived other-case row."""
+    rows = _rows()
+    rows["sources"][0]["observable_outcomes"] = ["failure_to_appear"]
+    root = tmp_path / "snapshots"
+    root.mkdir()
+    content_hash = _write_snapshot(root, rows)
+    with open_snapshot(Settings(env="test", snapshot_dir=root), content_hash) as opened:
+        frame = opened.frame(SOURCE_ID)
+        assert opened.frame(SOURCE_ID) is frame  # one frame per opened snapshot
+    assert set(frame.justice_events["event_type"].to_list()) == {"failure_to_appear"}
+    assert frame.capabilities == SourceCapabilities(
+        ("deciding_judge", "assigned_at_time", "assigned_ever"), "cross_case", ("release",)
+    )
+
+
+def test_a_replaced_sentence_is_not_in_the_frame(tmp_path: Path) -> None:
+    """A sentence a later correction replaced is no sentencing decision of its own."""
+    rows = _rows()
+    base = {
+        "case_id": "c1",
+        "person_id": SURVIVOR,
+        "judge_id": "j1",
+        "sentence_at": _naive(_at(6)),
+        "incarceration_days": 30,
+        "probation_days": None,
+    }
+    rows["sentences"] = [
+        {**base, "id": "s1", "replaced": True},
+        {**base, "id": "s2", "replaced": False},
+        {**base, "id": "s3", "replaced": None},
+    ]
+    root = tmp_path / "snapshots"
+    root.mkdir()
+    content_hash = _write_snapshot(root, rows)
+    with open_snapshot(Settings(env="test", snapshot_dir=root), content_hash) as opened:
+        assert opened.member_ids("sentence") == {"s1", "s2", "s3"}
+        frame = opened.frame(SOURCE_ID)
+    assert frame.sentences["id"].to_list() == ["s2", "s3"]
 
 
 def test_code_version_carries_the_short_sha_when_known() -> None:

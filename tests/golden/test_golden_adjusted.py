@@ -134,7 +134,9 @@ def test_every_adjusted_observation_equals_its_descriptive_numerator_and_the_tru
     assert len(observations) == 1, f"{code} {slug}@{window}"
     observation = observations[0]
     descriptive = [
-        row for row in _current(session, judge_id, DESCRIPTIVE[slug]) if row.window_days == window
+        row
+        for row in _current(session, judge_id, DESCRIPTIVE[slug])
+        if row.window_days == window and row.calendar_year is None
     ]
     assert len(descriptive) == 1
     truth = _truth(slug, code, window)
@@ -172,8 +174,8 @@ def test_every_adjusted_observation_equals_its_descriptive_numerator_and_the_tru
     reason = _expected_reason(observation.cohort_size, model.status, observation.expected_count)
     assert observation.suppression_reason == reason
     assert observation.suppressed_flag is (reason is not None)
-    assert observation.registry_version == REGISTRY.version == 2
-    assert observation.methodology_version == REGISTRY.methodology_version == "1.0"
+    assert observation.registry_version == REGISTRY.version == 3
+    assert observation.methodology_version == REGISTRY.methodology_version == "1.1"
 
 
 def test_members_are_the_judges_existing_cohort_decisions(

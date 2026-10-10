@@ -18,7 +18,11 @@ the same first time is what the Kaplan-Meier estimator uses.
 The six windows are the brief's (``WINDOWS_DAYS``: 30, 90, 180, 365, 730,
 1095 days). A metric whose outcome is not among the source's
 ``observable_outcomes`` is not observable for that source and yields no
-rows — a ``NotObservable`` marker the engine records — never a zero.
+rows — a ``NotObservable`` marker the engine records — never a zero. A
+revocation is observable only in the scopes the source documents
+(``Frame.capabilities.revocation_scopes``; the registry's ``revocation_scopes``
+gives each index event's scope): a revoked pretrial release after a pretrial
+release, a revoked supervision after a disposition or a sentence.
 """
 
 from __future__ import annotations
@@ -62,15 +66,29 @@ class NotObservable:
     reason: str
 
 
-def is_observable(frame: Frame, outcome: str) -> bool:
-    return outcome in frame.observable_outcomes
+def is_observable(frame: Frame, outcome: str, revocation_scope: str | None = None) -> bool:
+    """Whether the source documents ``outcome`` (of ``revocation_scope``, for a revocation)."""
+    if outcome not in frame.observable_outcomes:
+        return False
+    return revocation_scope is None or revocation_scope in frame.capabilities.revocation_scopes
 
 
-def not_observable(frame: Frame, outcome: str) -> NotObservable | None:
-    """``NotObservable`` when the frame's source cannot document ``outcome``, else ``None``."""
-    if is_observable(frame, outcome):
+def not_observable(
+    frame: Frame, outcome: str, revocation_scope: str | None = None
+) -> NotObservable | None:
+    """``NotObservable`` when the frame's source cannot document ``outcome``, else ``None``.
+
+    A revocation metric passes its ``revocation_scope`` (registry version 3): a
+    source that documents revocations of another scope only (a revoked
+    supervision, not a revoked pretrial release) cannot observe it.
+    """
+    if is_observable(frame, outcome, revocation_scope):
         return None
-    return NotObservable(outcome=outcome, reason=f"the source does not document {outcome} events")
+    if outcome in frame.observable_outcomes and revocation_scope is not None:
+        reason = f"the source does not document {outcome} events of scope {revocation_scope}"
+    else:
+        reason = f"the source does not document {outcome} events"
+    return NotObservable(outcome=outcome, reason=reason)
 
 
 def first_outcomes(frame: Frame, cohort: pl.DataFrame, outcome: str) -> pl.DataFrame:

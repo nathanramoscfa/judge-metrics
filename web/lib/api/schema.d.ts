@@ -506,7 +506,7 @@ export interface components {
             actor_types: string[] | null;
             /**
              * Assignment Gate
-             * @description How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, or court_of_case.
+             * @description How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, disposing_judge, or court_of_case.
              */
             assignment_gate: string;
             /**

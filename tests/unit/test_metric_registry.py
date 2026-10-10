@@ -1,8 +1,8 @@
 # tests/unit/test_metric_registry.py
 """The versioned metric registry: it loads, it validates, and its text is the contract.
 
-The committed ``data/reference/metric_registry.yaml`` (version 2,
-methodology 1.0) loads through ``load_registry``; a tampered copy with an
+The committed ``data/reference/metric_registry.yaml`` (version 3,
+methodology 1.1) loads through ``load_registry``; a tampered copy with an
 unlisted actor, outcome, or window — or an adjusted entry without its
 ``adjustment``, over a court, or with windows over decisions — fails with
 ``RegistryError`` naming the slug and the field; each observed-to-expected
@@ -12,7 +12,12 @@ adjusts and the specification's thresholds; its
 verbatim (parsed from the XML with whitespace normalized); and the
 pretrial and dismissal entries' prose equals the corresponding
 ``definitions`` text of the golden fixture's ``truth/metrics.json`` unless
-the entry states the difference in ``truth_note``.
+the entry states the difference in ``truth_note``. Registry version 3 (Phase 5
+Step 5): the disposition family is gated on ``disposing_judge``; the periods
+state the engine's anchors and leave the adjusted kind whole-window; every
+metric sits in exactly one threshold group with its rationale and every
+suppressed metric's threshold carries a measured cohort; every revocation
+metric carries the scope of its index event.
 """
 
 from __future__ import annotations
@@ -26,14 +31,19 @@ from typing import Any
 import pytest
 import yaml
 
+from judgemetrics.capabilities import JUDGE_GATES as CAPABILITY_GATES
 from judgemetrics.config import REPO_ROOT
 from judgemetrics.metrics import registry as registry_module
 from judgemetrics.metrics.adjustment.spec import load_spec
 from judgemetrics.metrics.registry import (
     ASSIGNMENT_GATES,
     DEFAULT_PATH,
+    DESCRIPTIVE_KINDS,
+    JUDGE_GATES,
     KINDS,
     OBSERVED_EXPECTED,
+    POPULATION_ANCHORS,
+    QUANTILE_FIELDS,
     WINDOWS_DAYS,
     Registry,
     RegistryError,
@@ -88,6 +98,29 @@ ADJUSTED_SLUGS_OF = {
     "failure_to_appear_observed_expected": "failure_to_appear_rate",
 }
 ADJUSTED_SLUGS = set(ADJUSTED_SLUGS_OF)
+# Registry version 3: the disposition family moved to the disposing-judge gate.
+DISPOSITION_FAMILY = {
+    "disposition_distribution",
+    "judicial_dismissal_rate",
+    "median_days_to_disposition",
+    "new_case_rate_after_disposition",
+    "new_charge_rate_after_disposition",
+    "reconviction_rate_after_disposition",
+    "revocation_rate_after_disposition",
+}
+# ... and the sentencing family counts each sentencing decision once.
+SENTENCING_FAMILY = {
+    "sentence_count",
+    "incarceration_days_median",
+    "probation_days_median",
+    "incarceration_days_median_by_offense_category",
+    "new_case_rate_after_sentence",
+    "new_charge_rate_after_sentence",
+    "reconviction_rate_after_sentence",
+    "revocation_rate_after_sentence",
+}
+# Every entry registry version 3 changed (its own version is "2").
+VERSION_TWO = DISPOSITION_FAMILY | SENTENCING_FAMILY | {"revocation_rate"}
 # Registry slug → the `definitions` key of truth/metrics.json whose text it must carry.
 TRUTH_DEFINITIONS = {
     "eligible_cases": "eligible_cases",
@@ -139,9 +172,10 @@ def test_the_committed_registry_loads_and_carries_the_required_slugs() -> None:
     assert DEFAULT_PATH.read_text(encoding="utf-8").startswith(
         "# data/reference/metric_registry.yaml\n"
     )
-    assert registry.version == 2
-    assert registry.methodology_version == "1.0"
+    assert registry.version == 3
+    assert registry.methodology_version == "1.1"
     assert REQUIRED_SLUGS | ADJUSTED_SLUGS <= set(registry.metrics)
+    assert len(REQUIRED_SLUGS) == 33  # the Phase 3 slugs, every one still present
     assert {metric.kind for metric in registry.metrics.values()} == set(KINDS)
     assert registry.suppression.default_threshold == 10
     assert load_registry() is registry  # cached per path
@@ -169,7 +203,7 @@ def test_thresholds_units_and_windows_follow_the_registry_rules() -> None:
         else:
             assert metric.windows_days is None and metric.outcome is None, metric.slug
         assert metric.attribution.assignment_gate in ASSIGNMENT_GATES
-        assert metric.version == "1"
+        assert metric.version == ("2" if metric.slug in VERSION_TWO else "1"), metric.slug
     for slug in ("statutory_release_count", "unknown_actor_pretrial_count"):
         assert registry[slug].subject_types == ("court",)
     assert registry["disposition_distribution"].dimension == "disposition"
@@ -281,7 +315,7 @@ def test_definition_rows_carry_the_published_fields_only() -> None:
         "assignment_gate": "deciding_judge",
     }
     assert row["windows_days"] == list(WINDOWS_DAYS)
-    assert row["registry_version"] == 2 and row["methodology_version"] == "1.0"
+    assert row["registry_version"] == 3 and row["methodology_version"] == "1.1"
     assert "population" not in row and "counted" not in row and "truth_note" not in row
     assert set(row) == {"slug", "version", *registry_module.SUBSTANTIVE_COLUMNS}
     adjusted = registry["new_case_observed_expected"].as_row(
@@ -349,6 +383,115 @@ def test_a_tampered_adjusted_entry_fails_naming_the_slug_and_field(tmp_path: Pat
         (ratio_unit_on_a_share, r"'pretrial_release_share': field 'unit'"),
         (windows_over_decisions, r"'pretrial_release_observed_expected': field 'windows_days'"),
         (negative_minimum, r"field 'adjustment.minimum_expected'"),
+    ):
+        with pytest.raises(RegistryError, match=pattern):
+            _load_tampered(tmp_path, mutate)
+
+
+# --- registry version 3: real-data semantics (Phase 5 Step 5) ---------------------------------
+
+
+def test_the_disposition_family_is_gated_on_the_disposing_judge() -> None:
+    registry = load_registry()
+    assert "disposing_judge" in ASSIGNMENT_GATES
+    assert JUDGE_GATES == CAPABILITY_GATES  # the gates a source can declare it records
+    gated = {
+        slug
+        for slug, metric in registry.metrics.items()
+        if metric.attribution.assignment_gate == "disposing_judge"
+    }
+    assert gated == DISPOSITION_FAMILY
+    for slug in DISPOSITION_FAMILY:
+        metric = registry[slug]
+        assert metric.version == "2", slug
+        assert "disposing judge" in metric.eligibility, slug
+        assert "assignment interval" not in metric.eligibility, slug
+    for slug in SENTENCING_FAMILY:
+        assert "amended or corrected" in registry[slug].eligibility, slug
+
+
+def test_the_periods_state_the_engine_anchors_and_keep_the_adjusted_kind_whole() -> None:
+    periods = load_registry().periods
+    assert periods.calendar_year_kinds == DESCRIPTIVE_KINDS
+    assert OBSERVED_EXPECTED not in periods.calendar_year_kinds
+    assert dict(periods.anchors) == dict(POPULATION_ANCHORS)
+    assert "calendar year (UTC)" in periods.calendar_year
+    assert "coverage window" in periods.whole_window
+
+
+def test_every_threshold_carries_its_rationale_and_its_measured_cohorts() -> None:
+    registry = load_registry()
+    suppression = registry.suppression
+    listed = [slug for group in suppression.thresholds for slug in group.metrics]
+    assert sorted(listed) == sorted(registry.metrics)  # every metric exactly once
+    for group in suppression.thresholds:
+        assert len(group.rationale) > 80 and "PLACEHOLDER" not in group.rationale
+        for slug in group.metrics:
+            assert registry[slug].suppression_threshold == group.threshold, slug
+    measured = {slug for item in suppression.measurements for slug in item.metrics}
+    for slug, metric in registry.metrics.items():
+        if metric.suppression_threshold > 0:
+            assert slug in measured, f"{slug}: a threshold without a measured cohort"
+    assert {item.source for item in suppression.measurements} >= {"cook_sao", "synthetic"}
+    for item in suppression.measurements:
+        assert [name for name, _ in item.quantiles] == list(QUANTILE_FIELDS)
+        assert 0.0 <= item.under_threshold <= 1.0
+    assert "PLACEHOLDER" not in suppression.measurement_method
+    # Phase 3 finding 3.5, answered: the eligible count stays published.
+    assert "eligible count" in suppression.eligible_count
+
+
+def test_each_revocation_metric_carries_the_scope_of_its_index_event() -> None:
+    registry = load_registry()
+    scopes = registry.revocation_scopes
+    assert dict(scopes.by_index_event) == {
+        "pretrial_release": "release",
+        "disposition": "supervision",
+        "sentence": "supervision",
+    }
+    for metric in registry.metrics.values():
+        if metric.outcome == "revocation":
+            assert metric.index_event is not None
+            assert metric.revocation_scope == scopes.by_index_event[metric.index_event]
+        else:
+            assert metric.revocation_scope is None, metric.slug
+    assert registry["revocation_rate"].revocation_scope == "release"
+
+
+def test_tampered_version_three_blocks_fail(tmp_path: Path) -> None:
+    def gate_on_sentences(payload: dict[str, Any]) -> None:
+        _entry(payload, "sentence_count")["attribution"]["assignment_gate"] = "disposing_judge"
+
+    def anchors_drift(payload: dict[str, Any]) -> None:
+        payload["periods"]["calendar_year"]["anchors"]["sentences"] = "filed_at"
+
+    def adjusted_years(payload: dict[str, Any]) -> None:
+        payload["periods"]["calendar_year"]["kinds"].append(OBSERVED_EXPECTED)
+
+    def unlisted_threshold(payload: dict[str, Any]) -> None:
+        payload["suppression"]["thresholds"][0]["metrics"].remove("sentence_count")
+
+    def wrong_threshold(payload: dict[str, Any]) -> None:
+        _entry(payload, "sentence_count")["suppression_threshold"] = 5
+
+    def unknown_scope(payload: dict[str, Any]) -> None:
+        payload["revocation_scopes"]["by_index_event"]["sentence"] = "parole"
+
+    def unmeasured(payload: dict[str, Any]) -> None:
+        payload["suppression"]["measurements"]["cohorts"] = [
+            cohort
+            for cohort in payload["suppression"]["measurements"]["cohorts"]
+            if "probation_days_median" not in cohort["metrics"]
+        ]
+
+    for mutate, pattern in (
+        (gate_on_sentences, r"'sentence_count': field 'attribution.assignment_gate'"),
+        (anchors_drift, r"periods.calendar_year.anchors"),
+        (adjusted_years, r"periods.calendar_year.kinds"),
+        (unlisted_threshold, r"suppression.thresholds` does not list \['sentence_count'\]"),
+        (wrong_threshold, r"puts 'sentence_count' at 0"),
+        (unknown_scope, r"revocation_scopes.by_index_event.sentence"),
+        (unmeasured, r"threshold carries no measured cohort: \['probation_days_median'\]"),
     ):
         with pytest.raises(RegistryError, match=pattern):
             _load_tampered(tmp_path, mutate)

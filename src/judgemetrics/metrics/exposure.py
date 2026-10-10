@@ -9,7 +9,9 @@ community (methodology 0.2, Phase 3 finding 1.4):
    index case's own term — ``sentence_at + incarceration_days`` of the
    sentence of the same case and person with a positive
    ``incarceration_days``, the latest term end when there are several —
-   because the sentence always follows the disposition.
+   because the sentence follows the disposition; when a source dates the
+   term to end at or before the index time (a sentence it records before the
+   disposition), the start stays at the index time (methodology 1.1).
 2. Then, for every kind (``pretrial_release`` included), while an
    incarceration term ``[sentence_at, sentence_at + incarceration_days)``
    of the same person — in any case; the frame's persons are the merged
@@ -68,16 +70,22 @@ def incarceration_terms(frame: Frame) -> pl.DataFrame:
 
 
 def _own_terms(rows: pl.DataFrame, terms: pl.DataFrame) -> pl.DataFrame:
-    """The disposition kind's first step: the latest term of the index case's own sentence."""
+    """The disposition kind's first step: the latest term of the index case's own sentence.
+
+    The start moves to that term's end only when it ends after the index time:
+    a source that dates the sentence before the disposition (methodology 1.1)
+    never moves exposure before the index.
+    """
     latest = (
         terms.select("case_id", "person_id", TERM_END, TERM_DAYS)
         .sort([TERM_END, TERM_DAYS], descending=True)
         .unique(subset=["case_id", "person_id"], keep="first", maintain_order=True)
     )
     joined = rows.join(latest, on=["case_id", "person_id"], how="left")
+    later = pl.col(TERM_END).is_not_null() & (pl.col(TERM_END) > pl.col("index_at"))
     return joined.with_columns(
-        pl.coalesce(TERM_END, "index_at").alias(START),
-        pl.col(TERM_DAYS).fill_null(0).alias(DEFERRAL),
+        pl.when(later).then(pl.col(TERM_END)).otherwise(pl.col("index_at")).alias(START),
+        pl.when(later).then(pl.col(TERM_DAYS)).otherwise(0).alias(DEFERRAL),
     ).drop(TERM_END, TERM_DAYS)
 
 

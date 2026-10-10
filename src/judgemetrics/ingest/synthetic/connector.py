@@ -56,6 +56,7 @@ from judgemetrics.ingest.synthetic.normalize import (
 )
 from judgemetrics.ingest.synthetic.parse import iter_rows, parse_file, read_frame, read_headers
 from judgemetrics.ingest.synthetic.schema import (
+    ASSIGNMENTS_FILE,
     CHARGES_FILE,
     COURTS_FILE,
     EXPECTED_HEADERS,
@@ -108,8 +109,10 @@ def resolve_inside(root: Path, name: str) -> Path:
 class SyntheticConnector:
     source_id = sources.SOURCE_ID
     # "2" (Phase 4 Step 1): ordinal party keys and the restricted attributes,
-    # so artifacts recorded under "1" are parsed again.
-    parser_version = "2"
+    # so artifacts recorded under "1" are parsed again. "3" (Phase 5 Step 5): every
+    # disposed charge carries the judge assigned at its disposition (charge.judge_id,
+    # the disposing_judge gate), so artifacts recorded under "2" are parsed again.
+    parser_version = "3"
     source_info = sources.SOURCE_INFO
 
     def __init__(
@@ -192,6 +195,7 @@ class SyntheticConnector:
             _rows(by_id[artifact_id(JUDGES_FILE)], JUDGES_FILE),
             _rows(by_id[artifact_id(CHARGES_FILE)], CHARGES_FILE),
             _rows(by_id[artifact_id(PARTICIPANTS_FILE)], PARTICIPANTS_FILE),
+            _rows(by_id[artifact_id(ASSIGNMENTS_FILE)], ASSIGNMENTS_FILE),
         )
         self._context_loaded = True
         try:

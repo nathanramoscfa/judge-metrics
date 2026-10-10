@@ -4,8 +4,9 @@
 One ``outcome_model`` row per snapshot, source, specification version,
 target, window, and seed (``uq_outcome_model_key``, ``NULLS NOT DISTINCT``
 because the release target has no window): the fit's status (``fitted``,
-``insufficient_events``, ``not_converged``), the temporal split's counts
-(``n_train``/``events_train`` before the cutoff, ``n_test``/``events_test``
+``insufficient_events``, ``not_converged``; revision 0012 adds ``unavailable``,
+a target the source cannot support, with its reason), the temporal split's
+counts (``n_train``/``events_train`` before the cutoff, ``n_test``/``events_test``
 at or after it; the published fit is over both), the training range and
 the cutoff, the test-set diagnostics and the ten calibration bins
 (``diagnostics``), and per design column the level, the estimate, the
@@ -31,7 +32,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from judgemetrics.db.base import Base, Timestamps, UUIDPrimaryKey
 from judgemetrics.db.models._types import JSONBDict
 
-OUTCOME_MODEL_STATUSES: tuple[str, ...] = ("fitted", "insufficient_events", "not_converged")
+# Revision 0012 adds `unavailable`: a target the source cannot support (it does not
+# record the population's gate, observe the outcome, or key persons across cases),
+# recorded with its reason in `diagnostics` instead of a fit.
+OUTCOME_MODEL_STATUSES: tuple[str, ...] = (
+    "fitted",
+    "insufficient_events",
+    "not_converged",
+    "unavailable",
+)
 
 
 class OutcomeModel(UUIDPrimaryKey, Timestamps, Base):
@@ -49,7 +58,8 @@ class OutcomeModel(UUIDPrimaryKey, Timestamps, Base):
             postgresql_nulls_not_distinct=True,
         ),
         CheckConstraint(
-            "status IN ('fitted', 'insufficient_events', 'not_converged')", name="status"
+            "status IN ('fitted', 'insufficient_events', 'not_converged', 'unavailable')",
+            name="status",
         ),
     )
 

@@ -17,7 +17,9 @@ Schemas (id columns are marked ``*``; ``?`` marks a nullable column):
   disposition?, disposition_actor?, offense_category, severity,
   source_row_id? (the source's own charge identifier: the deterministic
   tie-break for a case's lead convicted charge, stable across re-ingests
-  where the canonical id is not)
+  where the canonical id is not), judge_id*? (Phase 5 Step 5: the judge the
+  source records as entering the charge's disposition — the
+  ``disposing_judge`` gate)
 - ``decisions``: id*, case_id*, person_id*, judge_id*?, decision_type,
   decision_at, actor_type, discretion, release_at?, detained_flag?,
   release_type? (the release columns come from the decision's pretrial
@@ -52,18 +54,22 @@ dates); ``coverage_end_exclusive_at`` is the day after ``coverage_end`` at
 00:00 UTC, the instant follow-up is right-censored at. ``observable_outcomes``
 lists the ``justice_event_type`` values the source can document; a metric
 whose outcome is not among them is not observable for the source
-(``windows.NotObservable``).
+(``windows.NotObservable``). ``capabilities`` (Phase 5 Step 5,
+``judgemetrics.capabilities``) are the judge gates the source records, its
+person-key scope, and the revocation scopes it documents; a frame built
+without them (the synthetic world in memory, a test) records everything.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from datetime import UTC, date, datetime, time, timedelta
 from types import MappingProxyType
 
 import polars as pl
 
+from judgemetrics.capabilities import SourceCapabilities
 from judgemetrics.normalization import vocabulary
 
 ID = "id"
@@ -100,6 +106,7 @@ SCHEMAS: Mapping[str, Mapping[str, ColumnSpec]] = MappingProxyType(
                 "offense_category": pl.String(),
                 "severity": pl.String(),
                 "source_row_id": pl.String(),
+                "judge_id": ID,
             }
         ),
         "decisions": MappingProxyType(
@@ -218,6 +225,7 @@ class Frame:
     coverage_start: date
     coverage_end: date
     observable_outcomes: frozenset[str] = frozenset()
+    capabilities: SourceCapabilities = field(default_factory=SourceCapabilities.full)
 
     def __post_init__(self) -> None:
         if self.coverage_end < self.coverage_start:
@@ -248,6 +256,11 @@ class Frame:
         """The day after ``coverage_end`` at 00:00 UTC: follow-up is censored here."""
         return datetime.combine(self.coverage_end + timedelta(days=1), time.min, UTC)
 
+    @property
+    def coverage_start_at(self) -> datetime:
+        """``coverage_start`` at 00:00 UTC: the first instant of the coverage window."""
+        return datetime.combine(self.coverage_start, time.min, UTC)
+
     def table(self, name: str) -> pl.DataFrame:
         if name not in SCHEMAS:
             msg = f"unknown frame table {name!r}"
@@ -262,6 +275,7 @@ class Frame:
         coverage_end: date,
         observable_outcomes: frozenset[str] = frozenset(),
         id_dtype: pl.DataType = STRING_ID,
+        capabilities: SourceCapabilities | None = None,
     ) -> Frame:
         """A frame with every table empty (tests and loaders start from it)."""
         return cls(
@@ -269,6 +283,7 @@ class Frame:
             coverage_start=coverage_start,
             coverage_end=coverage_end,
             observable_outcomes=observable_outcomes,
+            capabilities=SourceCapabilities.full() if capabilities is None else capabilities,
         )
 
     def replace(self, **tables: pl.DataFrame) -> Frame:

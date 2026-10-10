@@ -296,7 +296,7 @@ as fields, so no client can show a number without its context:
 | `numerator`                             | `observed_count`: the rows or members meeting the condition                                              |
 | `denominator`                           | `cohort_size`: what the numerator is divided by (the followed members of a fixed-window rate, the whole cohort of a survival estimate, the attributed rows of a share, the values of a median, the population of a count) |
 | `eligible_count`                        | Sample size: the whole cohort before any follow-up restriction                                           |
-| `period_start`, `period_end`            | Date range: the source's coverage window the number is computed over                                     |
+| `period_start`, `period_end`            | Date range: the source's coverage window the number is computed over (the calendar-year observations registry version 3 adds are held out of the API until Phase 5 Step 7) |
 | `window_days`, `dimension_value`        | The follow-up window of a windowed metric; the group of a dimensioned one                                |
 | `rate`, `value`, `distribution`         | The figure: `numerator / denominator` or `1 - S(w)` (six decimals); a median in days; a distribution's whole map; for an adjusted ratio, `rate` is the observed rate O / n |
 | `lower`, `upper`, `interval_method`     | The 95% interval of a rate and how it was computed: `wilson` for shares and fixed-window rates, `greenwood` for Kaplan-Meier estimates, `bootstrap` for an adjusted ratio (whose `lower`/`upper` are null: its interval is `ratio_lower`/`ratio_upper`), null otherwise |
@@ -378,7 +378,7 @@ judge today) is `total: 0` with an empty map.
 | `metric`          | slug, required    | A registry metric with judge-level observations; anything else is a 422              |
 | `window`          | days              | Required for, and one of, a windowed metric's windows; forbidden otherwise (422)     |
 | `court_id` / `jurisdiction_id` | UUID | Exactly one: the judges with a service record at the court, or at a court of the jurisdiction (the linkage `/judges?court_id=` uses); unknown is a 404 |
-| `period_start`, `period_end` | ISO dates | Only observations of exactly that source period; `period_end` earlier than `period_start` is a 422 |
+| `period_start`, `period_end` | ISO dates | Only observations of exactly that period — the source's coverage window or (registry version 3) one calendar year; without either the cohort compares whole windows; `period_end` earlier than `period_start` is a 422 |
 | `sort`            | `rate`, `numerator`, `denominator`, `value`, `ratio`, `name` | The figure to order by — by default `ratio` (the pooled ratio) for an adjusted metric and `rate` otherwise; a suppressed row sorts as if its figure were null, so the order never reveals a withheld number; nulls last |
 | `order`           | `desc` (default), `asc` | Direction; ties break by name and id                                             |
 | `limit`, `offset` | as every list     |                                                                                       |

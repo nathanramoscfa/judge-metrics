@@ -7,7 +7,7 @@
 # (yaml.safe_load); versioned in tables.yaml beside its sha256, so an edit
 # bumps `version` there and here and re-derives every row through the
 # connector's parser version.
-version: 1
+version: 2
 documentation:
   glossary: https://datacatalog.cookcountyil.gov/api/views/apwk-dzx8/files/4d3f91ea-857d-4f04-994f-918980b0b319?download=true&filename=CCSAO%20Data%20Glossary.pdf
 # The grain, decided from the export's rows (Step 1 profile, measured
@@ -48,6 +48,17 @@ supersedes: >-
   Within a participant and charge version, sentences are ordered by date and
   then by phase (original, probation_violation, amended, resentenced,
   remanded); every sentence supersedes the earlier ones it follows.
+# Version 2 (Phase 5 Step 5): `corrects_earlier` marks the phase whose sentence
+# replaces the one it follows as a correction of the same decision - the earlier
+# sentence is then no sentencing decision of its own (sentence_components
+# `replaced`, which the metrics engine leaves out). Every other phase is a
+# sentencing decision of its own beside the one it supersedes: an original
+# sentence and a probation-violation, resentencing, or remand sentencing are two
+# decisions, each attributed to its own judge.
+counting: >-
+  Each sentencing decision is counted once. A sentence is replaced - not a
+  decision of its own - when a later sentence of the same participant whose
+  phase corrects_earlier shares one of its charge versions.
 # Converting COMMITMENT_TERM and COMMITMENT_UNIT to days: the term is a
 # decimal number (3.5 years is allowed); days = term x days_per_unit, rounded
 # half up to a whole day. A term that is not a plain number (the profile's
@@ -123,6 +134,7 @@ phases:
   - sentence_phase: Original Sentencing
     phase: original
     ignored: false
+    corrects_earlier: false
     supersedes_earlier: false
     revocation: false
     rationale: >-
@@ -130,6 +142,7 @@ phases:
   - sentence_phase: Probation Violation Sentencing
     phase: probation_violation
     ignored: false
+    corrects_earlier: false
     supersedes_earlier: true
     revocation: true
     rationale: >-
@@ -141,6 +154,7 @@ phases:
   - sentence_phase: Amended/Corrected Sentencing
     phase: amended
     ignored: false
+    corrects_earlier: true
     supersedes_earlier: true
     revocation: false
     rationale: >-
@@ -150,6 +164,7 @@ phases:
   - sentence_phase: Resentenced
     phase: resentenced
     ignored: false
+    corrects_earlier: false
     supersedes_earlier: true
     revocation: false
     rationale: >-
@@ -161,6 +176,7 @@ phases:
   - sentence_phase: Remanded Sentencing
     phase: remanded
     ignored: false
+    corrects_earlier: false
     supersedes_earlier: true
     revocation: false
     rationale: >-
@@ -170,6 +186,7 @@ phases:
   - sentence_phase: Summary Charge Info
     phase: null
     ignored: true
+    corrects_earlier: false
     supersedes_earlier: false
     revocation: false
     rationale: >-

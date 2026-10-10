@@ -10,7 +10,10 @@ the ingest transaction, which the runner commits or rolls back):
    raised before anything is written (Step 3's trace test relies on it:
    an observation whose chain breaks is never published);
 2. ``metric_snapshot`` upserted on ``content_hash`` (an existing row is
-   reused; a label is recorded when the row has none);
+   reused; a label is recorded when the row has none; and — issue #42 — a
+   compute that reuses the row under a newer registry records the registry
+   and methodology versions it publishes under, so ``/ready`` and
+   ``/coverage`` report the versions of the observations they describe);
 3. ``sync_definitions``, then the ``metric_definition`` ids by
    ``(slug, version)``;
 4. per subject and source: the current observations (``superseded_at IS
@@ -24,6 +27,11 @@ the ingest transaction, which the runner commits or rolls back):
    previous publish superseded and that the same snapshot and definition
    now produce again is revived rather than inserted, because
    ``uq_metric_observation_key`` spans superseded rows too.
+
+Observations and members are inserted with one compiled statement per table,
+executed over each batch (executemany). Phase 5 Step 5: an observation's key
+carries its ``calendar_year`` (null for the whole window), stored beside the
+period it names.
 
 Nothing is ever deleted: supersession keeps the history of every number
 a subject has carried. ``stored_columns`` and ``row_columns`` are the two
@@ -65,7 +73,12 @@ from judgemetrics.config import Settings
 from judgemetrics.db.models import Base
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.logging import get_logger
-from judgemetrics.metrics.compute import Member, NotObservableRecord, ObservationDraft
+from judgemetrics.metrics.compute import (
+    Member,
+    NotAttributableRecord,
+    NotObservableRecord,
+    ObservationDraft,
+)
 from judgemetrics.metrics.registry import KINDS, OBSERVED_EXPECTED, Registry, sync_definitions
 from judgemetrics.metrics.snapshot import Snapshot, code_version
 
@@ -111,6 +124,8 @@ SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 OBSERVATION = Base.metadata.tables["metric_observation"]
 MEMBER = Base.metadata.tables["metric_observation_member"]
 OUTCOME_MODEL = Base.metadata.tables["outcome_model"]
+INSERT_OBSERVATION = sa.insert(OBSERVATION)
+INSERT_MEMBER = sa.insert(MEMBER)
 
 
 class PublishError(RuntimeError):
@@ -132,6 +147,7 @@ class PublishResult:
     members_written: int
     subjects_published: int
     subjects_unchanged: int
+    not_attributable: int = 0
 
     def as_log(self) -> dict[str, Any]:
         return {
@@ -139,6 +155,7 @@ class PublishResult:
             "observations": self.observations_published,
             "suppressed": self.suppressed,
             "not_observable": self.not_observable,
+            "not_attributable": self.not_attributable,
             "superseded": self.superseded,
             "members": self.members_written,
             "subjects_published": self.subjects_published,
@@ -270,14 +287,27 @@ def upsert_snapshot(
     """The ``metric_snapshot`` row for the snapshot's hash, inserted when missing."""
     ref = snapshot.ref
     existing = session.execute(
-        select(SNAPSHOT.c.id, SNAPSHOT.c.label).where(SNAPSHOT.c.content_hash == ref.content_hash)
+        select(
+            SNAPSHOT.c.id,
+            SNAPSHOT.c.label,
+            SNAPSHOT.c.registry_version,
+            SNAPSHOT.c.methodology_version,
+        ).where(SNAPSHOT.c.content_hash == ref.content_hash)
     ).first()
     if existing is not None:
+        changes: dict[str, Any] = {}
         if label and existing.label is None:
+            changes["label"] = label
+        # Issue #42: the row states the registry its latest publish used.
+        if existing.registry_version != registry.version:
+            changes["registry_version"] = registry.version
+        if existing.methodology_version != registry.methodology_version:
+            changes["methodology_version"] = registry.methodology_version
+        if changes:
             session.execute(
                 sa.update(SNAPSHOT)
                 .where(SNAPSHOT.c.id == existing.id)
-                .values(label=label, updated_at=sa.func.now())
+                .values(**changes, updated_at=sa.func.now())
             )
         return uuid.UUID(str(existing.id))
     snapshot_id = uuid.uuid4()
@@ -401,6 +431,7 @@ def load_observations(
                     row["period_end"],
                     row["window_days"],
                     row["dimension_value"],
+                    row["calendar_year"],
                 ),
                 definition=(str(row["slug"]), str(row["definition_version"])),
                 snapshot_id=uuid.UUID(str(row["snapshot_id"])),
@@ -463,6 +494,7 @@ def _observation_row(
         "code_version": version,
         "outcome_model_id": model_id,
         "superseded_at": None,
+        "calendar_year": draft.calendar_year,
         **_insert_columns(stored_columns(draft, registry)),
     }
 
@@ -527,6 +559,7 @@ def publish(
     settings: Settings,
     *,
     not_observable: Sequence[NotObservableRecord] = (),
+    not_attributable: Sequence[NotAttributableRecord] = (),
     label: str | None = None,
     kinds: Collection[str] | None = None,
 ) -> PublishResult:
@@ -616,10 +649,12 @@ def publish(
                 member_rows.extend(_member_rows(observation_id, draft.members))
             published += 1
             suppressed += int(draft.suppressed_flag)
+        # One compiled statement per table, executed over each batch (executemany):
+        # compiling a multi-row VALUES per batch dominated large publishes.
         for batch in _batches(observation_rows):
-            session.execute(sa.insert(OBSERVATION).values(list(batch)))
+            session.execute(INSERT_OBSERVATION, list(batch))
         for batch in _batches(member_rows):
-            session.execute(sa.insert(MEMBER).values(list(batch)))
+            session.execute(INSERT_MEMBER, list(batch))
         members_written += len(member_rows)
     session.flush()
     result = PublishResult(
@@ -632,6 +667,7 @@ def publish(
         members_written=members_written,
         subjects_published=subjects_published,
         subjects_unchanged=subjects_unchanged,
+        not_attributable=len(not_attributable),
     )
     log.info("metrics.published", **result.as_log())
     return result

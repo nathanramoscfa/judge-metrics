@@ -15,14 +15,22 @@ is reported not observable; ``verify()`` returns zero mismatches;
 tampering one observation's ``observed_count`` inside a rolled-back
 session makes ``verify()`` report exactly that observation and column;
 every member id exists in the canonical tables; a second compute
-publishes nothing; the snapshot exports no restricted table.
+publishes nothing; the snapshot exports no restricted table. Registry
+version 3 (Phase 5 Step 5): the truth's numbers are the whole-window
+observations (``calendar_year`` null) — the disposition family now gated on the
+disposing judge, every value unchanged — and every descriptive metric of every
+golden subject also carries its calendar years, whose members partition the
+whole window's and whose additive figures sum to it, read back from the
+database.
 """
 
 from __future__ import annotations
 
 import json
 import uuid
+from collections import Counter
 from collections.abc import Iterator
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -35,7 +43,7 @@ from judgemetrics.db.models import Base, MetricObservation, MetricObservationMem
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.db.session import make_engine
 from judgemetrics.metrics.engine import compute_and_publish
-from judgemetrics.metrics.registry import load_registry
+from judgemetrics.metrics.registry import OBSERVED_EXPECTED, load_registry
 from judgemetrics.metrics.snapshot import (
     MEMBER_TABLES,
     RESTRICTED_TABLES,
@@ -136,7 +144,7 @@ def test_every_observation_equals_its_truth_expectation(
     observations = {
         (row.window_days, row.dimension_value): row
         for row in _current(session, kind, subject_id)
-        if row.definition.slug == slug
+        if row.definition.slug == slug and row.calendar_year is None
     }
     if not expected:
         # A subject without an incarcerating sentence has no category to group by.
@@ -188,6 +196,68 @@ def test_not_observable_metrics_have_no_observation_and_are_reported(
         if item.slug == slug and item.subject_type == kind and item.subject_id == str(subject_id)
     ]
     assert len(reported) == 1 and reported[0].outcome == outcome
+
+
+# Figures that do not add across years: a distinct count, an estimate, a median.
+NOT_ADDITIVE_SLUGS = frozenset({"eligible_defendants"})
+NOT_ADDITIVE_KINDS = frozenset({"survival", "median", OBSERVED_EXPECTED})
+
+
+def _members(session: Session, observation_ids: list[uuid.UUID]) -> Counter[tuple[Any, ...]]:
+    rows = session.execute(
+        select(
+            MetricObservationMember.member_kind,
+            MetricObservationMember.member_id,
+            MetricObservationMember.counted,
+            MetricObservationMember.followed,
+        ).where(MetricObservationMember.observation_id.in_(observation_ids))
+    ).all()
+    return Counter(tuple(row) for row in rows)
+
+
+@pytest.mark.parametrize(("kind", "code"), SUBJECTS, ids=[f"{k}-{c}" for k, c in SUBJECTS])
+def test_the_calendar_years_agree_with_the_whole_window_in_the_database(
+    session: Session,
+    golden_fixture: GoldenFixture,
+    golden_metrics: GoldenMetrics,
+    kind: str,
+    code: str,
+) -> None:
+    del golden_metrics
+    rows = _current(session, kind, _subject_id(golden_fixture, kind, code))
+    groups: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in rows:
+        key = (row.definition.slug, row.window_days, row.dimension_value)
+        group = groups.setdefault(key, {"whole": None, "years": []})
+        if row.calendar_year is None:
+            group["whole"] = row
+        else:
+            assert (row.period_start, row.period_end) == (
+                date(row.calendar_year, 1, 1),
+                date(row.calendar_year, 12, 31),
+            )
+            group["years"].append(row)
+    with_years = 0
+    for (slug, _, _), group in groups.items():
+        whole, years = group["whole"], group["years"]
+        definition = REGISTRY[slug]
+        if definition.is_adjusted:
+            assert not years, slug  # an adjusted ratio is whole-window only
+            continue
+        assert whole is not None, slug
+        if whole.eligible_count == 0:
+            continue
+        assert years, f"{kind} {code} {slug}: no calendar year"
+        with_years += 1
+        if definition.kind != "median":
+            assert _members(session, [y.id for y in years]) == _members(session, [whole.id]), slug
+        if definition.kind in NOT_ADDITIVE_KINDS:
+            continue
+        assert sum(y.eligible_count for y in years) == whole.eligible_count, slug
+        assert sum(y.cohort_size for y in years) == whole.cohort_size, slug
+        if slug not in NOT_ADDITIVE_SLUGS:
+            assert sum(y.observed_count for y in years) == whole.observed_count, slug
+    assert with_years > 0
 
 
 def test_court_only_metrics_are_never_published_for_a_judge(

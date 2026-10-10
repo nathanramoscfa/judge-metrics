@@ -139,7 +139,7 @@ def test_registry_lists_every_definition_with_the_known_limitations_verbatim(
         "limitations",
         "validation",
     }
-    assert body["methodology_version"] == "1.0"
+    assert body["methodology_version"] == "1.1"
     assert adjustment["interpretation"] == prose.interpretation
     assert adjustment["model"] == prose.model
     assert adjustment["pooling"] == prose.pooling

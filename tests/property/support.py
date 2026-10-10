@@ -268,6 +268,12 @@ def frame_from_world(world: World, spec: ScaleSpec) -> Frame:
                     "offense_category": charge.offense.offense_category,
                     "severity": charge.offense.severity,
                     "source_row_id": charge.charge_id,
+                    # The judge assigned at the disposition: the synthetic connector's rule.
+                    "judge_id": (
+                        None
+                        if charge.disposed_at is None
+                        else case.assigned_judge_at(charge.disposed_at)
+                    ),
                 }
             )
         for decision in case.decisions:

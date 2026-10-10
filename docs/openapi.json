@@ -232,7 +232,7 @@
             "title": "Actor Types"
           },
           "assignment_gate": {
-            "description": "How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, or court_of_case.",
+            "description": "How a row is tied to the subject: deciding_judge, assigned_at_time, assigned_ever, sentencing_judge, disposing_judge, or court_of_case.",
             "title": "Assignment Gate",
             "type": "string"
           },

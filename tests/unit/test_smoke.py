@@ -39,7 +39,7 @@ def test_ingest_list_sources_names_the_registered_connectors() -> None:
     assert result.output.splitlines() == [
         f"cook_sao\t1+{RULE_VERSION_TAG}",
         "fjc\t2026.09.1",
-        "synthetic\t2",
+        "synthetic\t3",
     ]
 
 

@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 import httpx
 import polars as pl
 
+from judgemetrics.capabilities import SourceCapabilities
 from judgemetrics.ingest.base import (
     PREVIOUS_ETAG,
     PREVIOUS_LAST_MODIFIED,
@@ -62,6 +63,15 @@ class FjcConnector:
             "redistribution": {"aggregates": "yes", "record_level": "yes", "commercial": "yes"},
             "files": [sources.JUDGES_FILE, sources.SERVICE_FILE],
         },
+        # Reference data only: judges, courts, and service records - no case, person, or
+        # outcome, so no judge gate, no person key, and no revocation is recorded.
+        capabilities=SourceCapabilities(),
+        limitations=(
+            "Reference data only: federal judges' biographical and service records and the "
+            "courts they sat on. It records no case, decision, person, or outcome, so no "
+            "metric is computed from it; it names the judges and courts other sources' "
+            "metrics are attributed to.",
+        ),
     )
 
     def __init__(

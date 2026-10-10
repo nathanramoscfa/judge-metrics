@@ -23,6 +23,23 @@ measure (``subject_types: [judge]``) over the release target's decisions
 (no window) or a windowed target's pretrial-release cohort (an index
 event, an outcome, and the brief's six windows).
 
+Registry version 3 (Phase 5 Step 5, methodology 1.1) adds the assignment gate
+``disposing_judge`` (the judge the source records on the charge whose
+disposition it is), two top-level blocks, and the threshold rationale:
+
+- ``periods``: the whole coverage window every metric publishes, and the
+  calendar years (UTC) the descriptive kinds publish beside it, each over the
+  rows whose *anchor* — ``POPULATION_ANCHORS``, which the block must state
+  exactly — falls in the year;
+- ``revocation_scopes``: what a revocation is after each index event (a
+  revoked pretrial ``release``; a revoked ``supervision`` a sentence imposed),
+  carried on every revocation metric as ``revocation_scope``, so a source that
+  documents only one scope observes only the metrics of that scope;
+- ``suppression.thresholds`` (every metric exactly once, with the threshold its
+  entry carries and the reason), ``suppression.measurements`` (the cohort sizes
+  the thresholds were decided against, as quantiles — never a subject), and
+  ``suppression.eligible_count``, the answer to Phase 3 finding 3.5.
+
 ``sync_definitions(session)`` mirrors the registry into
 ``metric_definition`` on ``(slug, version)``: new versions are inserted,
 rows whose substantive columns changed are updated, unchanged rows are not
@@ -36,7 +53,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
@@ -83,12 +100,46 @@ ASSIGNMENT_GATES: tuple[str, ...] = (
     "assigned_at_time",
     "assigned_ever",
     "sentencing_judge",
+    "disposing_judge",
     "court_of_case",
 )
+COURT_OF_CASE = "court_of_case"
+# The gates that tie a row to a judge (a source records some of them: capabilities).
+JUDGE_GATES: tuple[str, ...] = tuple(gate for gate in ASSIGNMENT_GATES if gate != COURT_OF_CASE)
 INDEX_EVENTS: tuple[str, ...] = ("pretrial_release", "disposition", "sentence")
 DIMENSIONS: tuple[str, ...] = ("disposition", "offense_category")
 UNITS: tuple[str, ...] = ("count", "share", "days", "ratio")
 MEASURES: tuple[str, ...] = ("days_to_disposition", "incarceration_days", "probation_days")
+# The anchor of each population: the instant whose calendar year (UTC) places a row in a
+# calendar-year period, and which must fall inside the source's coverage window for the
+# row to enter any period (`periods.calendar_year.anchors` must state exactly these).
+POPULATION_ANCHORS: Mapping[str, str] = MappingProxyType(
+    {
+        "cases": "filed_at",
+        "defendants": "filed_at",
+        "pretrial_decisions": "decision_at",
+        "disposed_charges": "disposed_at",
+        "disposed_cases": "disposition_at",
+        "sentences": "sentence_at",
+        "index_events": "index_at",
+    }
+)
+WHOLE_WINDOW = "whole_window"
+CALENDAR_YEAR = "calendar_year"
+PERIOD_TYPES: tuple[str, ...] = (WHOLE_WINDOW, CALENDAR_YEAR)
+REVOCATION = "revocation"
+REVOCATION_SCOPES: tuple[str, ...] = ("release", "supervision")
+# The quantiles every cohort-size measurement records (nearest rank).
+QUANTILE_FIELDS: tuple[str, ...] = ("p10", "p25", "p50", "p75", "p90")
+MEASUREMENT_FIELDS: tuple[str, ...] = (
+    "source",
+    "subject_type",
+    "period",
+    "window_days",
+    "cohorts",
+    *QUANTILE_FIELDS,
+    "under_threshold",
+)
 # `counted` conditions: the column and the vocabulary kind its value must
 # belong to (`None` for a boolean flag).
 COUNTED_COLUMNS: Mapping[str, str | None] = MappingProxyType(
@@ -185,6 +236,8 @@ class MetricDefinitionSpec:
     measure: str | None = None
     truth_note: str | None = None
     adjustment: AdjustmentSpec | None = None
+    # A revocation metric's scope after its index event (`revocation_scopes`); else null.
+    revocation_scope: str | None = None
 
     @property
     def is_windowed(self) -> bool:
@@ -226,10 +279,72 @@ class MetricDefinitionSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ThresholdGroup:
+    """Metrics sharing one suppression threshold, and why it is that number."""
+
+    threshold: int
+    metrics: tuple[str, ...]
+    rationale: str
+
+
+@dataclass(frozen=True, slots=True)
+class CohortMeasurement:
+    """The measured sizes of one denominator over one source, subject type, and period.
+
+    ``cohorts`` is the number of (subject, period) cohorts measured, the
+    quantiles are nearest-rank cohort sizes, and ``under_threshold`` is the
+    share of those cohorts below the threshold ``metrics`` share.
+    """
+
+    name: str
+    metrics: tuple[str, ...]
+    source: str
+    subject_type: str
+    period: str
+    window_days: int | None
+    cohorts: int
+    quantiles: tuple[tuple[str, int], ...]
+    under_threshold: float
+
+
+@dataclass(frozen=True, slots=True)
 class SuppressionSpec:
     default_threshold: int
     rule: str
     rationale: str
+    eligible_count: str = ""
+    thresholds: tuple[ThresholdGroup, ...] = ()
+    measured_on: str = ""
+    measurement_method: str = ""
+    measurements: tuple[CohortMeasurement, ...] = ()
+
+    def group_of(self, slug: str) -> ThresholdGroup | None:
+        """The threshold group that lists ``slug`` (every metric is in exactly one)."""
+        for group in self.thresholds:
+            if slug in group.metrics:
+                return group
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class PeriodSpec:
+    """The periods observations are published over (``periods``)."""
+
+    whole_window: str
+    calendar_year: str
+    calendar_year_kinds: frozenset[str]
+    anchors: Mapping[str, str]
+
+    def has_calendar_years(self, kind: str) -> bool:
+        return kind in self.calendar_year_kinds
+
+
+@dataclass(frozen=True, slots=True)
+class RevocationScopeSpec:
+    """What a revocation is after each index event (``revocation_scopes``)."""
+
+    definitions: Mapping[str, str]
+    by_index_event: Mapping[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +357,8 @@ class Registry:
     suppression: SuppressionSpec
     metrics: Mapping[str, MetricDefinitionSpec]
     path: Path
+    periods: PeriodSpec
+    revocation_scopes: RevocationScopeSpec
 
     def __getitem__(self, slug: str) -> MetricDefinitionSpec:
         return self.metrics[slug]
@@ -526,13 +643,265 @@ def parse_metric(entry: Any) -> MetricDefinitionSpec:
     )
 
 
+# Populations the disposing-judge gate can attribute (a charge's disposition, a case's).
+DISPOSING_POPULATIONS: tuple[str, ...] = ("disposed_charges", "disposed_cases")
+
+
+def _check_gate(metric: MetricDefinitionSpec) -> None:
+    """``disposing_judge`` attributes dispositions only (a charge's, a case's, the index's)."""
+    if metric.attribution.assignment_gate != "disposing_judge":
+        return
+    disposition_index = metric.population == "index_events" and metric.index_event == "disposition"
+    if metric.population not in DISPOSING_POPULATIONS and not disposition_index:
+        raise _fail(
+            metric.slug,
+            "attribution.assignment_gate",
+            "disposing_judge attributes disposed charges, disposed cases, or a disposition"
+            " index event only",
+        )
+
+
+def _top_string(block: Mapping[str, Any], path: Path, where: str, name: str) -> str:
+    value = block.get(name)
+    if not isinstance(value, str) or not value.strip():
+        raise RegistryError(f"{path}: `{where}.{name}` must be a non-empty string")
+    return value.strip()
+
+
+def _exact_keys(block: Any, path: Path, where: str, keys: tuple[str, ...]) -> Mapping[str, Any]:
+    if not isinstance(block, dict):
+        raise RegistryError(f"{path}: `{where}` must be a mapping")
+    unknown = sorted(set(block) - set(keys))
+    missing = sorted(set(keys) - set(block))
+    if unknown or missing:
+        raise RegistryError(
+            f"{path}: `{where}` must carry exactly {', '.join(keys)}"
+            f" (missing {missing}, unknown {unknown})"
+        )
+    return block
+
+
+def parse_periods(block: Any, path: Path) -> PeriodSpec:
+    """``periods``: the whole window's rule and the calendar years' kinds, anchors, rule."""
+    periods = _exact_keys(block, path, "periods", PERIOD_TYPES)
+    calendar = _exact_keys(
+        periods[CALENDAR_YEAR], path, "periods.calendar_year", ("kinds", "anchors", "rule")
+    )
+    kinds = calendar["kinds"]
+    if not isinstance(kinds, list) or not kinds or len(set(kinds)) != len(kinds):
+        raise RegistryError(f"{path}: `periods.calendar_year.kinds` must list kinds once each")
+    for kind in kinds:
+        if kind not in DESCRIPTIVE_KINDS:
+            raise RegistryError(
+                f"{path}: `periods.calendar_year.kinds` lists {kind!r}, not a descriptive kind"
+                f" (an {OBSERVED_EXPECTED} is published over the whole window only)"
+            )
+    anchors = calendar["anchors"]
+    if not isinstance(anchors, dict) or dict(anchors) != dict(POPULATION_ANCHORS):
+        raise RegistryError(
+            f"{path}: `periods.calendar_year.anchors` must state the engine's anchors"
+            f" {dict(POPULATION_ANCHORS)}"
+        )
+    whole = periods[WHOLE_WINDOW]
+    if not isinstance(whole, str) or not whole.strip():
+        raise RegistryError(f"{path}: `periods.whole_window` must be a non-empty string")
+    return PeriodSpec(
+        whole_window=whole.strip(),
+        calendar_year=_top_string(calendar, path, "periods.calendar_year", "rule"),
+        calendar_year_kinds=frozenset(kinds),
+        anchors=MappingProxyType(dict(POPULATION_ANCHORS)),
+    )
+
+
+def parse_revocation_scopes(block: Any, path: Path) -> RevocationScopeSpec:
+    """``revocation_scopes``: each scope's definition and the scope after each index event."""
+    scopes = _exact_keys(block, path, "revocation_scopes", ("definitions", "by_index_event"))
+    definitions = _exact_keys(
+        scopes["definitions"], path, "revocation_scopes.definitions", REVOCATION_SCOPES
+    )
+    texts: dict[str, str] = {}
+    for scope in REVOCATION_SCOPES:
+        texts[scope] = _top_string(definitions, path, "revocation_scopes.definitions", scope)
+    by_index = _exact_keys(
+        scopes["by_index_event"], path, "revocation_scopes.by_index_event", INDEX_EVENTS
+    )
+    for index_event, scope in by_index.items():
+        if scope not in REVOCATION_SCOPES:
+            raise RegistryError(
+                f"{path}: `revocation_scopes.by_index_event.{index_event}` must be one of"
+                f" {', '.join(REVOCATION_SCOPES)}"
+            )
+    return RevocationScopeSpec(
+        definitions=MappingProxyType(texts),
+        by_index_event=MappingProxyType({key: str(by_index[key]) for key in INDEX_EVENTS}),
+    )
+
+
+def _slug_list(value: Any, path: Path, where: str) -> tuple[str, ...]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) for item in value)
+        or len(set(value)) != len(value)
+    ):
+        raise RegistryError(f"{path}: `{where}` must list metric slugs once each")
+    return tuple(value)
+
+
+def parse_thresholds(
+    block: Any, path: Path, metrics: Mapping[str, MetricDefinitionSpec]
+) -> tuple[ThresholdGroup, ...]:
+    """``suppression.thresholds``: every metric exactly once, at the threshold it carries."""
+    if not isinstance(block, list) or not block:
+        raise RegistryError(f"{path}: `suppression.thresholds` must be a non-empty list")
+    groups: list[ThresholdGroup] = []
+    seen: dict[str, int] = {}
+    for index, entry in enumerate(block):
+        where = f"suppression.thresholds[{index}]"
+        group = _exact_keys(entry, path, where, ("threshold", "metrics", "rationale"))
+        threshold = group["threshold"]
+        if isinstance(threshold, bool) or not isinstance(threshold, int) or threshold < 0:
+            raise RegistryError(f"{path}: `{where}.threshold` must be a non-negative integer")
+        slugs = _slug_list(group["metrics"], path, f"{where}.metrics")
+        for slug in slugs:
+            if slug not in metrics:
+                raise RegistryError(f"{path}: `{where}` lists {slug!r}, not a registry metric")
+            if slug in seen:
+                raise RegistryError(f"{path}: `suppression.thresholds` lists {slug!r} twice")
+            if metrics[slug].suppression_threshold != threshold:
+                raise RegistryError(
+                    f"{path}: `{where}` puts {slug!r} at {threshold}, but its entry carries"
+                    f" suppression_threshold {metrics[slug].suppression_threshold}"
+                )
+            seen[slug] = threshold
+        groups.append(
+            ThresholdGroup(threshold, slugs, _top_string(group, path, where, "rationale"))
+        )
+    missing = sorted(set(metrics) - set(seen))
+    if missing:
+        raise RegistryError(f"{path}: `suppression.thresholds` does not list {missing}")
+    return tuple(groups)
+
+
+def _count(value: Any, path: Path, where: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise RegistryError(f"{path}: `{where}` must be a non-negative integer")
+    return value
+
+
+def parse_measurements(
+    block: Any, path: Path, metrics: Mapping[str, MetricDefinitionSpec]
+) -> tuple[str, str, tuple[CohortMeasurement, ...]]:
+    """``suppression.measurements``: the date, the method, and the measured cohorts."""
+    measured = _exact_keys(
+        block, path, "suppression.measurements", ("measured_on", "method", "cohorts")
+    )
+    day = measured["measured_on"]
+    if not isinstance(day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        raise RegistryError(f"{path}: `suppression.measurements.measured_on` must be a date")
+    entries = measured["cohorts"]
+    if not isinstance(entries, list) or not entries:
+        raise RegistryError(f"{path}: `suppression.measurements.cohorts` must be a list")
+    result: list[CohortMeasurement] = []
+    for index, entry in enumerate(entries):
+        where = f"suppression.measurements.cohorts[{index}]"
+        cohort = _exact_keys(entry, path, where, ("name", "metrics", "sizes"))
+        name = cohort["name"]
+        if not isinstance(name, str) or not SLUG_PATTERN.match(name):
+            raise RegistryError(f"{path}: `{where}.name` must be snake_case")
+        slugs = _slug_list(cohort["metrics"], path, f"{where}.metrics")
+        thresholds = set()
+        for slug in slugs:
+            if slug not in metrics:
+                raise RegistryError(f"{path}: `{where}` lists {slug!r}, not a registry metric")
+            thresholds.add(metrics[slug].suppression_threshold)
+        if len(thresholds) != 1:
+            raise RegistryError(f"{path}: `{where}.metrics` must share one threshold")
+        sizes = cohort["sizes"]
+        if not isinstance(sizes, list) or not sizes:
+            raise RegistryError(f"{path}: `{where}.sizes` must be a non-empty list")
+        for position, size in enumerate(sizes):
+            at = f"{where}.sizes[{position}]"
+            row = _exact_keys(size, path, at, MEASUREMENT_FIELDS)
+            source = row["source"]
+            if not isinstance(source, str) or not SLUG_PATTERN.match(source):
+                raise RegistryError(f"{path}: `{at}.source` must be a source register name")
+            if row["subject_type"] not in SUBJECT_TYPES:
+                raise RegistryError(f"{path}: `{at}.subject_type` must be judge or court")
+            if row["period"] not in PERIOD_TYPES:
+                raise RegistryError(f"{path}: `{at}.period` must be one of {PERIOD_TYPES}")
+            window = row["window_days"]
+            if window is not None and window not in WINDOWS_DAYS:
+                raise RegistryError(f"{path}: `{at}.window_days` must be a window or null")
+            quantiles = tuple(
+                (name, _count(row[name], path, f"{at}.{name}")) for name in QUANTILE_FIELDS
+            )
+            values = [value for _, value in quantiles]
+            if values != sorted(values):
+                raise RegistryError(f"{path}: `{at}` quantiles must not decrease")
+            under = row["under_threshold"]
+            if (
+                isinstance(under, bool)
+                or not isinstance(under, int | float)
+                or not 0.0 <= float(under) <= 1.0
+            ):
+                raise RegistryError(f"{path}: `{at}.under_threshold` must be a share")
+            result.append(
+                CohortMeasurement(
+                    name=name,
+                    metrics=slugs,
+                    source=source,
+                    subject_type=str(row["subject_type"]),
+                    period=str(row["period"]),
+                    window_days=window,
+                    cohorts=_count(row["cohorts"], path, f"{at}.cohorts"),
+                    quantiles=quantiles,
+                    under_threshold=float(under),
+                )
+            )
+    unmeasured = sorted(
+        slug
+        for slug, metric in metrics.items()
+        if metric.suppression_threshold > 0 and not any(slug in item.metrics for item in result)
+    )
+    if unmeasured:
+        raise RegistryError(
+            f"{path}: a suppressed metric's threshold carries no measured cohort: {unmeasured}"
+        )
+    method = measured["method"]
+    if not isinstance(method, str) or not method.strip():
+        raise RegistryError(f"{path}: `suppression.measurements.method` must be prose")
+    return day, method.strip(), tuple(result)
+
+
+def _with_revocation_scope(
+    metric: MetricDefinitionSpec, scopes: RevocationScopeSpec
+) -> MetricDefinitionSpec:
+    """A revocation metric carries its index event's revocation scope."""
+    if metric.outcome != REVOCATION or metric.index_event is None:
+        return metric
+    return replace(metric, revocation_scope=scopes.by_index_event[metric.index_event])
+
+
 def parse_registry(payload: Any, path: Path) -> Registry:
     """Validate a loaded YAML payload into a ``Registry``."""
     if not isinstance(payload, dict):
         raise RegistryError(f"{path}: expected a mapping at the top level")
-    for name in ("version", "methodology_version", "known_limitations", "suppression", "metrics"):
+    top = (
+        "version",
+        "methodology_version",
+        "known_limitations",
+        "periods",
+        "revocation_scopes",
+        "suppression",
+        "metrics",
+    )
+    for name in top:
         if name not in payload:
             raise RegistryError(f"{path}: `{name}` is required")
+    unknown_top = sorted(set(payload) - set(top))
+    if unknown_top:
+        raise RegistryError(f"{path}: {unknown_top} are not registry fields")
     version = payload["version"]
     if isinstance(version, bool) or not isinstance(version, int) or version < 1:
         raise RegistryError(f"{path}: `version` must be a positive integer")
@@ -556,20 +925,46 @@ def parse_registry(payload: Any, path: Path) -> Registry:
         raise RegistryError(
             f"{path}: `suppression.default_threshold` must be a non-negative integer"
         )
+    suppression_keys = (
+        "default_threshold",
+        "rule",
+        "rationale",
+        "eligible_count",
+        "thresholds",
+        "measurements",
+    )
+    unknown_suppression = sorted(set(suppression) - set(suppression_keys))
+    if unknown_suppression:
+        raise RegistryError(f"{path}: `suppression` carries unknown keys {unknown_suppression}")
+    entries = payload["metrics"]
+    if not isinstance(entries, list) or not entries:
+        raise RegistryError(f"{path}: `metrics` must be a non-empty list")
+    periods = parse_periods(payload["periods"], path)
+    scopes = parse_revocation_scopes(payload["revocation_scopes"], path)
+    metrics: dict[str, MetricDefinitionSpec] = {}
+    for entry in entries:
+        metric = _with_revocation_scope(parse_metric(entry), scopes)
+        if metric.slug in metrics:
+            raise _fail(metric.slug, "slug", "is listed twice")
+        _check_gate(metric)
+        metrics[metric.slug] = metric
+    for name in ("eligible_count", "thresholds", "measurements"):
+        if name not in suppression:
+            raise RegistryError(f"{path}: `suppression.{name}` is required")
+    thresholds = parse_thresholds(suppression["thresholds"], path, metrics)
+    measured_on, method, measurements = parse_measurements(
+        suppression["measurements"], path, metrics
+    )
     suppression_spec = SuppressionSpec(
         default_threshold=threshold,
         rule=_string(suppression, None, "rule"),
         rationale=_string(suppression, None, "rationale"),
+        eligible_count=_string(suppression, None, "eligible_count"),
+        thresholds=thresholds,
+        measured_on=measured_on,
+        measurement_method=method,
+        measurements=measurements,
     )
-    entries = payload["metrics"]
-    if not isinstance(entries, list) or not entries:
-        raise RegistryError(f"{path}: `metrics` must be a non-empty list")
-    metrics: dict[str, MetricDefinitionSpec] = {}
-    for entry in entries:
-        metric = parse_metric(entry)
-        if metric.slug in metrics:
-            raise _fail(metric.slug, "slug", "is listed twice")
-        metrics[metric.slug] = metric
     return Registry(
         version=version,
         methodology_version=methodology_version,
@@ -577,6 +972,8 @@ def parse_registry(payload: Any, path: Path) -> Registry:
         suppression=suppression_spec,
         metrics=MappingProxyType(metrics),
         path=path,
+        periods=periods,
+        revocation_scopes=scopes,
     )
 
 

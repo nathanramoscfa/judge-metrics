@@ -22,6 +22,15 @@ precedes every index event of the case and is the instant the synthetic
 generator's risk index reads; ``decision_at`` is the pretrial decision of
 the index event; ``index_at`` the index event itself. Every history feature
 is evaluated at ``filed_at``.
+
+Specification version 3 (Phase 5 Step 5) adds ``availability``: the three
+conditions a source must meet for a target to be fitted for it — it records
+the judge the target's population is attributed to (the registry gate), it
+documents the target's outcome, and, because some features read the person's
+other cases (``person_history: true``, the contract's ``person_history``), its
+person key crosses cases. ``adjustment.availability.unavailable_reason`` states
+which condition fails; the catalogue records such a target ``unavailable``
+with that reason instead of fitting it.
 """
 
 from __future__ import annotations
@@ -67,6 +76,7 @@ MODEL_VERSION_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 TOP_FIELDS: tuple[str, ...] = (
     "version",
     "model_version",
+    "availability",
     "targets",
     "features",
     "excluded",
@@ -104,7 +114,10 @@ FEATURE_OPTIONAL: tuple[str, ...] = (
     "unseen",
     "lookback_days",
     "requires_outcome",
+    "person_history",
 )
+# The conditions of `availability`, each stated as the reason a failing source is given.
+AVAILABILITY_FIELDS: tuple[str, ...] = ("gate", "outcome", "person_key")
 EXCLUSION_REQUIRED: tuple[str, ...] = ("name", "reason")
 EXCLUSION_OPTIONAL: tuple[str, ...] = ("columns", "from_vocabulary")
 MODEL_FIELDS: tuple[str, ...] = (
@@ -147,7 +160,9 @@ class FeatureContract:
     only ones it may carry beyond the levels and the missing rule);
     ``data_levels`` marks a feature whose levels are the data's (``levels:
     data``); ``ordered`` one whose data levels have a natural order, so an
-    unseen level may be scored at the latest seen one.
+    unseen level may be scored at the latest seen one; ``person_history`` one
+    that reads the person's other cases, which only a source whose person key
+    crosses cases can supply (the spec must mark it ``person_history: true``).
     """
 
     kind: str
@@ -156,6 +171,7 @@ class FeatureContract:
     parameters: tuple[str, ...] = ()
     data_levels: bool = False
     ordered: bool = False
+    person_history: bool = False
 
 
 # The features the code implements, keyed by name (features.FEATURE_BUILDERS has the
@@ -184,6 +200,7 @@ FEATURE_CONTRACTS: Mapping[str, FeatureContract] = MappingProxyType(
             "banded_count",
             FILED_AT,
             frozenset({"cases.filed_at", "charges.case_id", "charges.person_id"}),
+            person_history=True,
         ),
         "prior_convictions": FeatureContract(
             "banded_count",
@@ -196,12 +213,14 @@ FEATURE_CONTRACTS: Mapping[str, FeatureContract] = MappingProxyType(
                     "charges.filed_at",
                 }
             ),
+            person_history=True,
         ),
         "prior_failures_to_appear": FeatureContract(
             "banded_count",
             FILED_AT,
             frozenset({"justice_events.event_at", "justice_events.event_type"}),
             parameters=("requires_outcome",),
+            person_history=True,
         ),
         "pending_case": FeatureContract(
             "binary",
@@ -214,6 +233,7 @@ FEATURE_CONTRACTS: Mapping[str, FeatureContract] = MappingProxyType(
                     "charges.filed_at",
                 }
             ),
+            person_history=True,
         ),
         "history_truncated": FeatureContract(
             "binary", FILED_AT, frozenset({"cases.filed_at"}), parameters=("lookback_days",)
@@ -288,6 +308,7 @@ class FeatureSpec:
     unseen: str | None = None
     lookback_days: int | None = None
     requires_outcome: str | None = None
+    person_history: bool = False
 
     @property
     def fixed_levels(self) -> tuple[str, ...]:
@@ -316,6 +337,15 @@ class FeatureSpec:
             if value >= low:
                 chosen = label
         return chosen
+
+
+@dataclass(frozen=True, slots=True)
+class AvailabilitySpec:
+    """Why a target is unavailable for a source, per condition (specification version 3)."""
+
+    gate: str
+    outcome: str
+    person_key: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +427,7 @@ class OutcomeModelSpec:
 
     version: int
     model_version: str
+    availability: AvailabilitySpec
     targets: tuple[TargetSpec, ...]
     features: tuple[FeatureSpec, ...]
     excluded: tuple[ExclusionSpec, ...]
@@ -422,6 +453,11 @@ class OutcomeModelSpec:
                 return feature
         msg = f"the specification has no feature {name!r}"
         raise SpecError(msg)
+
+    @property
+    def person_history_features(self) -> tuple[str, ...]:
+        """The features that read the person's other cases (they need a cross-case key)."""
+        return tuple(feature.name for feature in self.features if feature.person_history)
 
 
 # --- validation helpers ------------------------------------------------------------------
@@ -694,6 +730,12 @@ def parse_feature(entry: Any, excluded: tuple[ExclusionSpec, ...]) -> FeatureSpe
         not isinstance(requires, str) or not vocabulary.is_known("justice_event_type", requires)
     ):
         raise _fail(where, "requires_outcome", "must be a justice_event_type value")
+    history = block.get("person_history", False)
+    if not isinstance(history, bool) or history != contract.person_history:
+        state = "true" if contract.person_history else "absent or false"
+        raise _fail(
+            where, "person_history", f"must be {state} (whether the builder reads other cases)"
+        )
     return FeatureSpec(
         name=name,
         description=_string(block, where, "description"),
@@ -705,6 +747,7 @@ def parse_feature(entry: Any, excluded: tuple[ExclusionSpec, ...]) -> FeatureSpe
         leakage=_string(block, where, "leakage"),
         lookback_days=lookback,
         requires_outcome=requires,
+        person_history=history,
         **level_fields,
     )
 
@@ -725,6 +768,16 @@ def parse_exclusion(entry: Any) -> ExclusionSpec:
         raise _fail(where, "from_vocabulary", "must name a case vocabulary kind")
     return ExclusionSpec(
         name=name, reason=_string(block, where, "reason"), columns=columns, from_vocabulary=source
+    )
+
+
+def parse_availability(value: Any) -> AvailabilitySpec:
+    block = _mapping(value, "availability")
+    _fields(block, "availability", AVAILABILITY_FIELDS)
+    return AvailabilitySpec(
+        gate=_string(block, "availability", "gate"),
+        outcome=_string(block, "availability", "outcome"),
+        person_key=_string(block, "availability", "person_key"),
     )
 
 
@@ -899,6 +952,7 @@ def parse_spec(payload: Any, path: Path) -> OutcomeModelSpec:
     return OutcomeModelSpec(
         version=version,
         model_version=model_version,
+        availability=parse_availability(payload["availability"]),
         targets=targets,
         features=features,
         excluded=excluded,

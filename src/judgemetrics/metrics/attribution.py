@@ -14,7 +14,17 @@ model). A registry ``attribution`` block is applied here as an
 - ``assigned_ever`` keeps rows of cases with at least one assignment of
   the subject (the eligibility gate);
 - ``sentencing_judge`` keeps sentences whose ``judge_id`` is the subject;
+- ``disposing_judge`` (registry version 3) keeps charges whose ``judge_id`` —
+  the judge the source records as entering the disposition — is the subject,
+  and cases (a disposed case, a disposition index event) whose disposing judge
+  is: the judge on the charge whose disposal sets the case disposition time
+  (``index_events.case_dispositions``);
 - ``court_of_case`` keeps rows of the court's cases.
+
+A source may not record a gate at all (``Frame.capabilities.judge_gates``):
+the compute then publishes nothing for a judge under that gate
+(``compute.NotAttributableRecord``), and this module is never asked to apply
+it.
 
 A court subject always takes the ``court_of_case`` gate, whatever the
 rule names: a court's metrics are computed over the cases filed in it. A
@@ -38,6 +48,7 @@ from typing import Any
 import polars as pl
 
 from judgemetrics.metrics.frame import Frame
+from judgemetrics.metrics.periods import within_coverage
 from judgemetrics.metrics.registry import ASSIGNMENT_GATES, AttributionSpec
 
 JUDGE = "judge"
@@ -48,7 +59,14 @@ GATE_DECIDING_JUDGE = "deciding_judge"
 GATE_ASSIGNED_AT_TIME = "assigned_at_time"
 GATE_ASSIGNED_EVER = "assigned_ever"
 GATE_SENTENCING_JUDGE = "sentencing_judge"
+GATE_DISPOSING_JUDGE = "disposing_judge"
 GATE_COURT_OF_CASE = "court_of_case"
+# Gates that compare a judge column of the row with the subject.
+JUDGE_COLUMN_GATES: frozenset[str] = frozenset(
+    {GATE_DECIDING_JUDGE, GATE_SENTENCING_JUDGE, GATE_DISPOSING_JUDGE}
+)
+# The disposing judge of a disposed case (index_events.case_dispositions).
+DISPOSING_JUDGE = "disposing_judge_id"
 
 PRETRIAL_RELEASE = "pretrial_release"
 STATUTORY_ACTOR = "legislature_or_mandatory_rule"
@@ -176,15 +194,15 @@ def gate_rows(
     """Apply the rule's assignment gate for ``subject`` to ``rows``.
 
     A court subject takes the court's cases. For a judge subject the gate
-    decides: ``deciding_judge`` and ``sentencing_judge`` compare
-    ``judge_column``; ``assigned_at_time`` needs ``time_column``;
+    decides: ``deciding_judge``, ``sentencing_judge``, and ``disposing_judge``
+    compare ``judge_column``; ``assigned_at_time`` needs ``time_column``;
     ``assigned_ever`` needs only the case; ``court_of_case`` cannot
     attribute rows to a judge and raises ``AttributionError``.
     """
     if subject.subject_type == COURT:
         return rows_of_court(frame, subject.subject_id, rows, case_column)
     gate = rule.assignment_gate
-    if gate in (GATE_DECIDING_JUDGE, GATE_SENTENCING_JUDGE):
+    if gate in JUDGE_COLUMN_GATES:
         if judge_column not in rows.columns:
             msg = f"gate {gate} needs column {judge_column!r}"
             raise AttributionError(msg)
@@ -233,7 +251,8 @@ def attributed_charges(frame: Frame, rule: AttributionRule, subject: Subject) ->
     """The charges the rule attributes to the subject (gate at ``disposed_at``).
 
     ``actor_types``, when given, filters ``disposition_actor``; a charge
-    without a disposition time never passes ``assigned_at_time``.
+    without a disposition time never passes ``assigned_at_time``;
+    ``disposing_judge`` compares the charge's ``judge_id``.
     """
     rows = _filter_values(frame.charges, "disposition_actor", rule.actor_types)
     return gate_rows(frame, rule, subject, rows, time_column="disposed_at")
@@ -256,23 +275,42 @@ def attributed_cases(
 
     ``rows`` defaults to ``frame.cases``; a caller gating at a time (the
     case disposition time) passes cases joined with that column and names
-    it in ``time_column``.
+    it in ``time_column``, and a disposed case carries its disposing judge
+    (``DISPOSING_JUDGE``) for the ``disposing_judge`` gate. A case has no
+    deciding or sentencing judge of its own: those gates cannot attribute it.
     """
+    if subject.subject_type == JUDGE and rule.assignment_gate in (
+        GATE_DECIDING_JUDGE,
+        GATE_SENTENCING_JUDGE,
+    ):
+        msg = f"gate {rule.assignment_gate} cannot attribute a case to a judge"
+        raise AttributionError(msg)
     cases = frame.cases if rows is None else rows
     return gate_rows(
-        frame, rule, subject, cases, case_column="id", time_column=time_column, judge_column="_"
+        frame,
+        rule,
+        subject,
+        cases,
+        case_column="id",
+        time_column=time_column,
+        judge_column=DISPOSING_JUDGE,
     )
 
 
 def pretrial_decisions_for(
     frame: Frame, subject_type: str, subject_id: Any, rule: AttributionRule
 ) -> pl.DataFrame:
-    """The pretrial-release decisions the rule attributes to the subject."""
+    """The pretrial-release decisions the rule attributes to the subject.
+
+    Only decisions inside the source's coverage window (``periods.within_coverage``
+    at ``decision_at``): the population the descriptive and adjusted figures share.
+    """
     if rule.decision_type not in (None, PRETRIAL_RELEASE):
         msg = f"rule decision_type {rule.decision_type!r} is not pretrial_release"
         raise AttributionError(msg)
     pretrial_rule = replace(rule, decision_type=PRETRIAL_RELEASE)
-    return attributed_decisions(frame, pretrial_rule, Subject(subject_type, subject_id))
+    decisions = attributed_decisions(frame, pretrial_rule, Subject(subject_type, subject_id))
+    return within_coverage(frame, decisions, "decision_at")
 
 
 def statutory_releases(frame: Frame, court_id: Any) -> pl.DataFrame:

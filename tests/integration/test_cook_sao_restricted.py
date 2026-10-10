@@ -11,6 +11,7 @@ data-quality issue, not in a log line.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -151,12 +152,15 @@ def test_no_public_column_holds_a_restricted_value(
         ) in columns
         for table, column in columns:
             for forbidden in FORBIDDEN:
+                # A whole token, case-insensitive: an age band's digits also occur inside
+                # the random UUIDs an audit payload names (`...8f35-44ab...`), which is
+                # not a restricted value.
                 found = connection.execute(
                     text(
                         f'SELECT count(*) FROM public."{table}" '  # noqa: S608 - catalog names
-                        f'WHERE "{column}"::text ILIKE :pattern'
+                        f'WHERE "{column}"::text ~* :pattern'
                     ),
-                    {"pattern": f"%{forbidden}%"},
+                    {"pattern": rf"(^|[^0-9a-z]){re.escape(forbidden)}([^0-9a-z]|$)"},
                 ).scalar()
                 assert found == 0, f"public.{table}.{column} holds {forbidden!r}"
 

@@ -448,8 +448,40 @@ def test_sentences_carry_days_flags_and_their_phase(fixture_run: Normalized) -> 
     assert life and all(s.incarceration_days is None or s.incarceration_days > 0 for s in life)
     assert all(s.fine_amount is None for s in sentences)
     for sentence in sentences:
-        assert set(sentence.components) == {"phase", "current", "superseded", "components", "terms"}
+        assert set(sentence.components) == {
+            "phase",
+            "current",
+            "superseded",
+            "replaced",
+            "components",
+            "terms",
+        }
         assert sentence.sentence_at.tzinfo is UTC
+
+
+def test_only_a_correction_replaces_a_sentence(fixture_run: Normalized) -> None:
+    """sentence_rules version 2: an amended or corrected sentencing replaces what it follows.
+
+    A replaced sentence is superseded too, and its participant has a later amended
+    sentencing in the case; a probation-violation, resentencing, or remand sentencing
+    supersedes the sentence it follows without replacing it (two decisions).
+    """
+    sentences = of_type(fixture_run.drafts, SentenceDraft)
+    replaced = [s for s in sentences if s.components["replaced"]]
+    assert replaced, "the fixture holds an amended sentencing that replaces an earlier one"
+    for sentence in replaced:
+        assert sentence.components["superseded"]
+        assert any(
+            other.components["phase"] == "amended"
+            and other.person_key == sentence.person_key
+            and other.case_key == sentence.case_key
+            and other.sentence_at >= sentence.sentence_at
+            for other in sentences
+        )
+    superseded_only = [
+        s for s in sentences if s.components["superseded"] and not s.components["replaced"]
+    ]
+    assert superseded_only, "a sentence superseded by a non-correcting phase stays a decision"
 
 
 def test_a_probation_violation_sentencing_is_a_within_case_revocation(

@@ -117,6 +117,8 @@ class DatasetSummary:
     scale: str | None = None
     generator_version: str | None = None
     truth_version: str | None = None
+    # (target, window, reason) of every target the source cannot support (spec 3).
+    unavailable: tuple[tuple[str, int | None, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +287,7 @@ def dataset_summary(item: SourceInput, truth: Truth | None) -> DatasetSummary:
         scale=None if truth is None else truth.scale,
         generator_version=None if truth is None else truth.generator_version,
         truth_version=None if truth is None else truth.truth_version,
+        unavailable=item.unavailable,
     )
 
 
@@ -310,8 +313,13 @@ def build_report(
     truth_dir: Path | None,
     spec: OutcomeModelSpec | None = None,
     registry: Registry | None = None,
+    sources: Sequence[str] | None = None,
 ) -> ValidationReport:
-    """The report of the latest snapshot's models (the caller's session is the ingest role's)."""
+    """The report of the latest snapshot's models (the caller's session is the ingest role's).
+
+    ``sources`` (register names) selects the sources; by default every source
+    with a model whose fit was attempted (``inputs.load_inputs``).
+    """
     spec = spec or load_spec()
     registry = registry or load_registry()
     try:
@@ -326,7 +334,9 @@ def build_report(
             raise ReportError(f"--truth: {exc}") from exc
     with open_snapshot(settings, snapshot_row.content_hash) as snapshot:
         try:
-            inputs = load_inputs(session, settings, snapshot, snapshot_row.id, spec=spec)
+            inputs = load_inputs(
+                session, settings, snapshot, snapshot_row.id, spec=spec, sources=sources
+            )
         except (InputError, ArtifactError) as exc:
             raise ReportError(str(exc)) from exc
         models = [model for item in inputs for model in item.models]
@@ -472,6 +482,18 @@ def _section_dataset(report: ValidationReport) -> list[str]:
         lines.append(_bullet(f"Source `{dataset.source}` ({kind} data): {coverage}{manifest}."))
         counts = ", ".join(f"{name} {count}" for name, count in dataset.rows)
         lines.append(_bullet(f"Rows in the snapshot's frame of `{dataset.source}`: {counts}."))
+        grouped: dict[tuple[str, str], list[int]] = {}
+        for target, window, reason in dataset.unavailable:
+            windows = grouped.setdefault((target, reason), [])
+            if window is not None:
+                windows.append(window)
+        for (target, reason), windows in grouped.items():
+            suffix = "" if not windows else f" (windows {', '.join(map(str, windows))} days)"
+            lines.append(
+                _bullet(
+                    f"Target `{target}`{suffix} is unavailable for `{dataset.source}`: {reason}"
+                )
+            )
     lines.append(
         _bullet(
             f"Outcome model specification version {settings.spec_version} "

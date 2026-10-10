@@ -5,10 +5,10 @@
 sources with case data (a source without a declared coverage window is
 skipped and named in the result: nothing can be right-censored for it),
 builds the source's ``Frame``, enumerates its subjects — every judge with
-an assignment, decision, or sentence in the source, every court with a
-case — and, for each registry metric whose ``subject_types`` include the
-subject type, dispatches on ``kind`` to one pure function over the frame
-and the Step 1 helpers:
+an assignment, decision, sentence, or disposed charge in the source, every
+court with a case — and, for each registry metric whose ``subject_types``
+include the subject type, dispatches on ``kind`` to one pure function over
+the frame and the Step 1 helpers:
 
 - ``compute_count``: the population rows the rule attributes, the
   ``counted`` conditions applied; ``eligible_cases`` counts distinct
@@ -31,19 +31,30 @@ and the Step 1 helpers:
   value (``cohort_size`` is that ``n``; ``eligible_count`` every
   attributed row), grouped by the offense category of the case's lead
   convicted charge — most severe by the vocabulary's severity order, ties
-  broken by the source's charge id — when the dimension says so.
+  broken by the source's charge id — when the dimension says so. A case the
+  source disposes before its filing date has no ``days_to_disposition``.
 
-A windowed metric whose outcome the source cannot document returns
-``NotObservable`` and the result lists it: no observation, never a zero.
-Every rate is rounded to six decimals at the boundary (``intervals.round6``);
-every count is an integer. Shares, rates, and survival estimates fill
-``observed_rate``; medians fill ``value``; distributions fill
-``distribution``. Members are ``(kind, id, counted, followed)`` over the
-canonical rows behind the number: the population rows of a count, share,
-distribution, or median (``followed`` and ``counted`` mark the
-denominator and numerator), the index events of a windowed metric.
-Suppression (``suppression.apply``) is applied to every draft before it
-is returned, and a suppressed draft carries its ``suppression_reason``.
+Periods (registry version 3, ``metrics.periods``): a population's rows enter
+only when their anchor (``registry.POPULATION_ANCHORS``) lies inside the
+coverage window; each kind computes the whole window and then, for every
+calendar year (UTC) in which its population has an anchor, the same figure
+over that year's rows (``ObservationDraft.calendar_year``). An adjusted ratio
+is whole-window only.
+
+A windowed metric whose outcome — or, for a revocation, whose revocation scope
+— the source cannot document returns ``NotObservable``; for a judge subject a
+metric whose assignment gate the source does not record
+(``Frame.capabilities.judge_gates``) returns ``NotAttributable``, checked
+first. The result lists both: no observation, never a zero; a court subject
+is never not attributable. Every rate is rounded to six decimals at the
+boundary (``intervals.round6``); every count is an integer. Shares, rates, and
+survival estimates fill ``observed_rate``; medians fill ``value``;
+distributions fill ``distribution``. Members are ``(kind, id, counted,
+followed)`` over the canonical rows behind the number: the population rows of
+a count, share, distribution, or median (``followed`` and ``counted`` mark
+the denominator and numerator), the index events of a windowed metric.
+Suppression (``suppression.apply``) is applied to every draft before it is
+returned, and a suppressed draft carries its ``suppression_reason``.
 
 ``observed_expected`` (Phase 4 Step 3) is not a per-subject computation:
 its expected counts come from one model fitted over every eligible event of
@@ -54,7 +65,8 @@ their artifacts by the caller), and keeps the drafts of the requested
 judges. The kinds a call computes are explicit: ``kinds`` defaults to the
 descriptive kinds (what pipeline step 13 recomputes), and asking for
 ``observed_expected`` without the models is an error. A court subject has
-no adjusted observation.
+no adjusted observation; a judge of a source that does not record the
+ratio's gate has none either (``NotAttributable``).
 """
 
 from __future__ import annotations
@@ -96,9 +108,12 @@ from judgemetrics.metrics.index_events import (
     index_events,
 )
 from judgemetrics.metrics.intervals import round6, wilson
+from judgemetrics.metrics.periods import Period, split, within_coverage
 from judgemetrics.metrics.registry import (
+    COURT_OF_CASE,
     DESCRIPTIVE_KINDS,
     OBSERVED_EXPECTED,
+    POPULATION_ANCHORS,
     MetricDefinitionSpec,
     Registry,
 )
@@ -135,8 +150,9 @@ LEAD_CATEGORY = "_lead_category"
 SEVERITY_RANK = "_severity_rank"
 HAS_VALUE = "_has_value"
 EVENT_BY_WINDOW = "_event_by_window"
+INDEX_AT = "index_at"
 
-ObservationKey = tuple[str, str, str, str, date, date, int | None, str | None]
+ObservationKey = tuple[str, str, str, str, date, date, int | None, str | None, int | None]
 
 
 class ComputeError(RuntimeError):
@@ -188,6 +204,8 @@ class ObservationDraft:
     standardized_ratio: float | None = None
     pooling_weight: float | None = None
     model_hash: str | None = None
+    # The calendar year (UTC) a year observation covers; None for the whole window.
+    calendar_year: int | None = None
 
     @property
     def key(self) -> ObservationKey:
@@ -201,6 +219,7 @@ class ObservationDraft:
             self.period_end,
             self.window_days,
             self.dimension_value,
+            self.calendar_year,
         )
 
     @property
@@ -224,10 +243,24 @@ class NotObservableRecord:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class NotAttributableRecord:
+    """A judge metric whose gate the source does not record: no observation is published."""
+
+    slug: str
+    version: str
+    subject_type: str
+    subject_id: str
+    source_id: str
+    gate: str
+    reason: str
+
+
 @dataclass(slots=True)
 class ComputeResult:
     drafts: list[ObservationDraft] = field(default_factory=list)
     not_observable: list[NotObservableRecord] = field(default_factory=list)
+    not_attributable: list[NotAttributableRecord] = field(default_factory=list)
     # Sources with case data but no declared coverage window (nothing computed).
     sources_skipped: list[str] = field(default_factory=list)
     subjects: list[Subject] = field(default_factory=list)
@@ -235,6 +268,12 @@ class ComputeResult:
     @property
     def suppressed(self) -> int:
         return sum(1 for draft in self.drafts if draft.suppressed_flag)
+
+    def extend(self, other: ComputeResult) -> None:
+        self.drafts.extend(other.drafts)
+        self.not_observable.extend(other.not_observable)
+        self.not_attributable.extend(other.not_attributable)
+        self.subjects.extend(other.subjects)
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,10 +285,13 @@ class _Context:
     subject: Subject
     source_id: str
     rule: AttributionRule
+    # Whether the metric publishes calendar years beside the whole window.
+    by_year: bool = True
 
     def draft(
         self,
         *,
+        period: Period,
         eligible_count: int,
         cohort_size: int,
         observed_count: int,
@@ -268,8 +310,8 @@ class _Context:
             subject_type=self.subject.subject_type,
             subject_id=str(self.subject.subject_id),
             source_id=self.source_id,
-            period_start=self.frame.coverage_start,
-            period_end=self.frame.coverage_end,
+            period_start=period.start,
+            period_end=period.end,
             window_days=window_days,
             dimension_value=dimension_value,
             eligible_count=int(eligible_count),
@@ -281,18 +323,24 @@ class _Context:
             lower=lower,
             upper=upper,
             members=tuple(members),
+            calendar_year=period.calendar_year,
         )
+
+    def periods(self, rows: pl.DataFrame, anchor: str) -> list[tuple[Period, pl.DataFrame]]:
+        """The whole window's rows, then each calendar year's (when the metric has years)."""
+        return split(self.frame, rows, anchor, by_year=self.by_year)
 
 
 # --- subjects ----------------------------------------------------------------------------
 
 
 def subjects_of(frame: Frame) -> list[Subject]:
-    """Every judge with an assignment, decision, or sentence and every court with a case."""
+    """Every judge with an assignment, decision, sentence, or disposed charge; every court."""
     judges = (
         set(frame.assignments["judge_id"].drop_nulls().to_list())
         | set(frame.decisions["judge_id"].drop_nulls().to_list())
         | set(frame.sentences["judge_id"].drop_nulls().to_list())
+        | set(frame.charges["judge_id"].drop_nulls().to_list())
     )
     courts = set(frame.cases["court_id"].drop_nulls().to_list())
     return [Subject(JUDGE, judge) for judge in sorted(judges)] + [
@@ -319,8 +367,11 @@ def _counted_filter(definition: MetricDefinitionSpec) -> pl.Expr:
     return expression
 
 
-def population_rows(context: _Context) -> tuple[pl.DataFrame, str, str]:
-    """``(rows, member kind, id column)`` of the definition's population for the subject."""
+def population_rows(context: _Context) -> tuple[pl.DataFrame, str, str, str]:
+    """``(rows, member kind, id column, anchor column)`` of the definition's population.
+
+    Only the rows whose anchor lies inside the coverage window.
+    """
     frame, definition, subject, rule = (
         context.frame,
         context.definition,
@@ -332,23 +383,25 @@ def population_rows(context: _Context) -> tuple[pl.DataFrame, str, str]:
     if kind is None:
         msg = f"{definition.slug}: population {population!r} has no compute path"
         raise ComputeError(msg)
+    anchor = POPULATION_ANCHORS[population]
     if population in ("cases", "defendants"):
-        return attributed_cases(frame, rule, subject), kind, "id"
-    if population == "pretrial_decisions":
-        return attributed_decisions(frame, rule, subject), kind, "id"
-    if population == "disposed_charges":
-        rows = attributed_charges(frame, rule, subject)
+        rows = attributed_cases(frame, rule, subject)
+    elif population == "pretrial_decisions":
+        rows = attributed_decisions(frame, rule, subject)
+    elif population == "disposed_charges":
+        attributed = attributed_charges(frame, rule, subject)
         disposed = disposed_charges(frame).select(pl.col("id"))
-        return rows.join(disposed, on="id", how="semi"), kind, "id"
-    if population == "disposed_cases":
+        rows = attributed.join(disposed, on="id", how="semi")
+    elif population == "disposed_cases":
         rows = attributed_cases(
             frame, rule, subject, rows=disposed_cases(frame), time_column=DISPOSITION_AT
         )
-        return rows, kind, "id"
-    if population == "sentences":
-        return attributed_sentences(frame, rule, subject), kind, "id"
-    msg = f"{definition.slug}: population {population!r} is not computable here"  # pragma: no cover
-    raise ComputeError(msg)
+    elif population == "sentences":
+        rows = attributed_sentences(frame, rule, subject)
+    else:  # pragma: no cover - POPULATION_MEMBER_KIND lists every computable population
+        msg = f"{definition.slug}: population {population!r} is not computable here"
+        raise ComputeError(msg)
+    return within_coverage(frame, rows, anchor), kind, "id", anchor
 
 
 def _row_members(
@@ -375,37 +428,49 @@ def _distinct_persons(frame: Frame, case_ids: pl.Series) -> int:
 # --- kinds ---------------------------------------------------------------------------------
 
 
-def compute_count(context: _Context) -> ObservationDraft:
-    rows, kind, id_column = population_rows(context)
+def compute_count(context: _Context) -> list[ObservationDraft]:
+    population, kind, id_column, anchor = population_rows(context)
     counted = _counted_filter(context.definition)
-    matching = rows.filter(counted)
-    if context.definition.population == "defendants":
-        observed = _distinct_persons(context.frame, matching[id_column])
-    else:
-        observed = matching.height
-    return context.draft(
-        eligible_count=rows.height,
-        cohort_size=rows.height,
-        observed_count=observed,
-        members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
-    )
+    drafts: list[ObservationDraft] = []
+    for period, rows in context.periods(population, anchor):
+        matching = rows.filter(counted)
+        if context.definition.population == "defendants":
+            observed = _distinct_persons(context.frame, matching[id_column])
+        else:
+            observed = matching.height
+        drafts.append(
+            context.draft(
+                period=period,
+                eligible_count=rows.height,
+                cohort_size=rows.height,
+                observed_count=observed,
+                members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
+            )
+        )
+    return drafts
 
 
-def compute_share(context: _Context) -> ObservationDraft:
-    rows, kind, id_column = population_rows(context)
+def compute_share(context: _Context) -> list[ObservationDraft]:
+    population, kind, id_column, anchor = population_rows(context)
     counted = _counted_filter(context.definition)
-    numerator = rows.filter(counted).height
-    denominator = rows.height
-    lower, upper = wilson(numerator, denominator)
-    return context.draft(
-        eligible_count=denominator,
-        cohort_size=denominator,
-        observed_count=numerator,
-        observed_rate=None if denominator == 0 else round6(numerator / denominator),
-        lower=lower,
-        upper=upper,
-        members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
-    )
+    drafts: list[ObservationDraft] = []
+    for period, rows in context.periods(population, anchor):
+        numerator = rows.filter(counted).height
+        denominator = rows.height
+        lower, upper = wilson(numerator, denominator)
+        drafts.append(
+            context.draft(
+                period=period,
+                eligible_count=denominator,
+                cohort_size=denominator,
+                observed_count=numerator,
+                observed_rate=None if denominator == 0 else round6(numerator / denominator),
+                lower=lower,
+                upper=upper,
+                members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
+            )
+        )
+    return drafts
 
 
 def _cohort(context: _Context) -> tuple[pl.DataFrame, str]:
@@ -418,82 +483,94 @@ def _cohort(context: _Context) -> tuple[pl.DataFrame, str]:
     return cohort, MEMBER_KIND_OF_INDEX[definition.index_event]
 
 
-def compute_windowed_rate(context: _Context) -> list[ObservationDraft] | NotObservableRecord:
+def _blocked(context: _Context) -> NotObservableRecord | None:
     definition = context.definition
-    outcome = definition.outcome or ""
-    blocked = not_observable(context.frame, outcome)
+    blocked = not_observable(context.frame, definition.outcome or "", definition.revocation_scope)
+    if blocked is None:
+        return None
+    return _not_observable(context, blocked.outcome, blocked.reason)
+
+
+def compute_windowed_rate(context: _Context) -> list[ObservationDraft] | NotObservableRecord:
+    blocked = _blocked(context)
     if blocked is not None:
-        return _not_observable(context, blocked.outcome, blocked.reason)
+        return blocked
+    definition = context.definition
     cohort, member_kind = _cohort(context)
-    firsts = first_outcomes(context.frame, cohort, outcome)
+    firsts = first_outcomes(context.frame, cohort, definition.outcome or "")
     end = context.frame.coverage_end_exclusive_at
     windows = definition.windows_days or ()
-    flags = member_windows(firsts, end, windows)
     drafts: list[ObservationDraft] = []
-    for rate in fixed_window_rates(firsts, end, windows):
-        rows = flags.filter(pl.col("window_days") == rate.window_days)
-        members = [
-            Member(kind=member_kind, id=str(row[0]), counted=bool(row[1]), followed=bool(row[2]))
-            for row in rows.select("member_id", "counted", "followed").iter_rows()
-        ]
-        drafts.append(
-            context.draft(
-                window_days=rate.window_days,
-                eligible_count=rate.eligible,
-                cohort_size=rate.followed,
-                observed_count=rate.numerator,
-                observed_rate=rate.value,
-                lower=rate.lower,
-                upper=rate.upper,
-                members=members,
+    for period, members_of_period in context.periods(firsts, INDEX_AT):
+        flags = member_windows(members_of_period, end, windows)
+        for rate in fixed_window_rates(members_of_period, end, windows):
+            rows = flags.filter(pl.col("window_days") == rate.window_days)
+            members = [
+                Member(
+                    kind=member_kind, id=str(row[0]), counted=bool(row[1]), followed=bool(row[2])
+                )
+                for row in rows.select("member_id", "counted", "followed").iter_rows()
+            ]
+            drafts.append(
+                context.draft(
+                    period=period,
+                    window_days=rate.window_days,
+                    eligible_count=rate.eligible,
+                    cohort_size=rate.followed,
+                    observed_count=rate.numerator,
+                    observed_rate=rate.value,
+                    lower=rate.lower,
+                    upper=rate.upper,
+                    members=members,
+                )
             )
-        )
     return drafts
 
 
 def compute_survival(context: _Context) -> list[ObservationDraft] | NotObservableRecord:
-    definition = context.definition
-    outcome = definition.outcome or ""
-    blocked = not_observable(context.frame, outcome)
+    blocked = _blocked(context)
     if blocked is not None:
-        return _not_observable(context, blocked.outcome, blocked.reason)
+        return blocked
+    definition = context.definition
     cohort, member_kind = _cohort(context)
-    firsts = first_outcomes(context.frame, cohort, outcome)
+    firsts = first_outcomes(context.frame, cohort, definition.outcome or "")
     end = context.frame.coverage_end_exclusive_at
     windows = definition.windows_days or ()
     drafts: list[ObservationDraft] = []
-    for point in kaplan_meier(firsts, end, windows):
-        # An event at or before the window's end (a first outcome before the
-        # censoring instant) is counted; every member contributes time at risk.
-        flagged = firsts.select(
-            pl.col("member_id"),
-            (
-                pl.col(FIRST_OUTCOME_AT).is_not_null()
-                & (pl.col(FIRST_OUTCOME_AT) < pl.lit(end))
-                & (
-                    pl.col(FIRST_OUTCOME_AT)
-                    <= pl.col("exposure_start") + pl.duration(days=point.window_days)
+    for period, members_of_period in context.periods(firsts, INDEX_AT):
+        for point in kaplan_meier(members_of_period, end, windows):
+            # An event at or before the window's end (a first outcome before the
+            # censoring instant) is counted; every member contributes time at risk.
+            flagged = members_of_period.select(
+                pl.col("member_id"),
+                (
+                    pl.col(FIRST_OUTCOME_AT).is_not_null()
+                    & (pl.col(FIRST_OUTCOME_AT) < pl.lit(end))
+                    & (
+                        pl.col(FIRST_OUTCOME_AT)
+                        <= pl.col("exposure_start") + pl.duration(days=point.window_days)
+                    )
+                )
+                .fill_null(False)
+                .alias(EVENT_BY_WINDOW),
+            )
+            members = [
+                Member(kind=member_kind, id=str(row[0]), counted=bool(row[1]), followed=True)
+                for row in flagged.iter_rows()
+            ]
+            drafts.append(
+                context.draft(
+                    period=period,
+                    window_days=point.window_days,
+                    eligible_count=point.eligible,
+                    cohort_size=point.eligible,
+                    observed_count=point.events,
+                    observed_rate=point.cumulative_incidence,
+                    lower=point.lower,
+                    upper=point.upper,
+                    members=members,
                 )
             )
-            .fill_null(False)
-            .alias(EVENT_BY_WINDOW),
-        )
-        members = [
-            Member(kind=member_kind, id=str(row[0]), counted=bool(row[1]), followed=True)
-            for row in flagged.iter_rows()
-        ]
-        drafts.append(
-            context.draft(
-                window_days=point.window_days,
-                eligible_count=point.eligible,
-                cohort_size=point.eligible,
-                observed_count=point.events,
-                observed_rate=point.cumulative_incidence,
-                lower=point.lower,
-                upper=point.upper,
-                members=members,
-            )
-        )
     return drafts
 
 
@@ -502,24 +579,26 @@ def compute_distribution(context: _Context) -> list[ObservationDraft]:
     if definition.dimension != "disposition":
         msg = f"{definition.slug}: distribution dimension {definition.dimension!r} is unsupported"
         raise ComputeError(msg)
-    rows, kind, id_column = population_rows(context)
+    population, kind, id_column, anchor = population_rows(context)
     # The final values only (vocabulary 3): a non-final disposition ends no charge
     # on its merits, so it is never a value of the distribution.
     values = list(vocabulary.values(FINAL_DISPOSITION_KIND))
-    counts = {value: rows.filter(pl.col("disposition") == value).height for value in values}
     drafts: list[ObservationDraft] = []
-    for value in values:
-        counted = pl.col("disposition") == value
-        drafts.append(
-            context.draft(
-                dimension_value=value,
-                eligible_count=rows.height,
-                cohort_size=rows.height,
-                observed_count=counts[value],
-                distribution=dict(counts),
-                members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
+    for period, rows in context.periods(population, anchor):
+        counts = {value: rows.filter(pl.col("disposition") == value).height for value in values}
+        for value in values:
+            counted = pl.col("disposition") == value
+            drafts.append(
+                context.draft(
+                    period=period,
+                    dimension_value=value,
+                    eligible_count=rows.height,
+                    cohort_size=rows.height,
+                    observed_count=counts[value],
+                    distribution=dict(counts),
+                    members=_row_members(rows, kind, id_column, counted, pl.lit(True)),
+                )
             )
-        )
     return drafts
 
 
@@ -529,12 +608,13 @@ def _with_measure(rows: pl.DataFrame, measure: str) -> tuple[pl.DataFrame, str]:
         msg = f"measure {measure!r} has no compute path"
         raise ComputeError(msg)
     if measure == "days_to_disposition":
-        rows = rows.with_columns(
+        days = (
             (pl.col(DISPOSITION_AT).dt.date() - pl.col("filed_at").dt.date())
             .dt.total_days()
             .cast(pl.Int64)
-            .alias(column)
         )
+        # A case the source disposes before its filing date has no duration (methodology 1.1).
+        rows = rows.with_columns(pl.when(days >= 0).then(days).otherwise(None).alias(column))
     return rows, column
 
 
@@ -562,6 +642,7 @@ def lead_categories(frame: Frame) -> pl.DataFrame:
 
 def _median_draft(
     context: _Context,
+    period: Period,
     rows: pl.DataFrame,
     kind: str,
     id_column: str,
@@ -571,6 +652,7 @@ def _median_draft(
     values = [int(v) for v in rows[column].drop_nulls().to_list()]
     has_value = pl.col(column).is_not_null()
     return context.draft(
+        period=period,
         dimension_value=dimension_value,
         eligible_count=rows.height,
         cohort_size=len(values),
@@ -585,30 +667,37 @@ def compute_median(context: _Context) -> list[ObservationDraft]:
     if definition.measure is None:
         msg = f"{definition.slug}: a median needs a measure"
         raise ComputeError(msg)
-    rows, kind, id_column = population_rows(context)
-    rows, column = _with_measure(rows, definition.measure)
+    population, kind, id_column, anchor = population_rows(context)
+    population, column = _with_measure(population, definition.measure)
     if definition.dimension is None:
-        return [_median_draft(context, rows, kind, id_column, column, None)]
+        return [
+            _median_draft(context, period, rows, kind, id_column, column, None)
+            for period, rows in context.periods(population, anchor)
+        ]
     if definition.dimension != "offense_category":
         msg = f"{definition.slug}: median dimension {definition.dimension!r} is unsupported"
         raise ComputeError(msg)
-    categorized = rows.join(lead_categories(context.frame), on="case_id", how="left").with_columns(
-        pl.col(LEAD_CATEGORY).fill_null(UNKNOWN_CATEGORY)
-    )
-    present = sorted(
-        categorized.filter(pl.col(column).is_not_null())[LEAD_CATEGORY].unique().to_list()
-    )
-    return [
-        _median_draft(
-            context,
-            categorized.filter(pl.col(LEAD_CATEGORY) == category),
-            kind,
-            id_column,
-            column,
-            str(category),
+    categorized = population.join(
+        lead_categories(context.frame), on="case_id", how="left"
+    ).with_columns(pl.col(LEAD_CATEGORY).fill_null(UNKNOWN_CATEGORY))
+    drafts: list[ObservationDraft] = []
+    for period, rows in context.periods(categorized, anchor):
+        present = sorted(
+            rows.filter(pl.col(column).is_not_null())[LEAD_CATEGORY].unique().to_list()
         )
-        for category in present
-    ]
+        drafts.extend(
+            _median_draft(
+                context,
+                period,
+                rows.filter(pl.col(LEAD_CATEGORY) == category),
+                kind,
+                id_column,
+                column,
+                str(category),
+            )
+            for category in present
+        )
+    return drafts
 
 
 def _not_observable(context: _Context, outcome: str, reason: str) -> NotObservableRecord:
@@ -623,13 +712,45 @@ def _not_observable(context: _Context, outcome: str, reason: str) -> NotObservab
     )
 
 
+def not_attributable(
+    frame: Frame, definition: MetricDefinitionSpec, subject: Subject, source_id: str
+) -> NotAttributableRecord | None:
+    """``NotAttributableRecord`` when the source does not record the judge metric's gate."""
+    gate = definition.attribution.assignment_gate
+    if subject.subject_type != JUDGE or gate == COURT_OF_CASE:
+        return None
+    if frame.capabilities.records_gate(gate):
+        return None
+    return NotAttributableRecord(
+        slug=definition.slug,
+        version=definition.version,
+        subject_type=subject.subject_type,
+        subject_id=str(subject.subject_id),
+        source_id=source_id,
+        gate=gate,
+        reason=f"the source does not record the {gate.replace('_', ' ')} ({gate})",
+    )
+
+
 # --- dispatch ------------------------------------------------------------------------------
+
+ComputedMetric = list[ObservationDraft] | NotObservableRecord | NotAttributableRecord
 
 
 def compute_metric(
-    frame: Frame, definition: MetricDefinitionSpec, subject: Subject, source_id: str
-) -> list[ObservationDraft] | NotObservableRecord:
-    """Every observation of one metric for one subject, suppression applied."""
+    frame: Frame,
+    definition: MetricDefinitionSpec,
+    subject: Subject,
+    source_id: str,
+    *,
+    registry: Registry | None = None,
+) -> ComputedMetric:
+    """Every observation of one metric for one subject (whole window and years), suppressed.
+
+    ``registry`` decides which kinds publish calendar years (the loaded registry
+    when omitted).
+    """
+    from judgemetrics.metrics.registry import load_registry
     from judgemetrics.metrics.suppression import apply
 
     if subject.subject_type not in definition.subject_types:
@@ -641,19 +762,24 @@ def compute_metric(
             "source at once (compute_frame with its models), never for one subject"
         )
         raise ComputeError(msg)
+    unattributed = not_attributable(frame, definition, subject, source_id)
+    if unattributed is not None:
+        return unattributed
+    periods = (registry or load_registry()).periods
     context = _Context(
         frame=frame,
         definition=definition,
         subject=subject,
         source_id=source_id,
         rule=AttributionRule.from_spec(definition.attribution),
+        by_year=periods.has_calendar_years(definition.kind),
     )
     kind = definition.kind
     result: list[ObservationDraft] | NotObservableRecord
     if kind == "count":
-        result = [compute_count(context)]
+        result = compute_count(context)
     elif kind == "share":
-        result = [compute_share(context)]
+        result = compute_share(context)
     elif kind == "windowed_rate":
         result = compute_windowed_rate(context)
     elif kind == "survival":
@@ -695,28 +821,35 @@ def compute_frame(
         for definition in registry.for_subject(subject.subject_type):
             if definition.kind not in kinds or definition.kind == OBSERVED_EXPECTED:
                 continue
-            computed = compute_metric(frame, definition, subject, source_id)
+            computed = compute_metric(frame, definition, subject, source_id, registry=registry)
             if isinstance(computed, NotObservableRecord):
                 result.not_observable.append(computed)
+            elif isinstance(computed, NotAttributableRecord):
+                result.not_attributable.append(computed)
             else:
                 result.drafts.extend(computed)
     adjusted = registry.of_kind(OBSERVED_EXPECTED) if OBSERVED_EXPECTED in kinds else ()
     judges = [subject for subject in present if subject.subject_type == JUDGE]
-    if adjusted and judges:
+    for definition in adjusted:
+        records = [not_attributable(frame, definition, judge, source_id) for judge in judges]
+        unattributed = [record for record in records if record is not None]
+        result.not_attributable.extend(unattributed)
+        attributable = [judge for judge, record in zip(judges, records, strict=True) if not record]
+        if not attributable:
+            continue
         if models is None:
             msg = f"computing {OBSERVED_EXPECTED} needs the source's fitted models"
             raise ComputeError(msg)
         from judgemetrics.metrics.adjustment.ratios import RatioError, adjusted_observations
 
-        for definition in adjusted:
-            try:
-                drafts, records = adjusted_observations(
-                    frame, definition, source_id=source_id, models=models, judges=judges
-                )
-            except RatioError as exc:
-                raise ComputeError(str(exc)) from exc
-            result.drafts.extend(drafts)
-            result.not_observable.extend(records)
+        try:
+            drafts, blocked = adjusted_observations(
+                frame, definition, source_id=source_id, models=models, judges=attributable
+            )
+        except RatioError as exc:
+            raise ComputeError(str(exc)) from exc
+        result.drafts.extend(drafts)
+        result.not_observable.extend(blocked)
     return result
 
 
@@ -727,20 +860,24 @@ def compute_all(
     *,
     kinds: Collection[str] = DESCRIPTIVE_KINDS,
     models: Mapping[str, SourceModels] | None = None,
+    sources: Collection[str] | None = None,
 ) -> ComputeResult:
     """``compute_frame`` over every source of the snapshot with case data and a coverage window.
 
-    ``models`` maps a source id to its fitted models (``observed_expected`` only).
+    ``models`` maps a source id to its fitted models (``observed_expected`` only);
+    ``sources`` (source ids) restricts the compute to those sources' frames.
     """
     result = ComputeResult()
     for source in snapshot.sources_with_cases():
+        if sources is not None and source.id not in sources:
+            continue
         if not source.has_coverage:
             result.sources_skipped.append(source.id)
             log.warning(
                 "metrics.compute.source_skipped",
                 snapshot=snapshot.content_hash,
                 source=source.name,
-                reason="no coverage window",
+                because="no coverage window",
             )
             continue
         frame = _frame_of(snapshot, source)
@@ -752,9 +889,7 @@ def compute_all(
             kinds=kinds,
             models=None if models is None else models.get(source.id, {}),
         )
-        result.drafts.extend(partial.drafts)
-        result.not_observable.extend(partial.not_observable)
-        result.subjects.extend(partial.subjects)
+        result.extend(partial)
         log.info(
             "metrics.compute.source",
             snapshot=snapshot.content_hash,
@@ -762,6 +897,7 @@ def compute_all(
             subjects=len(partial.subjects),
             observations=len(partial.drafts),
             not_observable=len(partial.not_observable),
+            not_attributable=len(partial.not_attributable),
         )
     return result
 

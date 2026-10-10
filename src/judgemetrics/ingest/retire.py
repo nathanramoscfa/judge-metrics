@@ -10,7 +10,7 @@ deletes, in the dependency order the test helper ``purge_source`` established, e
 derived from one registered source:
 
 1. its metric observations (their members cascade), its fitted expected-outcome models,
-   and the snapshot rows nothing cites any more;
+   its coverage statistics, and the snapshot rows nothing cites any more;
 2. its data-quality issues, then its case-level rows — justice events, pretrial releases,
    sentences, decisions, court events, charges, assignments, case parties (their restricted
    attributes go with them: the foreign key cascades), and cases;
@@ -157,9 +157,11 @@ def retire_source(
         return RetireResult(source=source_name)
     records = select(SOURCE_RECORD.c.id).where(SOURCE_RECORD.c.source_id == source_id)
 
-    # 1. Metrics: observations (members cascade), models, and the snapshots nothing cites.
+    # 1. Metrics: observations (members cascade), models, coverage statistics, and the
+    #    snapshots nothing cites.
     observation = TABLES["metric_observation"]
     model = TABLES["outcome_model"]
+    coverage = TABLES["coverage_statistic"]
     snapshot = TABLES["metric_snapshot"]
     _count(
         deleted,
@@ -171,6 +173,11 @@ def retire_source(
         "outcome_model",
         session.execute(delete(model).where(model.c.source_id == source_id)),
     )
+    _count(
+        deleted,
+        "coverage_statistic",
+        session.execute(delete(coverage).where(coverage.c.source_id == source_id)),
+    )
     session.execute(
         update(INGEST_RUN)
         .where(INGEST_RUN.c.source_id == source_id)
@@ -179,6 +186,7 @@ def retire_source(
     cited_snapshots = sa.union(
         select(observation.c.snapshot_id),
         select(model.c.snapshot_id),
+        select(coverage.c.snapshot_id),
         select(INGEST_RUN.c.metrics_snapshot_id).where(
             INGEST_RUN.c.metrics_snapshot_id.is_not(None)
         ),

@@ -57,6 +57,14 @@ class Source(UUIDPrimaryKey, Timestamps, Base):
     observable_outcomes: Mapped[list[str]] = mapped_column(
         JSONBDict, nullable=False, default=list, server_default="[]"
     )
+    # Revision 0012 (Phase 5 Step 5): the judge gates the source records, its
+    # person-key scope, and the revocation scopes it documents
+    # (judgemetrics.capabilities.SourceCapabilities.as_json), written by the ingest
+    # runner from the connector's SourceInfo only when they differ; `{}` records
+    # nothing, so every judge metric is NotAttributable for such a source.
+    capabilities: Mapped[dict[str, Any]] = mapped_column(
+        JSONBDict, nullable=False, default=dict, server_default="{}"
+    )
 
     records: Mapped[list[SourceRecord]] = relationship(back_populates="source")
     runs: Mapped[list[IngestRun]] = relationship(back_populates="source")

@@ -454,7 +454,13 @@ it as a term of the agreement (root roadmap §5.5).
   `docs/ARCHITECTURE.md` "Cook County connector", the measured cost of a
   full run in "Scale budgets". The source is declared to observe one
   outcome, `revocation` (a probation-violation sentencing in the same case),
-  over the coverage window 2011-01-01 to 2024-12-30. `judgemetrics ingest
+  over the coverage window 2011-01-01 to 2024-12-30. Its declared
+  capabilities (Phase 5 Step 5, `source.capabilities`): the judge gates
+  `disposing_judge` (`JUDGE`) and `sentencing_judge` (`SENTENCE_JUDGE`), the
+  person-key scope `case`, and the revocation scope `supervision` — so a
+  judge metric gated on an assignment or a deciding judge is not attributable
+  for it and the revocation rate after a pretrial release is not observable;
+  its notes are rendered in docs/METHODOLOGY.md "Source limitations". `judgemetrics ingest
   retire cook_sao` removes the source's rows before a new release is
   ingested (the SAO re-hashes every id).
 - **Known limitations:** felony cases of three SAO bureaus only; no

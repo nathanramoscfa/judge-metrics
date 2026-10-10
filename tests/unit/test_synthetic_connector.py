@@ -124,7 +124,7 @@ def test_registered_with_synthetic_source_type_and_parser_version() -> None:
     assert connector.source_info.source_type == "synthetic"
     assert connector.source_info.terms_metadata["synthetic"] is True
     assert connector.source_info.terms_metadata["redistribution"] == "not_applicable"
-    assert ("synthetic", "2") in [(s.source_id, s.parser_version) for s in registered_sources()]
+    assert ("synthetic", "3") in [(s.source_id, s.parser_version) for s in registered_sources()]
     assert isinstance(connector, SupportsContext)
 
 

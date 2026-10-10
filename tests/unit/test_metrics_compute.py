@@ -70,9 +70,12 @@ def drafts(golden: tuple[Any, Any, dict[str, Any]]) -> dict[tuple[Any, ...], Obs
     _, frame, _ = golden
     result = compute_frame(frame, REGISTRY, SOURCE)
     assert result.sources_skipped == []
+    # The whole-window drafts (the truth's numbers); the calendar years are checked by
+    # tests/property/test_period_consistency.py.
     return {
         (d.subject_type, d.subject_id, d.slug, d.window_days, d.dimension_value): d
         for d in result.drafts
+        if d.calendar_year is None
     }
 
 
@@ -205,6 +208,7 @@ def test_lead_convicted_charge_breaks_severity_ties_by_the_source_charge_id(
             "offense_category": ["drug", "property", "violent", "weapons"],
             "severity": ["felony_2", "felony_2", "felony_1", "misdemeanor_a"],
             "source_row_id": ["CH-000002", "CH-000001", "CH-000003", "CH-000004"],
+            "judge_id": [None] * 4,
         },
         schema=frame.charges.schema,
     )

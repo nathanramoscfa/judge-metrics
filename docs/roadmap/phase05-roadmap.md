@@ -6081,6 +6081,51 @@ a wrong change. Thinking `On`. Backup: GPT-6 Sol on Codex (the $100 ChatGPT Pro
       members for 3,426
       observations before Step 5's
       calendar years.
+    - Step 5 notes (2026-10-10): `publish`
+      now inserts with one compiled
+      statement per table executed over
+      each 500-row batch (executemany).
+      `Snapshot.frame` caches one frame
+      per source per opened snapshot; with
+      the full corpus present the export
+      took 72-79 s at a 4.26 GiB process
+      peak, and building Cook County's
+      frame 314-564 s (DuckDB `fetchall`
+      tuples turned into Polars row by
+      row, `_family` and
+      `_resolve_persons` over 555,095
+      persons): the streamed export should
+      build frames from columnar reads
+      (pyarrow is not a dependency).
+      Every compute -
+      pipeline step 13 included - now
+      computes the coverage statistics of
+      every source with cases
+      (`metrics.coverage`), so step 13
+      builds every source's frame: bound
+      it here. `metrics verify` checks the
+      coverage statistics of every
+      snapshot it verifies and of the
+      latest snapshot holding them, so it
+      builds Cook County's frame too;
+      `compute_all(sources=)` limits the
+      observation recompute to the
+      observations' sources. Calendar
+      years multiplied the demo's
+      observations from 3,418 descriptive
+      to 28,252 (eight years); members
+      roughly double. A row whose anchor
+      lies outside the coverage window
+      enters no observation (Cook County
+      dispositions dated before 2011-01-01
+      included). `metrics compute --source
+      cook_sao` is the command this step
+      runs; the cohort sizes the
+      thresholds rest on are the
+      registry's
+      `suppression.measurements`
+      (re-measure with the same rules if
+      Step 6's numbers move a threshold).
     - Step 13 computes the
       descriptive kinds of the
       impacted subjects inside the
@@ -6730,6 +6775,49 @@ New per phase-boundary hygiene.
     Current state (as of Phase 4,
     post-Phase-5 Step 6):
 
+    - Step 5 notes (2026-10-10): the
+      calendar-year observations exist
+      (`metric_observation.calendar_year`,
+      part of the unique key) and the API
+      holds them back:
+      `repositories.metrics.subject_observations`
+      filters `calendar_year IS NULL`, and
+      `compare_page` does so only when no
+      period is given (an exact
+      `period_start`/`period_end` already
+      matches a year) - lift the first and
+      list the years with `DISTINCT
+      calendar_year`. `NotAttributable` is
+      not stored: derive "Not recorded by
+      this source" from
+      `source.capabilities.judge_gates`
+      and the definition's
+      `attribution.assignment_gate` (the
+      rule `compute.not_attributable`
+      applies). The coverage statistics
+      are in `coverage_statistic`
+      (`metrics.coverage.latest_statistics`:
+      three statements, scope names
+      joined) and their definitions in
+      `coverage.DEFINITIONS`. The new
+      methodology sections are rendered by
+      `methodology._periods_lines`,
+      `_revocation_lines`, `_source_lines`
+      (from
+      `ingest.registry.registered_connectors()`:
+      each `SourceInfo`'s capabilities,
+      observable outcomes, and
+      `limitations`), `_coverage_lines`,
+      `_availability_lines`, and
+      `_suppression_lines` (thresholds
+      with reasons, the measured cohorts,
+      the eligible-count answer) -
+      doc-only until this step serves them
+      from the same data.
+      `schemas.metrics` describes the
+      `disposing_judge` gate;
+      `docs/openapi.json` was regenerated
+      for it.
     - Step 1 chose the fixture's
       end-to-end judge: "James B
       Linn", the `SENTENCE_JUDGE`

@@ -14,7 +14,11 @@ so the adjusted kind's ``ModelRef`` costs no extra statement.
 Both statements take the registry kinds the API serves (``kinds``) and
 filter by ``metric_definition.kind`` in SQL with bound parameters, so an
 observation of a held-out kind never leaves the database and the statement
-count does not change.
+count does not change. The calendar-year observations (registry version 3,
+``calendar_year`` not null) are held out the same way until Phase 5 Step 7
+serves them: a subject's observations are the whole-window ones, and the
+compare page without a period compares whole windows, while an explicit
+``period_start``/``period_end`` still matches a year exactly.
 
 ``compare_page`` is the one page statement of ``GET /metrics/compare``:
 the judges with a service record at the court (or at a court of the
@@ -138,6 +142,8 @@ def subject_observations(
             MetricObservation.subject_type == SubjectType(subject_type),
             MetricObservation.subject_id == subject_id,
             MetricDefinition.kind.in_(sorted(kinds)),
+            # The calendar years are served from Phase 5 Step 7.
+            MetricObservation.calendar_year.is_(None),
         )
         .order_by(
             MetricDefinition.slug,
@@ -301,6 +307,9 @@ def compare_page(
         inner = inner.where(MetricObservation.period_start == period_start)
     if period_end is not None:
         inner = inner.where(MetricObservation.period_end == period_end)
+    if period_start is None and period_end is None:
+        # Without a period the cohort compares whole windows (years: Phase 5 Step 7).
+        inner = inner.where(MetricObservation.calendar_year.is_(None))
     rows = inner.subquery("rows")
 
     # The reference period: the one most rows of the whole cohort share

@@ -12,6 +12,13 @@ ratios were computed over. Sources come in register-name order and models
 in the specification's target and window order, so every list the report
 renders has an order the data alone fixes. The designs, their member ids,
 and the frame never leave memory.
+
+Specification version 3: ``sources`` (register names; ``validation report
+--source``) selects the sources, by default every source with a model whose
+fit was attempted (a status other than ``unavailable``), so a real source that
+fits no model never enters the committed synthetic report; a selected source's
+unavailable targets are carried with their reasons (``SourceInput.unavailable``)
+and never as a model.
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ from judgemetrics.db.models import OutcomeModel
 from judgemetrics.metrics.adjustment.catalog import read_parameters
 from judgemetrics.metrics.adjustment.expected import ModelParameters
 from judgemetrics.metrics.adjustment.features import DesignFrame, design_rows
+from judgemetrics.metrics.adjustment.fit import UNAVAILABLE
 from judgemetrics.metrics.adjustment.spec import OutcomeModelSpec, TargetSpec, load_spec
 from judgemetrics.metrics.frame import Frame
 from judgemetrics.metrics.snapshot import Snapshot, SourceRow
@@ -69,6 +77,8 @@ class SourceInput:
     source: SourceRow
     frame: Frame
     models: tuple[ModelInput, ...]
+    # (target, window, reason) of every target the source cannot support.
+    unavailable: tuple[tuple[str, int | None, str], ...] = ()
 
 
 def _target_order(spec: OutcomeModelSpec) -> dict[str, int]:
@@ -82,8 +92,13 @@ def load_inputs(
     snapshot_id: uuid.UUID,
     *,
     spec: OutcomeModelSpec | None = None,
+    sources: Sequence[str] | None = None,
 ) -> list[SourceInput]:
-    """Every source of the snapshot with fitted-model rows, its frame, and its models."""
+    """The selected sources of the snapshot with their frames, models, and unavailable targets.
+
+    ``sources`` (register names) selects them; by default every source with a
+    model whose fit was attempted.
+    """
     spec = spec or load_spec()
     rows = session.scalars(
         select(OutcomeModel).where(
@@ -102,17 +117,26 @@ def load_inputs(
         )
         raise InputError(msg)
     order = _target_order(spec)
-    sources = sorted(
-        (source for source in snapshot.sources_with_cases() if source.id in by_source),
+    attempted = {
+        source_id
+        for source_id, models in by_source.items()
+        if any(row.status != UNAVAILABLE for row in models)
+    }
+    chosen = sorted(
+        (
+            source
+            for source in snapshot.sources_with_cases()
+            if source.id in by_source
+            and (source.name in sources if sources is not None else source.id in attempted)
+        ),
         key=lambda source: source.name,
     )
-    if not sources:
-        msg = f"snapshot {snapshot.content_hash} holds no case data for its models' sources"
+    if not chosen:
+        named = "" if sources is None else f" among {sorted(sources)}"
+        msg = f"snapshot {snapshot.content_hash} holds no source with models{named}"
         raise InputError(msg)
     result: list[SourceInput] = []
-    for source in sources:
-        frame = snapshot.frame(source.id)
-        models: list[ModelInput] = []
+    for source in chosen:
         ordered = sorted(
             by_source[source.id],
             key=lambda row: (
@@ -120,7 +144,15 @@ def load_inputs(
                 -1 if row.window_days is None else row.window_days,
             ),
         )
-        for row in ordered:
+        unavailable = tuple(
+            (row.target, row.window_days, str((row.diagnostics or {}).get("reason", "")))
+            for row in ordered
+            if row.status == UNAVAILABLE
+        )
+        fitted_rows = [row for row in ordered if row.status != UNAVAILABLE]
+        frame = snapshot.frame(source.id)
+        models: list[ModelInput] = []
+        for row in fitted_rows:
             target = spec.target(row.target)
             design = design_rows(frame, spec, target, row.window_days)
             if isinstance(design, NotObservable):
@@ -143,7 +175,9 @@ def load_inputs(
                     design=design,
                 )
             )
-        result.append(SourceInput(source=source, frame=frame, models=tuple(models)))
+        result.append(
+            SourceInput(source=source, frame=frame, models=tuple(models), unavailable=unavailable)
+        )
     return result
 
 

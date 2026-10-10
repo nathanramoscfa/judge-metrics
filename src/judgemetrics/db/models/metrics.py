@@ -24,7 +24,13 @@ canonical rows. Revision 0010 (Phase 4 Step 3) fills the reserved
 ``observed_expected`` kind and adds ``outcome_model_id`` (the fitted model
 an adjusted observation was computed with), ``pooling_weight``, and
 ``suppression_reason`` — set on every suppressed row of every kind and on
-no other (two check constraints).
+no other (two check constraints). Revision 0012 (Phase 5 Step 5) adds
+``calendar_year`` (null for the whole coverage window; the year a calendar-year
+observation covers, whose first and last days are then its period — checked)
+to the observation and to its unique key, and ``coverage_statistic``: the
+brief's six coverage statistics and the unknown-actor share per snapshot,
+source, and scope (the source, a jurisdiction, a court) — aggregates only,
+never a person or a case list.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -72,6 +79,17 @@ SUPPRESSION_REASONS: tuple[str, ...] = (
     "below_threshold",
     "expected_below_minimum",
     "model_unavailable",
+)
+# coverage_statistic (0012): the scopes a statistic is computed over and its names.
+COVERAGE_SCOPES: tuple[str, ...] = ("source", "jurisdiction", "court")
+COVERAGE_STATISTICS: tuple[str, ...] = (
+    "cases_with_identified_judge",
+    "cases_with_final_disposition",
+    "cases_with_person_resolution",
+    "cases_with_adequate_follow_up",
+    "cases_with_complete_charge_classification",
+    "records_with_provenance",
+    "unknown_actor_share",
 )
 
 
@@ -139,7 +157,7 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
             "period_start",
         ),
         # One observation per definition, subject, source, period, window,
-        # dimension value, and snapshot (0005).
+        # dimension value, calendar year (0012), and snapshot (0005).
         Index(
             "uq_metric_observation_key",
             "metric_definition_id",
@@ -150,6 +168,7 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
             "period_end",
             "window_days",
             "dimension_value",
+            "calendar_year",
             "snapshot_id",
             unique=True,
             postgresql_nulls_not_distinct=True,
@@ -170,6 +189,12 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
         CheckConstraint(
             "(suppression_reason IS NOT NULL) = suppressed_flag",
             name="suppression_reason_flag",
+        ),
+        # 0012: a calendar-year observation's period is that year's first and last days.
+        CheckConstraint(
+            "calendar_year IS NULL OR (period_start = make_date(calendar_year, 1, 1) "
+            "AND period_end = make_date(calendar_year, 12, 31))",
+            name="calendar_year_period",
         ),
     )
 
@@ -224,6 +249,9 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
     )
     pooling_weight: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
     suppression_reason: Mapped[str | None] = mapped_column(Text)
+    # Revision 0012: the calendar year (UTC) a year observation covers; null for the
+    # observation over the source's whole coverage window.
+    calendar_year: Mapped[int | None] = mapped_column(SmallInteger)
 
     definition: Mapped[MetricDefinition] = relationship(back_populates="observations")
     snapshot: Mapped[MetricSnapshot] = relationship(back_populates="observations")
@@ -264,3 +292,57 @@ class MetricObservationMember(Base):
     followed: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
     observation: Mapped[MetricObservation] = relationship(back_populates="members")
+
+
+class CoverageStatistic(UUIDPrimaryKey, Timestamps, Base):
+    """One coverage statistic of one snapshot, source, and scope (revision 0012).
+
+    The brief's six coverage statistics and the unknown-actor share
+    (``COVERAGE_STATISTICS``; defined in docs/METHODOLOGY.md "Coverage
+    statistics" and computed by ``metrics.coverage`` on every compute), per
+    source, per jurisdiction of the source's courts, and per court
+    (``scope_type`` and ``scope_id``): a numerator, a denominator, and their
+    share at six decimals (null without a denominator) under the methodology
+    version that defined them. Aggregates only: no person id, no case list.
+    The app role reads it; the ingest role writes it.
+    """
+
+    __tablename__ = "coverage_statistic"
+    __table_args__ = (
+        UniqueConstraint(
+            "snapshot_id",
+            "source_id",
+            "scope_type",
+            "scope_id",
+            "statistic",
+            name="uq_coverage_statistic_key",
+        ),
+        CheckConstraint("scope_type IN ('source', 'jurisdiction', 'court')", name="scope_type"),
+        CheckConstraint(
+            "statistic IN ('cases_with_identified_judge', 'cases_with_final_disposition', "
+            "'cases_with_person_resolution', 'cases_with_adequate_follow_up', "
+            "'cases_with_complete_charge_classification', 'records_with_provenance', "
+            "'unknown_actor_share')",
+            name="statistic",
+        ),
+        CheckConstraint(
+            "numerator >= 0 AND denominator >= numerator", name="numerator_denominator"
+        ),
+    )
+
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_snapshot.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("source.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    scope_type: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    statistic: Mapped[str] = mapped_column(Text, nullable=False)
+    numerator: Mapped[int] = mapped_column(Integer, nullable=False)
+    denominator: Mapped[int] = mapped_column(Integer, nullable=False)
+    share: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    methodology_version: Mapped[str] = mapped_column(Text, nullable=False)

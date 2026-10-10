@@ -75,6 +75,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from judgemetrics import __version__
+from judgemetrics.capabilities import CapabilityError, SourceCapabilities
 from judgemetrics.config import Settings
 from judgemetrics.db.models import RESTRICTED_SCHEMA, Base
 from judgemetrics.logging import get_logger
@@ -131,6 +132,7 @@ PARQUET_SCHEMAS: Mapping[str, Mapping[str, pl.DataType]] = MappingProxyType(
                 "offense_category": STRING,
                 "severity": STRING,
                 "source_row_id": STRING,
+                "judge_id": STRING,
             }
         ),
         "decisions": MappingProxyType(
@@ -157,6 +159,7 @@ PARQUET_SCHEMAS: Mapping[str, Mapping[str, pl.DataType]] = MappingProxyType(
                 "sentence_at": NAIVE_US,
                 "incarceration_days": pl.Int64(),
                 "probation_days": pl.Int64(),
+                "replaced": pl.Boolean(),
             }
         ),
         "events": MappingProxyType(
@@ -189,10 +192,16 @@ PARQUET_SCHEMAS: Mapping[str, Mapping[str, pl.DataType]] = MappingProxyType(
                 "coverage_start": pl.Date(),
                 "coverage_end": pl.Date(),
                 "observable_outcomes": pl.List(pl.String()),
+                "judge_gates": pl.List(pl.String()),
+                "person_key_scope": STRING,
+                "revocation_scopes": pl.List(pl.String()),
             }
         ),
     }
 )
+# sentence.sentence_components key a connector sets on a sentence a later correction
+# replaced (Phase 5 Step 5): the frame drops it, so each sentencing decision counts once.
+REPLACED_KEY = "replaced"
 SNAPSHOT_TABLES: tuple[str, ...] = tuple(PARQUET_SCHEMAS)
 # metric_observation_member.member_kind → the snapshot table that holds the id.
 MEMBER_TABLES: Mapping[str, str] = MappingProxyType(
@@ -264,6 +273,7 @@ class SourceRow:
     coverage_start: date | None
     coverage_end: date | None
     observable_outcomes: frozenset[str]
+    capabilities: SourceCapabilities = SourceCapabilities()
 
     @property
     def has_coverage(self) -> bool:
@@ -437,6 +447,7 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
             CHARGE.c.offense_category,
             CHARGE.c.severity,
             CHARGE.c.source_row_id,
+            CHARGE.c.judge_id,
         ).order_by(CHARGE.c.id)
     ).all()
     frames["charges"] = _frame(
@@ -453,6 +464,7 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
                 _text(row.offense_category),
                 _text(row.severity),
                 _text(row.source_row_id),
+                _text(row.judge_id),
             )
             for row in charges
         ],
@@ -504,6 +516,7 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
             SENTENCE.c.sentence_at,
             SENTENCE.c.incarceration_days,
             SENTENCE.c.probation_days,
+            SENTENCE.c.sentence_components[REPLACED_KEY].as_boolean().label(REPLACED_KEY),
         ).order_by(SENTENCE.c.id)
     ).all()
     frames["sentences"] = _frame(
@@ -517,6 +530,7 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
                 _naive_utc(row.sentence_at),
                 row.incarceration_days,
                 row.probation_days,
+                bool(row.replaced),
             )
             for row in sentences
         ],
@@ -593,11 +607,17 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
             SOURCE.c.coverage_start,
             SOURCE.c.coverage_end,
             SOURCE.c.observable_outcomes,
+            SOURCE.c.capabilities,
         ).order_by(SOURCE.c.id)
     ).all()
-    frames["sources"] = _frame(
-        "sources",
-        [
+    source_rows: list[tuple[Any, ...]] = []
+    for row in sources:
+        try:
+            capabilities = SourceCapabilities.from_json(row.capabilities)
+        except CapabilityError as exc:
+            msg = f"source {row.name} declares invalid capabilities: {exc}"
+            raise SnapshotError(msg) from exc
+        source_rows.append(
             (
                 _text(row.id),
                 _text(row.name),
@@ -605,10 +625,12 @@ def _export_rows(session: Session) -> dict[str, pl.DataFrame]:
                 row.coverage_start,
                 row.coverage_end,
                 sorted(str(item) for item in (row.observable_outcomes or [])),
+                list(capabilities.judge_gates),
+                capabilities.person_key_scope,
+                list(capabilities.revocation_scopes),
             )
-            for row in sources
-        ],
-    )
+        )
+    frames["sources"] = _frame("sources", source_rows)
     return frames
 
 
@@ -777,6 +799,9 @@ class Snapshot:
             self._connection.read_parquet(str(path)).create_view(name)
         self._member_ids: dict[str, frozenset[str]] = {}
         self._persons: dict[str, str | None] | None = None
+        # One frame per source, built once per opened snapshot: the compute, the
+        # coverage statistics, and the model fit of one call share it.
+        self._frames: dict[str, Frame] = {}
 
     def __enter__(self) -> Self:
         return self
@@ -810,8 +835,8 @@ class Snapshot:
 
     def sources(self) -> list[SourceRow]:
         rows = self._rows(
-            "SELECT id, name, source_type, coverage_start, coverage_end, observable_outcomes "
-            "FROM sources ORDER BY id"
+            "SELECT id, name, source_type, coverage_start, coverage_end, observable_outcomes, "
+            "judge_gates, person_key_scope, revocation_scopes FROM sources ORDER BY id"
         )
         return [
             SourceRow(
@@ -821,6 +846,11 @@ class Snapshot:
                 coverage_start=row[3],
                 coverage_end=row[4],
                 observable_outcomes=frozenset(str(item) for item in (row[5] or [])),
+                capabilities=SourceCapabilities(
+                    judge_gates=tuple(str(item) for item in (row[6] or [])),
+                    person_key_scope=None if row[7] is None else str(row[7]),
+                    revocation_scopes=tuple(str(item) for item in (row[8] or [])),
+                ),
             )
             for row in rows
         ]
@@ -876,7 +906,15 @@ class Snapshot:
     # --- the frame --------------------------------------------------------------------------
 
     def frame(self, source_id: str) -> Frame:
-        """The Step 1 ``Frame`` of one source's rows (see the module docstring)."""
+        """The Step 1 ``Frame`` of one source's rows (see the module docstring); cached."""
+        cached = self._frames.get(source_id)
+        if cached is not None:
+            return cached
+        built = self._build_frame(source_id)
+        self._frames[source_id] = built
+        return built
+
+    def _build_frame(self, source_id: str) -> Frame:
         source = self.source(source_id)
         if source.coverage_start is None or source.coverage_end is None:
             msg = f"source {source.name} ({source_id}) declares no coverage window"
@@ -897,7 +935,7 @@ class Snapshot:
             "charges",
             "SELECT ch.id, ch.case_id, ch.person_id, ch.filed_at, ch.disposed_at, "
             "ch.disposition, ch.disposition_actor, ch.offense_category, ch.severity, "
-            "ch.source_row_id FROM charges ch JOIN cases c ON c.id = ch.case_id "
+            "ch.source_row_id, ch.judge_id FROM charges ch JOIN cases c ON c.id = ch.case_id "
             "WHERE c.source_id = ? ORDER BY ch.id",
             [source_id],
         )
@@ -909,11 +947,13 @@ class Snapshot:
             "ORDER BY d.id",
             [source_id],
         )
+        # A sentence a later correction replaced is not a sentencing decision of its own.
         sentences = self._table(
             "sentences",
             "SELECT s.id, s.case_id, s.person_id, s.judge_id, s.sentence_at, "
             "s.incarceration_days, s.probation_days FROM sentences s "
-            "JOIN cases c ON c.id = s.case_id WHERE c.source_id = ? ORDER BY s.id",
+            "JOIN cases c ON c.id = s.case_id WHERE c.source_id = ? "
+            "AND NOT coalesce(s.replaced, false) ORDER BY s.id",
             [source_id],
         )
         events = self._table(
@@ -934,7 +974,7 @@ class Snapshot:
             | set(events["person_id"].drop_nulls().to_list())
         )
         persons = pl.DataFrame({"id": person_ids}, schema={"id": STRING})
-        justice_events = self._justice_events(person_ids)
+        justice_events = self._justice_events(person_ids, source.observable_outcomes)
         courts = self._table(
             "courts",
             "SELECT co.id, co.jurisdiction_id FROM courts co "
@@ -954,6 +994,7 @@ class Snapshot:
             coverage_start=source.coverage_start,
             coverage_end=source.coverage_end,
             observable_outcomes=source.observable_outcomes,
+            capabilities=source.capabilities,
         )
 
     def _resolve_persons(self, table: pl.DataFrame) -> pl.DataFrame:
@@ -988,8 +1029,14 @@ class Snapshot:
                 family.add(pid)
         return sorted(family)
 
-    def _justice_events(self, person_ids: Sequence[str]) -> pl.DataFrame:
-        """Stored any-case events plus the derived other-case outcomes of the merged persons."""
+    def _justice_events(
+        self, person_ids: Sequence[str], observable: frozenset[str]
+    ) -> pl.DataFrame:
+        """Stored any-case events plus the derived other-case outcomes of the merged persons.
+
+        Only the other-case outcomes the source observes are derived: for a source
+        whose person is a case participation they would be meaningless rows.
+        """
         stored = self._table(
             "justice_events",
             "SELECT id, person_id, event_type, event_at, related_case_id FROM justice_events "
@@ -998,12 +1045,13 @@ class Snapshot:
             [self._family(person_ids), sorted(ANY_CASE_OUTCOMES)],
         )
         stored = self._resolve_persons(stored)
-        derived = self._derived_outcomes(person_ids)
+        wanted = frozenset({NEW_CASE, NEW_CHARGE, RECONVICTION}) & observable
+        derived = self._derived_outcomes(person_ids, wanted) if wanted else stored.clear()
         combined = pl.concat([stored, derived]) if derived.height else stored
         return combined.sort(["person_id", "event_type", "event_at", "related_case_id", "id"])
 
-    def _derived_outcomes(self, person_ids: Sequence[str]) -> pl.DataFrame:
-        """``new_case``, ``new_charge``, ``reconviction`` from every charge of the persons."""
+    def _derived_outcomes(self, person_ids: Sequence[str], wanted: frozenset[str]) -> pl.DataFrame:
+        """``new_case``, ``new_charge``, ``reconviction`` (those ``wanted``) from the charges."""
         rows = self._rows(
             "SELECT ch.case_id, ch.person_id, ch.filed_at, ch.disposed_at, ch.disposition "
             "FROM charges ch WHERE ch.person_id IN (SELECT unnest(?::VARCHAR[])) "
@@ -1024,7 +1072,7 @@ class Snapshot:
                 derived.add((person, RECONVICTION, disposed_at.replace(tzinfo=UTC), case))
         for (person, case), filed in earliest.items():
             derived.add((person, NEW_CASE, filed, case))
-        ordered = sorted(derived)
+        ordered = sorted(item for item in derived if item[1] in wanted)
         table = pl.DataFrame(
             [
                 (

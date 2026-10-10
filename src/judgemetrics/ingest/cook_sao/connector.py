@@ -50,6 +50,7 @@ from typing import Any
 import httpx
 from pydantic import SecretStr
 
+from judgemetrics.capabilities import CASE, SUPERVISION, SourceCapabilities
 from judgemetrics.config import Settings, get_settings
 from judgemetrics.ingest.base import (
     HEADER_ROWS_UPDATED_AT,
@@ -125,6 +126,39 @@ REDISTRIBUTION = {
     "record_level": "unverified",
     "commercial": "unverified",
 }
+# What the source can and cannot show (docs/METHODOLOGY.md "Source limitations",
+# rendered from here beside the capabilities and the observable outcomes).
+LIMITATIONS: tuple[str, ...] = (
+    "Felony cases of three State's Attorney's Office bureaus received from 2011-01-01; the "
+    "corpus ends on 2024-12-30, so every outcome window is right-censored there, and a row "
+    "the exports date outside that window (a disposition before 2011, a typo year) enters "
+    "no observation.",
+    "A person is a case participation: the exports carry no identifier that follows a "
+    "defendant from one case to another (participant ids are per case and re-hashed for "
+    "every release), so no cross-case outcome - a new case, a new charge, a reconviction - "
+    "is observable and no person history enters any measure.",
+    "The judge on a disposition is the exports' JUDGE, which the SAO glossary defines as "
+    'the "Judge who oversaw the case", read as the judge who entered the disposition; the '
+    'sentencing judge is SENTENCE_JUDGE, the "Judge who oversaw the sentencing". The '
+    "exports record no judge assignment and name no bond judge, so a judge metric gated on "
+    "an assignment or on the deciding judge is not attributable for this source.",
+    "A bond type records the bond court's decision, not a release: an individual (I) bond "
+    "releases the person on recognizance, while a deposit (D) or cash (C) bond permits "
+    "release once posted, which the exports do not record. The court-level pretrial counts "
+    "and shares count these decisions; no judge does. From 2023-09-18 (the Pretrial "
+    "Fairness Act) an I bond is a release whose discretion is unknown (the exports do not "
+    "record whether the State petitioned to detain) and a D or C bond has an unknown actor "
+    "and discretion.",
+    "A revocation is read from a probation-violation sentencing in the same case: it "
+    "revokes the probation the case's sentence imposed (scope supervision) and counts "
+    "toward the revocation rates after a sentence and after a disposition; a revoked "
+    "pretrial release is not recorded. Failure to appear is not observable: a bond "
+    "forfeiture warrant appears only as a charge's last state.",
+    "Each sentencing decision counts once: an amended or corrected sentencing replaces the "
+    "sentence it corrects, while an original sentence and a later probation-violation, "
+    "resentencing, or remand sentencing are separate decisions, each attributed to its own "
+    "judge.",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +261,15 @@ class CookSaoConnector:
         # A probation-violation sentencing is a within-case revocation; no cross-case outcome
         # (new case, new charge, reconviction) is observable: the corpus has no person key.
         observable_outcomes=("revocation",),
+        # Phase 5 Step 5: the exports name the judge of a disposition (JUDGE) and of a
+        # sentencing (SENTENCE_JUDGE) and no other; a person is a case participation; the
+        # one revocation they document revokes the probation a sentence imposed.
+        capabilities=SourceCapabilities(
+            judge_gates=("disposing_judge", "sentencing_judge"),
+            person_key_scope=CASE,
+            revocation_scopes=(SUPERVISION,),
+        ),
+        limitations=LIMITATIONS,
     )
 
     def __init__(

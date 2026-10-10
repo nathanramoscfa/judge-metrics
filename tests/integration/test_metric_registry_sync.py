@@ -66,19 +66,21 @@ def test_sync_updates_only_changed_rows_and_never_deletes(db_session: Session) -
     registry = load_registry()
     sync_definitions(db_session, registry)
     metrics = dict(registry.metrics)
-    changed = replace(metrics["sentence_count"], description="A different description.")
-    metrics["sentence_count"] = changed
+    assert metrics["eligible_cases"].version == "1"
+    changed = replace(metrics["eligible_cases"], description="A different description.")
+    metrics["eligible_cases"] = changed
     edited = replace(registry, metrics=MappingProxyType(metrics))
     result = sync_definitions(db_session, edited)
     assert (result.inserted, result.updated, result.unchanged) == (0, 1, len(metrics) - 1)
-    row = _rows(db_session)[("sentence_count", "1")]
+    row = _rows(db_session)[("eligible_cases", "1")]
     assert row.description == "A different description."
 
     bumped = dict(metrics)
-    bumped["sentence_count"] = replace(changed, version="2", name="Sentences (v2)")
+    bumped["eligible_cases"] = replace(changed, version="2", name="Eligible cases (v2)")
+    kept = (metrics["probation_days_median"].slug, metrics["probation_days_median"].version)
     del bumped["probation_days_median"]
     result = sync_definitions(db_session, replace(edited, metrics=MappingProxyType(bumped)))
     assert (result.inserted, result.updated) == (1, 0)
     rows = _rows(db_session)
-    assert ("sentence_count", "1") in rows and ("sentence_count", "2") in rows
-    assert ("probation_days_median", "1") in rows, "a sync never deletes a definition"
+    assert ("eligible_cases", "1") in rows and ("eligible_cases", "2") in rows
+    assert kept in rows, "a sync never deletes a definition"

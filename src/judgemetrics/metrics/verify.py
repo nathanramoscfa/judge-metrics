@@ -30,6 +30,14 @@ column ``outcome_model`` and that observation is not recomputed; a model
 fitted under another specification version than the loaded file, or two
 models cited for one target and window of a snapshot, make the
 observation unverifiable.
+
+Phase 5 Step 5: the recompute builds only the frames of the sources the
+snapshot's observations belong to, and every snapshot verified — those the
+current observations cite, and the latest snapshot holding coverage
+statistics — has its ``coverage_statistic`` rows recomputed
+(``coverage.compute_statistics``) and compared: a statistic that differs, one
+the store lacks, or one the snapshot no longer produces is reported by source,
+scope, and name (``coverage_mismatches``), and ``ok`` requires none.
 """
 
 from __future__ import annotations
@@ -47,6 +55,12 @@ from judgemetrics.db.models import Base
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
 from judgemetrics.metrics.compute import ComputeError, ObservationDraft, compute_all
+from judgemetrics.metrics.coverage import (
+    CoverageMismatch,
+    compare_statistics,
+    compute_statistics,
+    load_statistics,
+)
 from judgemetrics.metrics.publish import (
     MODEL_HASH,
     VERIFIED_COLUMNS,
@@ -56,7 +70,12 @@ from judgemetrics.metrics.publish import (
     stored_columns,
 )
 from judgemetrics.metrics.registry import OBSERVED_EXPECTED, Registry, load_registry
-from judgemetrics.metrics.snapshot import SnapshotError, open_snapshot, validate_content_hash
+from judgemetrics.metrics.snapshot import (
+    Snapshot,
+    SnapshotError,
+    open_snapshot,
+    validate_content_hash,
+)
 
 if TYPE_CHECKING:
     from judgemetrics.metrics.adjustment.expected import ModelParameters
@@ -64,6 +83,7 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
+COVERAGE = Base.metadata.tables["coverage_statistic"]
 OBSERVATION_COLUMN = "observation"
 MEMBERS_COLUMN = "members"
 MODEL_COLUMN = "outcome_model"
@@ -122,10 +142,13 @@ class VerifyResult:
     snapshots: list[str] = field(default_factory=list)
     mismatches: list[Mismatch] = field(default_factory=list)
     unverifiable: list[Unverifiable] = field(default_factory=list)
+    # Coverage statistics recomputed and compared (Phase 5 Step 5).
+    coverage_statistics: int = 0
+    coverage_mismatches: list[CoverageMismatch] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.mismatches and not self.unverifiable
+        return not self.mismatches and not self.unverifiable and not self.coverage_mismatches
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -135,6 +158,8 @@ class VerifyResult:
             "snapshots": list(self.snapshots),
             "mismatches": [item.as_dict() for item in self.mismatches],
             "unverifiable": [item.as_dict() for item in self.unverifiable],
+            "coverage_statistics": self.coverage_statistics,
+            "coverage_mismatches": [item.as_dict() for item in self.coverage_mismatches],
         }
 
 
@@ -155,6 +180,17 @@ def _snapshot_hashes(session: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, s
         select(SNAPSHOT.c.id, SNAPSHOT.c.content_hash).where(SNAPSHOT.c.id.in_(ids))
     ).all()
     return {uuid.UUID(str(row.id)): str(row.content_hash) for row in rows}
+
+
+def _latest_coverage_snapshot(session: Session) -> tuple[uuid.UUID, str] | None:
+    """The latest snapshot holding coverage statistics (what ``metrics coverage`` prints)."""
+    row = session.execute(
+        select(SNAPSHOT.c.id, SNAPSHOT.c.content_hash)
+        .where(SNAPSHOT.c.id.in_(select(COVERAGE.c.snapshot_id).distinct()))
+        .order_by(SNAPSHOT.c.exported_at.desc(), SNAPSHOT.c.id)
+        .limit(1)
+    ).first()
+    return None if row is None else (uuid.UUID(str(row.id)), str(row.content_hash))
 
 
 def _snapshot_id(session: Session, content_hash: str) -> uuid.UUID | None:
@@ -230,22 +266,35 @@ def verify(
     registry = registry or load_registry()
     result = VerifyResult()
     snapshot_id: uuid.UUID | None = None
+    wanted_hash: str | None = None
     if snapshot is not None:
-        content_hash = validate_content_hash(snapshot)
-        snapshot_id = _snapshot_id(session, content_hash)
+        wanted_hash = validate_content_hash(snapshot)
+        snapshot_id = _snapshot_id(session, wanted_hash)
         if snapshot_id is None:
-            log.warning("metrics.verify.unknown_snapshot", snapshot=content_hash)
+            log.warning("metrics.verify.unknown_snapshot", snapshot=wanted_hash)
             return result
     stored = load_observations(session, snapshot_id=snapshot_id)
     result.observations = len(stored)
     hashes = _snapshot_hashes(session, {item.snapshot_id for item in stored})
     by_snapshot: dict[str, list[StoredObservation]] = {}
+    ids: dict[str, uuid.UUID] = {}
     for item in stored:
         by_snapshot.setdefault(hashes[item.snapshot_id], []).append(item)
+        ids[hashes[item.snapshot_id]] = item.snapshot_id
+    if wanted_hash is None:
+        latest = _latest_coverage_snapshot(session)
+        if latest is not None:
+            by_snapshot.setdefault(latest[1], [])
+            ids[latest[1]] = latest[0]
+    elif snapshot_id is not None:
+        by_snapshot.setdefault(wanted_hash, [])
+        ids[wanted_hash] = snapshot_id
     for content_hash in sorted(by_snapshot):
         items = by_snapshot[content_hash]
         result.snapshots.append(content_hash)
-        _verify_snapshot(settings, registry, content_hash, items, result)
+        _verify_snapshot(
+            session, settings, registry, content_hash, ids[content_hash], items, result
+        )
     log.info(
         "metrics.verified",
         snapshots=len(result.snapshots),
@@ -253,6 +302,8 @@ def verify(
         verified=result.verified,
         mismatches=len(result.mismatches),
         unverifiable=len(result.unverifiable),
+        coverage_statistics=result.coverage_statistics,
+        coverage_mismatches=len(result.coverage_mismatches),
         ok=result.ok,
     )
     return result
@@ -327,10 +378,28 @@ def _cited_models(
     return kept, models
 
 
+def _verify_coverage(
+    session: Session,
+    snapshot_view: Snapshot,
+    snapshot_id: uuid.UUID,
+    content_hash: str,
+    result: VerifyResult,
+) -> None:
+    """The snapshot's stored coverage statistics against a recompute from the snapshot."""
+    stored = load_statistics(session, snapshot_id)
+    if not stored:
+        return
+    result.coverage_statistics += len(stored)
+    drafts = compute_statistics(snapshot_view)
+    result.coverage_mismatches.extend(compare_statistics(content_hash, stored, drafts))
+
+
 def _verify_snapshot(
+    session: Session,
     settings: Settings,
     registry: Registry,
     content_hash: str,
+    snapshot_id: uuid.UUID,
     items: Sequence[StoredObservation],
     result: VerifyResult,
 ) -> None:
@@ -354,8 +423,6 @@ def _verify_snapshot(
     if OBSERVED_EXPECTED in kinds:
         verifiable, models = _cited_models(settings, content_hash, verifiable, result)
         kinds = {item.kind for item in verifiable}
-    if not verifiable:
-        return
     try:
         opened = open_snapshot(settings, content_hash)
     except SnapshotError as exc:
@@ -365,6 +432,9 @@ def _verify_snapshot(
             )
         return
     with opened as snapshot_view:
+        _verify_coverage(session, snapshot_view, snapshot_id, content_hash, result)
+        if not verifiable:
+            return
         subjects = sorted({(item.key[1], item.key[2]) for item in verifiable})
         try:
             computed = compute_all(
@@ -373,6 +443,7 @@ def _verify_snapshot(
                 [Subject(kind, sid) for kind, sid in subjects],
                 kinds=kinds,
                 models=models,
+                sources={str(item.key[3]) for item in verifiable},
             )
         except ComputeError as exc:
             for item in verifiable:
