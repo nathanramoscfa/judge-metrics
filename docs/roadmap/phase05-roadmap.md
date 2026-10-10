@@ -4740,9 +4740,9 @@ variant. Conversation is New per phase-boundary hygiene.
 
 ---
 
-## Step 5 — Real-Data Metric Semantics, Calendar Periods, and Coverage Statistics
+## Step 5 — Real-Data Metric Semantics, Calendar Periods, and Coverage Statistics ✅
 
-**Status:** Not started
+**Status:** Complete — PR #58 (2026-10-10)
 
 > **Goal:** Give the real rows honest metric semantics. Registry version `3` and
 > methodology `1.1` add the `disposing_judge` gate — the judge on
@@ -8340,7 +8340,7 @@ workflow above maps directly to the corresponding row below.
 | 2    | Florida research and acquisition plan          | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #53 |
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #55 |
-| 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #58 |
 | 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
 | 7    | Public surfaces for the first real source      | Sonnet 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 8    | QA + verify_phase05.py                         | Opus 5.5   | Claude Code | Effort Medium  | On       | New  | Not started |
