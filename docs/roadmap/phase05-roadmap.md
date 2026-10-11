@@ -5708,9 +5708,9 @@ is New per phase-boundary hygiene.
 
 ---
 
-## Step 6 — The Metrics Engine at Corpus Scale
+## Step 6 — The Metrics Engine at Corpus Scale ✅
 
-**Status:** Not started
+**Status:** Complete — PR #60 (2026-10-10)
 
 > **Goal:** Make the full Cook County compute, its rerun, `metrics verify`, the
 > provenance trace, and pipeline step 13 run on the maintainer's machine within
@@ -8366,7 +8366,7 @@ workflow above maps directly to the corresponding row below.
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #55 |
 | 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #58 |
-| 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #60 |
 | 7    | Public surfaces for the first real source      | Sonnet 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 8    | QA + verify_phase05.py                         | Opus 5.5   | Claude Code | Effort Medium  | On       | New  | Not started |
 | V1   | Due diligence, fetch, profile scope            | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |
