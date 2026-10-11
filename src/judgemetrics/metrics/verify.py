@@ -1,21 +1,19 @@
 # src/judgemetrics/metrics/verify.py
 """Verification: every current observation recomputed from its own snapshot.
 
-``verify(session, settings, snapshot=None)`` loads every current
-observation (``superseded_at IS NULL``), or those of one snapshot hash,
-groups them by snapshot, opens each snapshot from ``snapshot_dir``,
-recomputes the observations' subjects with the registry version the
-observation records — the current registry file must carry that
-``registry_version`` and the observation's ``(slug, version)``, otherwise
-the observation is reported ``unverifiable`` rather than compared against
-a different contract — and compares every stored column of
-``publish.VERIFIED_COLUMNS`` and the member multiset exactly. The result
-lists every mismatch (observation id, slug, subject, window, dimension,
-column, stored and recomputed values), every observation the recompute
-no longer produces (``column = "observation"``), every recomputed
-observation the store lacks for a subject it holds, and every
-unverifiable observation with its reason. ``ok`` is true only when all
-four lists are empty; the CLI exits 1 otherwise. Log lines carry the
+``verify(session, settings, snapshot=None)`` finds every current observation
+(``superseded_at IS NULL``), or those of one snapshot hash, groups them by the
+snapshot they cite, source, and subject, opens each snapshot from ``snapshot_dir``,
+recomputes the observations' subjects with the registry version the observation
+records — the current registry file must carry that ``registry_version`` and the
+observation's ``(slug, version)``, otherwise the observation is reported
+``unverifiable`` rather than compared against a different contract — and compares
+every stored column of ``publish.VERIFIED_COLUMNS`` and the member multiset exactly.
+The result lists every mismatch (observation id, slug, subject, window, dimension,
+column, stored and recomputed values), every observation the recompute no longer
+produces (``column = "observation"``), every recomputed observation the store lacks for
+a subject it holds, and every unverifiable observation with its reason. ``ok`` is true
+only when all four lists are empty; the CLI exits 1 otherwise. Log lines carry the
 snapshot id and counts only.
 
 Phase 4 Step 3: a snapshot's observations are recomputed for the kinds
@@ -38,15 +36,28 @@ statistics — has its ``coverage_statistic`` rows recomputed
 (``coverage.compute_statistics``) and compared: a statistic that differs, one
 the store lacks, or one the snapshot no longer produces is reported by source,
 scope, and name (``coverage_mismatches``), and ``ok`` requires none.
+
+Phase 5 Step 6: verification streams. The observations are found with one grouped
+query and then handled one subject at a time — its stored observations and member
+families are read, its drafts recomputed (``compute.iter_frame``: the adjusted kind
+for all the source's judges first, then each subject in turn), compared, and dropped —
+so memory is bounded by the largest subject, not by the corpus. An observation's
+members are its family's rows: the stored rows of every family a verified observation
+cites are read back and hashed (a stored family whose rows do not match its recorded
+hash is a mismatch of column ``members_hash``), the recomputed family's hash is
+compared with it, and only when they differ are the observation's member multisets
+expanded and compared (column ``members``, with the two counts).
 """
 
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -54,19 +65,25 @@ from judgemetrics.config import Settings
 from judgemetrics.db.models import Base
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
-from judgemetrics.metrics.compute import ComputeError, ObservationDraft, compute_all
+from judgemetrics.metrics.compute import (
+    ComputeError,
+    ObservationDraft,
+    SubjectResult,
+    iter_frame,
+)
 from judgemetrics.metrics.coverage import (
     CoverageMismatch,
     compare_statistics,
     compute_statistics,
     load_statistics,
 )
+from judgemetrics.metrics.member_store import read_family
+from judgemetrics.metrics.members import MemberFamily, mode_for, windows_for
 from judgemetrics.metrics.publish import (
     MODEL_HASH,
     VERIFIED_COLUMNS,
     StoredObservation,
     load_observations,
-    member_tuples,
     stored_columns,
 )
 from judgemetrics.metrics.registry import OBSERVED_EXPECTED, Registry, load_registry
@@ -84,8 +101,11 @@ log = get_logger(__name__)
 
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 COVERAGE = Base.metadata.tables["coverage_statistic"]
+OBSERVATION = Base.metadata.tables["metric_observation"]
+DEFINITION = Base.metadata.tables["metric_definition"]
 OBSERVATION_COLUMN = "observation"
 MEMBERS_COLUMN = "members"
+MEMBERS_HASH_COLUMN = "members_hash"
 MODEL_COLUMN = "outcome_model"
 
 
@@ -173,15 +193,6 @@ def _render(value: Any) -> Any:
     return str(value)
 
 
-def _snapshot_hashes(session: Session, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
-    if not ids:
-        return {}
-    rows = session.execute(
-        select(SNAPSHOT.c.id, SNAPSHOT.c.content_hash).where(SNAPSHOT.c.id.in_(ids))
-    ).all()
-    return {uuid.UUID(str(row.id)): str(row.content_hash) for row in rows}
-
-
 def _latest_coverage_snapshot(session: Session) -> tuple[uuid.UUID, str] | None:
     """The latest snapshot holding coverage statistics (what ``metrics coverage`` prints)."""
     row = session.execute(
@@ -223,8 +234,72 @@ def _mismatch(
     )
 
 
+def _multiset(family: MemberFamily, stored: StoredObservation) -> Counter[tuple[str, bool, bool]]:
+    """The observation's member multiset ``{(id, counted, followed): copies}`` from its family."""
+    projected = family.project(year=stored.key[8], window=stored.key[6], dimension=stored.key[7])
+    return Counter(
+        {
+            (str(ident), bool(counted), bool(followed)): int(copies)
+            for ident, counted, followed, copies in projected.group_by(
+                "member_id", "counted", "followed"
+            )
+            .sum()
+            .rename({"multiplicity": "copies"})
+            .iter_rows()
+        }
+    )
+
+
+@dataclass(slots=True)
+class _Families:
+    """The stored families one subject's verified observations cite, read once each."""
+
+    session: Session
+    registry: Registry
+    content_hash: str
+    result: VerifyResult
+    stored: dict[uuid.UUID, MemberFamily | None] = field(default_factory=dict)
+
+    def of(self, item: StoredObservation) -> MemberFamily | None:
+        """The stored family of ``item`` (``None`` when it cannot be read); read and checked once."""
+        if item.family_id is None:  # pragma: no cover - the column is NOT NULL
+            return None
+        if item.family_id not in self.stored:
+            definition = self.registry.metrics[item.definition[0]]
+            family = read_family(
+                self.session,
+                item.family_id,
+                kind=_member_kind(self.session, item.family_id),
+                mode=mode_for(definition.kind, definition.dimension),
+                windows=windows_for(definition.kind, definition.windows_days),
+            )
+            if family.digest != item.family_hash:
+                self.result.mismatches.append(
+                    _mismatch(
+                        item,
+                        None,
+                        self.content_hash,
+                        MEMBERS_HASH_COLUMN,
+                        item.family_hash,
+                        family.digest,
+                    )
+                )
+            self.stored[item.family_id] = family
+        return self.stored[item.family_id]
+
+
+def _member_kind(session: Session, family_id: uuid.UUID) -> str:
+    family = Base.metadata.tables["metric_member_family"]
+    kind = session.scalar(select(family.c.member_kind).where(family.c.id == family_id))
+    return str(kind)
+
+
 def _compare(
-    stored: StoredObservation, draft: ObservationDraft, registry: Registry, content_hash: str
+    stored: StoredObservation,
+    draft: ObservationDraft,
+    registry: Registry,
+    content_hash: str,
+    families: _Families,
 ) -> list[Mismatch]:
     found: list[Mismatch] = []
     expected = stored_columns(draft, registry)
@@ -241,19 +316,99 @@ def _compare(
                 stored, draft, content_hash, "definition_version", stored.definition, draft.version
             )
         )
-    recomputed_members = member_tuples(draft.members)
-    if stored.members != recomputed_members:
-        found.append(
-            _mismatch(
-                stored,
-                draft,
-                content_hash,
-                MEMBERS_COLUMN,
-                {"members": len(stored.members)},
-                {"members": len(recomputed_members)},
-            )
+    recomputed = draft.family
+    if recomputed is None or stored.family_hash != recomputed.digest:
+        # The hashes differ: expand the two multisets and compare them for this observation
+        # (the families may differ elsewhere, in observations that are not this one).
+        stored_family = families.of(stored)
+        stored_members = (
+            Counter[tuple[str, bool, bool]]()
+            if stored_family is None
+            else _multiset(stored_family, stored)
         )
+        recomputed_members = (
+            Counter[tuple[str, bool, bool]]()
+            if recomputed is None
+            else _multiset(recomputed, stored)
+        )
+        if stored_members != recomputed_members:
+            found.append(
+                _mismatch(
+                    stored,
+                    draft,
+                    content_hash,
+                    MEMBERS_COLUMN,
+                    {"members": sum(stored_members.values())},
+                    {"members": sum(recomputed_members.values())},
+                )
+            )
+    else:
+        families.of(stored)  # the stored rows are read and hashed against the recorded hash
     return found
+
+
+# --- the observations to verify, grouped ---------------------------------------------------------
+
+
+@dataclass(slots=True)
+class _Group:
+    """The current observations citing one snapshot, by source, and the subjects they belong to."""
+
+    snapshot_id: uuid.UUID
+    content_hash: str
+    # source id -> subject (type, id) -> the (slug, definition version, registry version, kind) held
+    subjects: dict[str, dict[tuple[str, str], set[tuple[str, str, int, str]]]] = field(
+        default_factory=dict
+    )
+
+
+def _groups(
+    session: Session, registry: Registry, snapshot_id: uuid.UUID | None
+) -> tuple[int, dict[uuid.UUID, _Group]]:
+    """The count of current observations and, per snapshot they cite, who holds what."""
+    statement = (
+        select(
+            OBSERVATION.c.snapshot_id,
+            SNAPSHOT.c.content_hash,
+            OBSERVATION.c.source_id,
+            OBSERVATION.c.subject_type,
+            OBSERVATION.c.subject_id,
+            DEFINITION.c.slug,
+            DEFINITION.c.version,
+            OBSERVATION.c.registry_version,
+            DEFINITION.c.kind,
+            sa.func.count().label("held"),
+        )
+        .join(SNAPSHOT, SNAPSHOT.c.id == OBSERVATION.c.snapshot_id)
+        .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
+        .where(OBSERVATION.c.superseded_at.is_(None))
+        .group_by(
+            OBSERVATION.c.snapshot_id,
+            SNAPSHOT.c.content_hash,
+            OBSERVATION.c.source_id,
+            OBSERVATION.c.subject_type,
+            OBSERVATION.c.subject_id,
+            DEFINITION.c.slug,
+            DEFINITION.c.version,
+            OBSERVATION.c.registry_version,
+            DEFINITION.c.kind,
+        )
+    )
+    if snapshot_id is not None:
+        statement = statement.where(OBSERVATION.c.snapshot_id == snapshot_id)
+    total = 0
+    groups: dict[uuid.UUID, _Group] = {}
+    for row in session.execute(statement).all():
+        sid = uuid.UUID(str(row.snapshot_id))
+        group = groups.setdefault(sid, _Group(sid, str(row.content_hash)))
+        subject_type = getattr(row.subject_type, "value", str(row.subject_type))
+        held = group.subjects.setdefault(str(row.source_id), {}).setdefault(
+            (str(subject_type), str(row.subject_id)), set()
+        )
+        held.add((str(row.slug), str(row.version), int(row.registry_version), str(row.kind)))
+        total += int(row.held)
+    del registry
+    return total, groups
 
 
 def verify(
@@ -273,28 +428,16 @@ def verify(
         if snapshot_id is None:
             log.warning("metrics.verify.unknown_snapshot", snapshot=wanted_hash)
             return result
-    stored = load_observations(session, snapshot_id=snapshot_id)
-    result.observations = len(stored)
-    hashes = _snapshot_hashes(session, {item.snapshot_id for item in stored})
-    by_snapshot: dict[str, list[StoredObservation]] = {}
-    ids: dict[str, uuid.UUID] = {}
-    for item in stored:
-        by_snapshot.setdefault(hashes[item.snapshot_id], []).append(item)
-        ids[hashes[item.snapshot_id]] = item.snapshot_id
+    result.observations, groups = _groups(session, registry, snapshot_id)
     if wanted_hash is None:
         latest = _latest_coverage_snapshot(session)
-        if latest is not None:
-            by_snapshot.setdefault(latest[1], [])
-            ids[latest[1]] = latest[0]
-    elif snapshot_id is not None:
-        by_snapshot.setdefault(wanted_hash, [])
-        ids[wanted_hash] = snapshot_id
-    for content_hash in sorted(by_snapshot):
-        items = by_snapshot[content_hash]
-        result.snapshots.append(content_hash)
-        _verify_snapshot(
-            session, settings, registry, content_hash, ids[content_hash], items, result
-        )
+        if latest is not None and latest[0] not in groups:
+            groups[latest[0]] = _Group(latest[0], latest[1])
+    elif snapshot_id is not None and snapshot_id not in groups:
+        groups[snapshot_id] = _Group(snapshot_id, wanted_hash)
+    for group in sorted(groups.values(), key=lambda item: item.content_hash):
+        result.snapshots.append(group.content_hash)
+        _verify_snapshot(session, settings, registry, group, result)
     log.info(
         "metrics.verified",
         snapshots=len(result.snapshots),
@@ -335,9 +478,6 @@ def _cited_models(
     cited: list[tuple[StoredObservation, ModelParameters]] = []
     kept: list[StoredObservation] = []
     for item in items:
-        if item.kind != OBSERVED_EXPECTED:
-            kept.append(item)
-            continue
         model_hash = item.columns[MODEL_HASH]
         if model_hash is None:
             result.mismatches.append(
@@ -394,66 +534,199 @@ def _verify_coverage(
     result.coverage_mismatches.extend(compare_statistics(content_hash, stored, drafts))
 
 
+def _unverifiable_reason(registry: Registry, held: tuple[str, str, int, str]) -> str | None:
+    slug, version, registry_version, _ = held
+    if registry_version != registry.version:
+        return f"registry version {registry_version} is not the current {registry.version}"
+    if slug not in registry.metrics or registry.metrics[slug].version != version:
+        return f"definition {slug} version {version} is not in the current registry"
+    return None
+
+
 def _verify_snapshot(
     session: Session,
     settings: Settings,
     registry: Registry,
-    content_hash: str,
-    snapshot_id: uuid.UUID,
-    items: Sequence[StoredObservation],
+    group: _Group,
     result: VerifyResult,
 ) -> None:
-    verifiable: list[StoredObservation] = []
-    for item in items:
-        slug, version = item.definition
-        reason: str | None = None
-        if item.columns["registry_version"] != registry.version:
-            reason = (
-                f"registry version {item.columns['registry_version']} is not the current "
-                f"{registry.version}"
+    content_hash = group.content_hash
+    # The adjusted observations first: their models are read from artifacts, and an
+    # observation whose model is missing or altered is reported and not recomputed.
+    adjusted_ok: set[uuid.UUID] = set()
+    models: ModelsBySource = {}
+    adjusted_held = any(
+        held[3] == OBSERVED_EXPECTED
+        for sources in group.subjects.values()
+        for held_set in sources.values()
+        for held in held_set
+        if _unverifiable_reason(registry, held) is None
+    )
+    if adjusted_held:
+        adjusted = [
+            item
+            for item in load_observations(
+                session, snapshot_id=group.snapshot_id, kinds={OBSERVED_EXPECTED}
             )
-        elif slug not in registry.metrics or registry.metrics[slug].version != version:
-            reason = f"definition {slug} version {version} is not in the current registry"
-        if reason is not None:
-            result.unverifiable.append(Unverifiable(item.id, content_hash, slug, reason))
-        else:
-            verifiable.append(item)
-    kinds = {item.kind for item in verifiable}
-    models: ModelsBySource | None = None
-    if OBSERVED_EXPECTED in kinds:
-        verifiable, models = _cited_models(settings, content_hash, verifiable, result)
-        kinds = {item.kind for item in verifiable}
+            if _unverifiable_reason(
+                registry,
+                (
+                    item.definition[0],
+                    item.definition[1],
+                    int(item.columns["registry_version"]),
+                    item.kind,
+                ),
+            )
+            is None
+        ]
+        kept, models = _cited_models(settings, content_hash, adjusted, result)
+        adjusted_ok = {item.id for item in kept}
     try:
         opened = open_snapshot(settings, content_hash)
     except SnapshotError as exc:
-        for item in verifiable:
-            result.unverifiable.append(
-                Unverifiable(item.id, content_hash, item.definition[0], f"snapshot: {exc}")
-            )
+        for sources in group.subjects.values():
+            for subject_type, subject_id in sources:
+                for item in load_observations(
+                    session, snapshot_id=group.snapshot_id, subject=(subject_type, subject_id)
+                ):
+                    result.unverifiable.append(
+                        Unverifiable(item.id, content_hash, item.definition[0], f"snapshot: {exc}")
+                    )
         return
     with opened as snapshot_view:
-        _verify_coverage(session, snapshot_view, snapshot_id, content_hash, result)
-        if not verifiable:
-            return
-        subjects = sorted({(item.key[1], item.key[2]) for item in verifiable})
-        try:
-            computed = compute_all(
-                snapshot_view,
+        _verify_coverage(session, snapshot_view, group.snapshot_id, content_hash, result)
+        for source_id, subjects in sorted(group.subjects.items()):
+            _verify_source(
+                session,
                 registry,
-                [Subject(kind, sid) for kind, sid in subjects],
-                kinds=kinds,
-                models=models,
-                sources={str(item.key[3]) for item in verifiable},
+                snapshot_view,
+                group,
+                source_id,
+                subjects,
+                models,
+                adjusted_ok,
+                result,
             )
-        except ComputeError as exc:
-            for item in verifiable:
+
+
+def _verify_source(
+    session: Session,
+    registry: Registry,
+    snapshot_view: Snapshot,
+    group: _Group,
+    source_id: str,
+    subjects: dict[tuple[str, str], set[tuple[str, str, int, str]]],
+    models: ModelsBySource,
+    adjusted_ok: set[uuid.UUID],
+    result: VerifyResult,
+) -> None:
+    content_hash = group.content_hash
+    kinds = {
+        held[3]
+        for held_set in subjects.values()
+        for held in held_set
+        if _unverifiable_reason(registry, held) is None
+        and (held[3] != OBSERVED_EXPECTED or source_id in models)
+    }
+    # Every subject's unverifiable observations are reported; the rest are recomputed.
+    verifiable_subjects: list[Subject] = []
+    pending: dict[tuple[str, str], list[StoredObservation]] = {}
+    for (subject_type, subject_id), held_set in sorted(subjects.items()):
+        items = load_observations(
+            session,
+            snapshot_id=group.snapshot_id,
+            subject=(subject_type, subject_id),
+            source_id=uuid.UUID(source_id),
+        )
+        verifiable: list[StoredObservation] = []
+        for item in items:
+            reason = _unverifiable_reason(
+                registry,
+                (
+                    item.definition[0],
+                    item.definition[1],
+                    int(item.columns["registry_version"]),
+                    item.kind,
+                ),
+            )
+            if reason is not None:
+                result.unverifiable.append(
+                    Unverifiable(item.id, content_hash, item.definition[0], reason)
+                )
+            elif item.kind == OBSERVED_EXPECTED and item.id not in adjusted_ok:
+                continue  # already reported with its model
+            else:
+                verifiable.append(item)
+        del held_set
+        if verifiable:
+            pending[(subject_type, subject_id)] = verifiable
+            verifiable_subjects.append(Subject(subject_type, subject_id))
+    if not verifiable_subjects:
+        return
+    frame = _frame(snapshot_view, source_id, pending, content_hash, result)
+    if frame is None:
+        return
+    try:
+        for computed in iter_frame(
+            frame,
+            registry,
+            source_id,
+            verifiable_subjects,
+            kinds=kinds,
+            models=models.get(source_id),
+        ):
+            key = (computed.subject.subject_type, str(computed.subject.subject_id))
+            items = pending.pop(key, [])
+            if items:
+                _verify_subject(session, registry, content_hash, items, computed, result)
+    except ComputeError as exc:
+        # The recompute itself failed (a model missing, say): nothing not yet compared
+        # can be, and each such observation is reported with the reason.
+        for items in pending.values():
+            for item in items:
                 result.unverifiable.append(
                     Unverifiable(item.id, content_hash, item.definition[0], f"compute: {exc}")
                 )
-            return
+        return
+    # A subject the frame no longer holds at all: every observation of it is gone.
+    for items in pending.values():
+        for item in items:
+            result.mismatches.append(
+                _mismatch(item, None, content_hash, OBSERVATION_COLUMN, "present", "absent")
+            )
+
+
+def _frame(
+    snapshot_view: Snapshot,
+    source_id: str,
+    pending: dict[tuple[str, str], list[StoredObservation]],
+    content_hash: str,
+    result: VerifyResult,
+) -> Any:
+    try:
+        return snapshot_view.frame(source_id)
+    except SnapshotError as exc:
+        reason = f"compute: cannot build the frame of source {source_id}: {exc}"
+        for items in pending.values():
+            for item in items:
+                result.unverifiable.append(
+                    Unverifiable(item.id, content_hash, item.definition[0], reason)
+                )
+        return None
+
+
+def _verify_subject(
+    session: Session,
+    registry: Registry,
+    content_hash: str,
+    items: list[StoredObservation],
+    computed: SubjectResult,
+    result: VerifyResult,
+) -> None:
     drafts = {draft.key: draft for draft in computed.drafts}
+    families = _Families(session, registry, content_hash, result)
     seen: set[tuple[Any, ...]] = set()
-    for item in verifiable:
+    for item in items:
         draft = drafts.get(item.key)
         if draft is None:
             result.mismatches.append(
@@ -461,19 +734,24 @@ def _verify_snapshot(
             )
             continue
         seen.add(item.key)
-        found = _compare(item, draft, registry, content_hash)
+        found = _compare(item, draft, registry, content_hash, families)
         result.mismatches.extend(found)
         if not found:
             result.verified += 1
     # An observation the store lacks counts only where the subject holds that kind here.
-    stored_subjects = {(item.key[1], item.key[2], item.key[3], item.kind) for item in verifiable}
+    held_kinds = {item.kind for item in items}
     for key, draft in sorted(drafts.items(), key=lambda pair: str(pair[0])):
-        kind = registry.metrics[draft.slug].kind
-        if (
-            key in seen
-            or (draft.subject_type, draft.subject_id, draft.source_id, kind) not in stored_subjects
-        ):
+        if key in seen or registry.metrics[draft.slug].kind not in held_kinds:
             continue
         result.mismatches.append(
             _mismatch(None, draft, content_hash, OBSERVATION_COLUMN, "absent", "present")
         )
+
+
+__all__ = [
+    "ComputeError",
+    "Mismatch",
+    "Unverifiable",
+    "VerifyResult",
+    "verify",
+]

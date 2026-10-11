@@ -38,7 +38,6 @@ from judgemetrics.db.models import (
     Decision,
     MetricDefinition,
     MetricObservation,
-    MetricObservationMember,
     OutcomeModel,
 )
 from judgemetrics.db.models.enums import SubjectType
@@ -46,6 +45,7 @@ from judgemetrics.db.session import make_engine
 from judgemetrics.metrics.adjustment.artifacts import artifact_path
 from judgemetrics.metrics.adjustment.spec import load_spec
 from judgemetrics.metrics.engine import compute_and_publish
+from judgemetrics.metrics.member_store import observation_members
 from judgemetrics.metrics.registry import OBSERVED_EXPECTED, load_registry
 from judgemetrics.metrics.verify import verify
 from tests.golden.conftest import GOLDEN, GoldenFixture, GoldenMetrics
@@ -186,19 +186,13 @@ def test_members_are_the_judges_existing_cohort_decisions(
         judge_id = golden_fixture.judge_ids[code]
         for metric in ADJUSTED:
             for observation in _current(session, judge_id, metric.slug):
-                members = list(
-                    session.scalars(
-                        select(MetricObservationMember).where(
-                            MetricObservationMember.observation_id == observation.id
-                        )
-                    )
-                )
+                members = observation_members(session, observation.id)
                 assert len(members) == observation.eligible_count
-                assert {m.member_kind for m in members} <= {"decision"}
+                assert {m.kind for m in members} <= {"decision"}
                 assert sum(m.followed for m in members) == observation.cohort_size
                 assert sum(m.counted for m in members) == observation.observed_count
                 assert all(m.followed for m in members if m.counted)
-                decisions = {m.member_id for m in members}
+                decisions = {uuid.UUID(m.id) for m in members}
                 found = set(
                     session.scalars(
                         select(Decision.id).where(

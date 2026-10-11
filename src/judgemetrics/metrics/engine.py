@@ -4,13 +4,17 @@
 The CLI's ``metrics compute`` and pipeline step 13 share this entry
 point: ``export_snapshot`` through the caller's session (inside the
 ingest transaction at step 13, so the run's own rows are included),
-``open_snapshot``, ``compute_all`` for every subject or the given ones,
-``publish``. The caller owns the transaction: the CLI commits on
-success and rolls back on ``ProvenanceError``; the runner commits the
-whole ingest or rolls it back on any failure. The result carries the
-snapshot reference, the fitted models, the compute counts, the publish
-counts, and the coverage statistics; the snapshot is closed before
-returning.
+``open_snapshot``, ``iter_all`` for every subject or the given ones, each
+subject's result published as soon as it is computed (``Publisher.add``), so a
+corpus-scale compute holds one subject's observations and member families at a time.
+The caller owns the transaction: the CLI commits on success and rolls back on
+``ProvenanceError``; the runner commits the whole ingest or rolls it back on any
+failure. The result carries the snapshot reference, the fitted models, the compute
+counts, the publish counts, and the coverage statistics; the snapshot is closed
+before returning. ``retain`` (the default) keeps every subject's drafts, with their
+member families, in ``EngineResult.computed`` for a caller that inspects them (the
+tests); the CLI and step 13 pass ``retain=False``, which keeps the subjects and the
+not-observable and not-attributable records only.
 
 ``kinds`` names the registry kinds the call computes and publishes (every
 kind by default). When it includes ``observed_expected`` (Phase 4 Step 3),
@@ -44,9 +48,9 @@ from sqlalchemy.orm import Session
 from judgemetrics.config import Settings
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.attribution import Subject
-from judgemetrics.metrics.compute import ComputeError, ComputeResult, compute_all
+from judgemetrics.metrics.compute import ComputeError, ComputeResult, iter_all
 from judgemetrics.metrics.coverage import CoverageResult, compute_statistics, publish_statistics
-from judgemetrics.metrics.publish import PublishResult, publish, upsert_snapshot
+from judgemetrics.metrics.publish import Publisher, PublishResult, upsert_snapshot
 from judgemetrics.metrics.registry import KINDS, OBSERVED_EXPECTED, Registry, load_registry
 from judgemetrics.metrics.snapshot import Snapshot, SnapshotRef, export_snapshot, open_snapshot
 
@@ -80,6 +84,7 @@ def compute_and_publish(
     registry: Registry | None = None,
     kinds: Collection[str] | None = None,
     sources: Collection[str] | None = None,
+    retain: bool = True,
 ) -> EngineResult:
     """Export, fit (when adjusted kinds are wanted), compute, and publish; the caller commits."""
     registry = registry or load_registry()
@@ -128,19 +133,26 @@ def compute_and_publish(
                 raise ComputeError(msg) from exc
             fitted = len(summary.fitted)
             read = sum(len(by_target) for by_target in models.values())
-        computed = compute_all(
-            snapshot, registry, subjects, kinds=wanted, models=models, sources=selected
-        )
-        published = publish(
-            session,
+        computed = ComputeResult()
+        publisher = Publisher(session, snapshot, registry, settings, label=label, kinds=wanted)
+        for result in iter_all(
             snapshot,
-            computed.drafts,
             registry,
-            settings,
-            not_observable=computed.not_observable,
-            not_attributable=computed.not_attributable,
-            label=label,
+            subjects,
             kinds=wanted,
+            models=models,
+            sources=selected,
+            skipped=computed.sources_skipped,
+        ):
+            publisher.add(result.drafts)
+            computed.subjects.append(result.subject)
+            computed.not_observable.extend(result.not_observable)
+            computed.not_attributable.extend(result.not_attributable)
+            if retain:
+                computed.drafts.extend(result.drafts)
+        published = publisher.finish(
+            not_observable=len(computed.not_observable),
+            not_attributable=len(computed.not_attributable),
         )
         coverage = publish_statistics(
             session, snapshot_id, compute_statistics(snapshot), registry.methodology_version

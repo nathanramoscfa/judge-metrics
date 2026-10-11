@@ -19,7 +19,12 @@ window, dimension, eligible-count, value, distribution, version, and
 index over current observations, and ``metric_observation_member``: the
 entity ids (never a person id) that formed an observation's denominator
 and numerator — the provenance chain from a published number back to
-canonical rows. Revision 0010 (Phase 4 Step 3) fills the reserved
+canonical rows. Revision 0013 (Phase 5 Step 6) replaces that table: the
+members of one definition, subject, source, and snapshot are stored once, as a
+member family (``metric_member_family`` and its rows, ``metric_member``), and
+every observation of the family points at it (``member_family_id``) — each
+observation's own members are a filter of the family's rows
+(``judgemetrics.metrics.members``). Revision 0010 (Phase 4 Step 3) fills the reserved
 ``expected_count``, ``expected_rate``, and ``standardized_ratio`` for the
 ``observed_expected`` kind and adds ``outcome_model_id`` (the fitted model
 an adjusted observation was computed with), ``pooling_weight``, and
@@ -42,13 +47,11 @@ from typing import Any
 
 from sqlalchemy import (
     CHAR,
-    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
-    Identity,
     Index,
     Integer,
     Numeric,
@@ -252,46 +255,109 @@ class MetricObservation(UUIDPrimaryKey, Timestamps, Base):
     # Revision 0012: the calendar year (UTC) a year observation covers; null for the
     # observation over the source's whole coverage window.
     calendar_year: Mapped[int | None] = mapped_column(SmallInteger)
+    # Revision 0013: the member family the observation's members are a filter of; one family
+    # serves every window, year, and dimension value of a definition, subject, and snapshot.
+    member_family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_member_family.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
 
     definition: Mapped[MetricDefinition] = relationship(back_populates="observations")
     snapshot: Mapped[MetricSnapshot] = relationship(back_populates="observations")
-    members: Mapped[list[MetricObservationMember]] = relationship(back_populates="observation")
+    family: Mapped[MetricMemberFamily] = relationship(back_populates="observations")
 
 
-class MetricObservationMember(Base):
-    """A canonical row behind an observation: in its denominator or numerator.
+class MetricMemberFamily(UUIDPrimaryKey, Timestamps, Base):
+    """The members behind every observation of one definition, subject, source, and snapshot.
 
-    ``followed`` marks the denominator after censoring and ``counted`` the
-    numerator. ``member_id`` is the id of a public case-level row (``member_kind`` names
-    its table) — never a person id — so a published number traces to the
-    decisions, charges, cases, sentences, court events, and justice events
-    that formed it (the provenance chain of ROADMAP.md §5).
+    A family is content-addressed: ``members_hash`` is the sha256 over its member kind and
+    canonical rows (``judgemetrics.metrics.members.MemberFamily.digest``), so the same
+    members are stored once whoever computes them, an unchanged recompute finds its family
+    instead of writing one, and a family is never rewritten — a changed one is a new row
+    and the observations that cite the old one keep it (supersession is history). The rows
+    are ``metric_member``. ``row_count`` is the rows stored and ``member_count`` the members
+    they represent (the sum of the multiplicities). Public entity ids only.
     """
 
-    __tablename__ = "metric_observation_member"
+    __tablename__ = "metric_member_family"
     __table_args__ = (
-        Index("ix_metric_observation_member_observation_id", "observation_id"),
-        Index("ix_metric_observation_member_member", "member_kind", "member_id"),
+        UniqueConstraint(
+            "metric_definition_id",
+            "subject_type",
+            "subject_id",
+            "source_id",
+            "snapshot_id",
+            "members_hash",
+            name="uq_metric_member_family_key",
+        ),
         CheckConstraint(
             "member_kind IN ('decision', 'charge', 'court_case', 'sentence', "
             "'court_event', 'justice_event')",
             name="member_kind",
         ),
+        CheckConstraint("row_count >= 0 AND member_count >= row_count", name="counts"),
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
-    observation_id: Mapped[uuid.UUID] = mapped_column(
+    metric_definition_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("metric_observation.id", ondelete="CASCADE"),
+        ForeignKey("metric_definition.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    subject_type: Mapped[SubjectType] = mapped_column(pg_enum(SubjectType), nullable=False)
+    subject_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("source.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_snapshot.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
     member_kind: Mapped[str] = mapped_column(Text, nullable=False)
-    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    # In the numerator; in the denominator after censoring.
-    counted: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    followed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    members_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    observation: Mapped[MetricObservation] = relationship(back_populates="members")
+    observations: Mapped[list[MetricObservation]] = relationship(back_populates="family")
+    members: Mapped[list[MetricMember]] = relationship(back_populates="family")
+
+
+class MetricMember(Base):
+    """A canonical row of a member family, with what is needed to cut it into observations.
+
+    ``member_id`` is the id of a public case-level row (the family's ``member_kind`` names
+    its table) — never a person id. ``anchor_year`` is the calendar year (UTC) of the row's
+    anchor; ``dimension_value`` the dimension value the row belongs to or counts in;
+    ``counted_mask`` and ``followed_mask`` carry the ``counted`` (numerator) and ``followed``
+    (denominator after censoring) flags, bit ``i`` for the definition's ``i``-th window
+    (bit 0 for a metric without windows); ``multiplicity`` how many identical rows this one
+    stands for. ``ordinal`` is the row's place in the family's canonical order, which makes
+    ``(family_id, ordinal)`` the key and a page of a family a range of it.
+    """
+
+    __tablename__ = "metric_member"
+    __table_args__ = (
+        CheckConstraint("multiplicity > 0", name="multiplicity"),
+        CheckConstraint("counted_mask >= 0 AND followed_mask >= 0", name="masks"),
+    )
+
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("metric_member_family.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    member_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    anchor_year: Mapped[int | None] = mapped_column(SmallInteger)
+    dimension_value: Mapped[str | None] = mapped_column(Text)
+    counted_mask: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    followed_mask: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    multiplicity: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    family: Mapped[MetricMemberFamily] = relationship(back_populates="members")
 
 
 class CoverageStatistic(UUIDPrimaryKey, Timestamps, Base):

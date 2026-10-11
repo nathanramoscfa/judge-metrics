@@ -1,14 +1,19 @@
 # src/judgemetrics/metrics/publish.py
-"""Publishing observations: the snapshot row, supersession, batched inserts, members.
+"""Publishing observations: the snapshot row, supersession, batched inserts, member families.
 
-``publish(session, snapshot, drafts, registry, settings, ...)`` writes in
-the caller's transaction (the CLI commits; pipeline step 13 runs inside
-the ingest transaction, which the runner commits or rolls back):
+A ``Publisher`` writes in the caller's transaction (the CLI commits; pipeline step 13
+runs inside the ingest transaction, which the runner commits or rolls back), one
+subject's drafts at a time (``add``), so a compute over a whole corpus streams: no
+more than one subject's drafts and member families are ever in memory.
+``publish(session, snapshot, drafts, registry, settings, ...)`` is the same for a
+list of drafts.
 
-1. the chain-completeness rule — every member id of every draft must be
-   present in the snapshot's own tables, otherwise ``ProvenanceError`` is
-   raised before anything is written (Step 3's trace test relies on it:
-   an observation whose chain breaks is never published);
+1. the chain-completeness rule — every member id of every draft's family must be
+   present in the snapshot's own tables (a vectorized anti-join per family against the
+   snapshot's sorted id column), otherwise ``ProvenanceError`` is raised before that
+   subject's rows are written and the caller's transaction rolls back
+   (``test_golden_provenance`` relies on it: an observation whose chain breaks is
+   never published);
 2. ``metric_snapshot`` upserted on ``content_hash`` (an existing row is
    reused; a label is recorded when the row has none; and — issue #42 — a
    compute that reuses the row under a newer registry records the registry
@@ -17,21 +22,25 @@ the ingest transaction, which the runner commits or rolls back):
 3. ``sync_definitions``, then the ``metric_definition`` ids by
    ``(slug, version)``;
 4. per subject and source: the current observations (``superseded_at IS
-   NULL``) and their members are loaded and compared with the drafts —
-   every stored column of ``VERIFIED_COLUMNS`` and the member multiset —
-   and a subject whose drafts are unchanged is left in place (no
-   supersede, no insert), so a recompute without data changes writes
-   nothing; otherwise its current observations are superseded
-   (``superseded_at = now()``) and the new observations and members are
-   inserted in batches of 500 rows per statement. An observation that a
-   previous publish superseded and that the same snapshot and definition
-   now produce again is revived rather than inserted, because
-   ``uq_metric_observation_key`` spans superseded rows too.
+   NULL``) are loaded with the content hash of their member family and compared
+   with the drafts — every stored column of ``VERIFIED_COLUMNS`` and the family's
+   ``digest`` — and a subject whose drafts are unchanged is left in place (no
+   supersede, no insert, no family read), so a recompute without data changes
+   writes nothing; otherwise its current observations are superseded
+   (``superseded_at = now()``) and the new observations are inserted in batches
+   of 500 rows per statement, each pointing at its member family.
 
-Observations and members are inserted with one compiled statement per table,
-executed over each batch (executemany). Phase 5 Step 5: an observation's key
-carries its ``calendar_year`` (null for the whole window), stored beside the
-period it names.
+Member families (``members``, ``member_store``) are content-addressed: the family
+of a draft is found by ``(definition, subject, source, snapshot, digest)`` or
+created with its rows written by ``COPY``; a revived observation (one a previous
+publish superseded and that the same snapshot and definition now produce again —
+``uq_metric_observation_key`` spans superseded rows) is pointed at the matching
+family and keeps whatever members it had. A family is never rewritten or deleted:
+a changed one is a new row and the observations that cite the old one keep it.
+
+Observations are inserted with one compiled statement executed over each batch
+(executemany). Phase 5 Step 5: an observation's key carries its ``calendar_year``
+(null for the whole window), stored beside the period it names.
 
 Nothing is ever deleted: supersession keeps the history of every number
 a subject has carried. ``stored_columns`` and ``row_columns`` are the two
@@ -74,11 +83,12 @@ from judgemetrics.db.models import Base
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.logging import get_logger
 from judgemetrics.metrics.compute import (
-    Member,
     NotAttributableRecord,
     NotObservableRecord,
     ObservationDraft,
 )
+from judgemetrics.metrics.member_store import create_family, existing_families
+from judgemetrics.metrics.members import MemberFamily
 from judgemetrics.metrics.registry import KINDS, OBSERVED_EXPECTED, Registry, sync_definitions
 from judgemetrics.metrics.snapshot import Snapshot, code_version
 
@@ -116,16 +126,15 @@ VERIFIED_COLUMNS: tuple[str, ...] = (
     "suppression_reason",
     MODEL_HASH,
 )
-MemberTuple = tuple[str, str, bool, bool]
 GroupKey = tuple[str, str, str]
 
 DEFINITION = Base.metadata.tables["metric_definition"]
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 OBSERVATION = Base.metadata.tables["metric_observation"]
-MEMBER = Base.metadata.tables["metric_observation_member"]
+FAMILY = Base.metadata.tables["metric_member_family"]
 OUTCOME_MODEL = Base.metadata.tables["outcome_model"]
 INSERT_OBSERVATION = sa.insert(OBSERVATION)
-INSERT_MEMBER = sa.insert(MEMBER)
+FAMILY_HASH = "family_hash"
 
 
 class PublishError(RuntimeError):
@@ -144,10 +153,12 @@ class PublishResult:
     suppressed: int
     not_observable: int
     superseded: int
+    # Rows written to ``metric_member`` (by COPY) and the families they belong to.
     members_written: int
     subjects_published: int
     subjects_unchanged: int
     not_attributable: int = 0
+    families_written: int = 0
 
     def as_log(self) -> dict[str, Any]:
         return {
@@ -158,6 +169,7 @@ class PublishResult:
             "not_attributable": self.not_attributable,
             "superseded": self.superseded,
             "members": self.members_written,
+            "families": self.families_written,
             "subjects_published": self.subjects_published,
             "subjects_unchanged": self.subjects_unchanged,
         }
@@ -245,10 +257,6 @@ def _insert_columns(columns: Mapping[str, Any]) -> dict[str, Any]:
     return {name: value for name, value in columns.items() if name != MODEL_HASH}
 
 
-def member_tuples(members: Iterable[Member]) -> tuple[MemberTuple, ...]:
-    return tuple(sorted(member.as_tuple() for member in members))
-
-
 def draft_key(draft: ObservationDraft) -> tuple[Any, ...]:
     return draft.key
 
@@ -256,21 +264,37 @@ def draft_key(draft: ObservationDraft) -> tuple[Any, ...]:
 # --- chain completeness -------------------------------------------------------------------
 
 
+def _where(draft: ObservationDraft) -> str:
+    where = f"{draft.slug} {draft.subject_type}:{draft.subject_id}"
+    if draft.window_days is not None:
+        where += f"@{draft.window_days}"
+    if draft.dimension_value is not None:
+        where += f"[{draft.dimension_value}]"
+    return where
+
+
 def check_chain(snapshot: Snapshot, drafts: Sequence[ObservationDraft]) -> None:
-    """``ProvenanceError`` unless every member id of every draft is in the snapshot's tables."""
+    """``ProvenanceError`` unless every member id of every draft's family is in the snapshot.
+
+    The drafts of one definition and subject share a family, so each family is checked
+    once: its distinct ids against the snapshot's sorted id column of the family's kind
+    (``Snapshot.missing_member_ids``). A family with a missing id breaks every observation
+    that cites it.
+    """
+    missing_by_family: dict[int, int] = {}
     broken: list[str] = []
     for draft in drafts:
-        missing = 0
-        for member in draft.members:
-            if member.id not in snapshot.member_ids(member.kind):
-                missing += 1
-        if missing:
-            where = f"{draft.slug} {draft.subject_type}:{draft.subject_id}"
-            if draft.window_days is not None:
-                where += f"@{draft.window_days}"
-            if draft.dimension_value is not None:
-                where += f"[{draft.dimension_value}]"
-            broken.append(f"{where}: {missing} member id(s) not in the snapshot")
+        family = draft.family
+        if family is None:
+            broken.append(f"{_where(draft)}: no member family")
+            continue
+        key = id(family)
+        if key not in missing_by_family:
+            missing_by_family[key] = snapshot.missing_member_ids(family.kind, family.ids()).len()
+        if missing_by_family[key]:
+            broken.append(
+                f"{_where(draft)}: {missing_by_family[key]} member id(s) not in the snapshot"
+            )
     if broken:
         shown = "; ".join(broken[:10])
         more = f" (+{len(broken) - 10} more)" if len(broken) > 10 else ""
@@ -344,30 +368,10 @@ class StoredObservation:
     definition: tuple[str, str]
     snapshot_id: uuid.UUID
     columns: dict[str, Any]
-    members: tuple[MemberTuple, ...]
     kind: str = ""
-
-
-def load_members(
-    session: Session, observation_ids: Sequence[uuid.UUID]
-) -> dict[uuid.UUID, list[MemberTuple]]:
-    members: dict[uuid.UUID, list[MemberTuple]] = {oid: [] for oid in observation_ids}
-    for start in range(0, len(observation_ids), BATCH_SIZE):
-        batch = observation_ids[start : start + BATCH_SIZE]
-        rows = session.execute(
-            select(
-                MEMBER.c.observation_id,
-                MEMBER.c.member_kind,
-                MEMBER.c.member_id,
-                MEMBER.c.counted,
-                MEMBER.c.followed,
-            ).where(MEMBER.c.observation_id.in_(batch))
-        ).all()
-        for row in rows:
-            members[uuid.UUID(str(row.observation_id))].append(
-                (str(row.member_kind), str(row.member_id), bool(row.counted), bool(row.followed))
-            )
-    return {oid: sorted(items) for oid, items in members.items()}
+    # The member family the observation cites and its content hash (the members' identity).
+    family_id: uuid.UUID | None = None
+    family_hash: str | None = None
 
 
 def load_observations(
@@ -377,14 +381,15 @@ def load_observations(
     snapshot_id: uuid.UUID | None = None,
     subject: tuple[str, str] | None = None,
     source_id: uuid.UUID | None = None,
-    with_members: bool = True,
     kinds: Collection[str] | None = None,
 ) -> list[StoredObservation]:
-    """Stored observations with their definition, normalized columns, and members.
+    """Stored observations with their definition, normalized columns, and family hash.
 
     ``kinds`` keeps the observations of those registry kinds only (every kind
     when ``None``); the cited model's content hash is read through an outer
     join (``outcome_model_hash``, null for every kind but ``observed_expected``).
+    Members are not loaded: an observation's members are its family's rows,
+    compared by ``family_hash`` (``member_store`` reads them when a mismatch needs them).
     """
     stmt = (
         select(
@@ -393,8 +398,10 @@ def load_observations(
             DEFINITION.c.version.label("definition_version"),
             DEFINITION.c.kind.label("kind"),
             OUTCOME_MODEL.c.content_hash.label(MODEL_HASH),
+            FAMILY.c.members_hash.label(FAMILY_HASH),
         )
         .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
+        .join(FAMILY, FAMILY.c.id == OBSERVATION.c.member_family_id)
         .outerjoin(OUTCOME_MODEL, OUTCOME_MODEL.c.id == OBSERVATION.c.outcome_model_id)
         .order_by(OBSERVATION.c.id)
     )
@@ -411,17 +418,13 @@ def load_observations(
         )
     if source_id is not None:
         stmt = stmt.where(OBSERVATION.c.source_id == source_id)
-    rows = [dict(row._mapping) for row in session.execute(stmt).all()]
-    ids = [uuid.UUID(str(row["id"])) for row in rows]
-    members = load_members(session, ids) if with_members and ids else {}
     stored: list[StoredObservation] = []
-    for row in rows:
-        oid = uuid.UUID(str(row["id"]))
+    for row in (dict(item._mapping) for item in session.execute(stmt).all()):
         subject_type = row["subject_type"]
         subject_value = subject_type.value if hasattr(subject_type, "value") else str(subject_type)
         stored.append(
             StoredObservation(
-                id=oid,
+                id=uuid.UUID(str(row["id"])),
                 key=(
                     str(row["slug"]),
                     subject_value,
@@ -436,8 +439,9 @@ def load_observations(
                 definition=(str(row["slug"]), str(row["definition_version"])),
                 snapshot_id=uuid.UUID(str(row["snapshot_id"])),
                 columns=row_columns(row),
-                members=tuple(members.get(oid, [])),
                 kind=str(row["kind"]),
+                family_id=uuid.UUID(str(row["member_family_id"])),
+                family_hash=str(row[FAMILY_HASH]),
             )
         )
     return stored
@@ -467,7 +471,7 @@ def _unchanged(
             return False
         if item.columns != stored_columns(draft, registry):
             return False
-        if item.members != member_tuples(draft.members):
+        if draft.family is None or item.family_hash != draft.family.digest:
             return False
     return True
 
@@ -479,6 +483,7 @@ def _observation_row(
     definition_id: uuid.UUID,
     snapshot_id: uuid.UUID,
     model_id: uuid.UUID | None,
+    family_id: uuid.UUID,
     registry: Registry,
     version: str,
     computed_at: datetime,
@@ -493,6 +498,7 @@ def _observation_row(
         "computed_at": computed_at,
         "code_version": version,
         "outcome_model_id": model_id,
+        "member_family_id": family_id,
         "superseded_at": None,
         "calendar_year": draft.calendar_year,
         **_insert_columns(stored_columns(draft, registry)),
@@ -533,22 +539,206 @@ def model_ids(
     return found
 
 
-def _member_rows(observation_id: uuid.UUID, members: Iterable[Member]) -> list[dict[str, Any]]:
-    return [
-        {
-            "observation_id": observation_id,
-            "member_kind": member.kind,
-            "member_id": uuid.UUID(member.id),
-            "counted": member.counted,
-            "followed": member.followed,
-        }
-        for member in members
-    ]
-
-
 def _batches[T](rows: Sequence[T]) -> Iterable[Sequence[T]]:
     for start in range(0, len(rows), BATCH_SIZE):
         yield rows[start : start + BATCH_SIZE]
+
+
+class Publisher:
+    """Writes drafts subject by subject inside the caller's transaction (module docstring).
+
+    ``kinds`` are the registry kinds the drafts were computed for (every kind by
+    default): only current observations of those kinds are compared and superseded,
+    and a draft of another kind is refused. ``finish`` returns the totals.
+    """
+
+    def __init__(
+        self,
+        session: Session,
+        snapshot: Snapshot,
+        registry: Registry,
+        settings: Settings,
+        *,
+        label: str | None = None,
+        kinds: Collection[str] | None = None,
+    ) -> None:
+        self.session = session
+        self.snapshot = snapshot
+        self.registry = registry
+        self.scope = frozenset(KINDS) if kinds is None else frozenset(kinds)
+        self.snapshot_id = upsert_snapshot(session, snapshot, registry, settings, label)
+        self.ids = definition_ids(session, registry)
+        self.version = code_version(settings)
+        self.computed_at = datetime.now(tz=UTC)
+        self.published = 0
+        self.suppressed = 0
+        self.superseded = 0
+        self.members_written = 0
+        self.families_written = 0
+        self.subjects_published = 0
+        self.subjects_unchanged = 0
+
+    def add(self, drafts: Sequence[ObservationDraft]) -> None:
+        """Validate every draft, then write each subject's group (nothing before all are valid)."""
+        for draft in drafts:
+            definition = self.registry.metrics.get(draft.slug)
+            if definition is None or definition.kind not in self.scope:
+                msg = f"{draft.slug} is not a registry metric of the kinds {sorted(self.scope)}"
+                raise PublishError(msg)
+            if (draft.slug, draft.version) not in self.ids:
+                msg = f"{draft.slug} version {draft.version} is not in metric_definition"
+                raise PublishError(msg)
+        check_chain(self.snapshot, drafts)
+        models = model_ids(self.session, drafts, self.registry)
+        for (subject_type, subject_id, source_id), group in sorted(_group(drafts).items()):
+            self._publish_subject(subject_type, subject_id, source_id, group, models)
+
+    def _family_id(
+        self,
+        draft: ObservationDraft,
+        known: dict[tuple[uuid.UUID, str], uuid.UUID],
+    ) -> uuid.UUID:
+        family = draft.family
+        if family is None:
+            msg = f"{_where(draft)} has no member family"
+            raise PublishError(msg)
+        definition_id = self.ids[(draft.slug, draft.version)]
+        key = (definition_id, family.digest)
+        found = known.get(key)
+        if found is not None:
+            return found
+        created = create_family(
+            self.session,
+            definition_id=definition_id,
+            subject_type=draft.subject_type,
+            subject_id=uuid.UUID(draft.subject_id),
+            source_id=uuid.UUID(draft.source_id),
+            snapshot_id=self.snapshot_id,
+            family=family,
+        )
+        known[key] = created
+        self.members_written += family.row_count
+        self.families_written += 1
+        return created
+
+    def _publish_subject(
+        self,
+        subject_type: str,
+        subject_id: str,
+        source_id: str,
+        group: Sequence[ObservationDraft],
+        models: Mapping[str, uuid.UUID],
+    ) -> None:
+        session = self.session
+        current = load_observations(
+            session,
+            subject=(subject_type, subject_id),
+            source_id=uuid.UUID(source_id),
+            kinds=self.scope,
+        )
+        if _unchanged(group, current, self.registry):
+            self.subjects_unchanged += 1
+            return
+        self.subjects_published += 1
+        if current:
+            session.execute(
+                sa.update(OBSERVATION)
+                .where(OBSERVATION.c.id.in_([item.id for item in current]))
+                .values(superseded_at=self.computed_at, updated_at=sa.func.now())
+            )
+            self.superseded += len(current)
+        # Superseded rows of this snapshot and definition that the drafts
+        # reproduce are revived rather than re-inserted (the unique key spans
+        # superseded rows).
+        revivable = {
+            item.key: item
+            for item in load_observations(
+                session,
+                current_only=False,
+                snapshot_id=self.snapshot_id,
+                subject=(subject_type, subject_id),
+                source_id=uuid.UUID(source_id),
+                kinds=self.scope,
+            )
+        }
+        known = existing_families(
+            session,
+            subject_type=subject_type,
+            subject_id=uuid.UUID(subject_id),
+            source_id=uuid.UUID(source_id),
+            snapshot_id=self.snapshot_id,
+        )
+        rows: list[dict[str, Any]] = []
+        for draft in group:
+            model_id = None if draft.model_hash is None else models[draft.model_hash]
+            family_id = self._family_id(draft, known)
+            previous = revivable.get(draft.key)
+            if previous is not None and previous.definition == (draft.slug, draft.version):
+                self._revive(previous.id, draft, model_id, family_id)
+            else:
+                rows.append(
+                    _observation_row(
+                        draft,
+                        observation_id=uuid.uuid4(),
+                        definition_id=self.ids[(draft.slug, draft.version)],
+                        snapshot_id=self.snapshot_id,
+                        model_id=model_id,
+                        family_id=family_id,
+                        registry=self.registry,
+                        version=self.version,
+                        computed_at=self.computed_at,
+                    )
+                )
+            self.published += 1
+            self.suppressed += int(draft.suppressed_flag)
+        # One compiled statement, executed over each batch (executemany): compiling a
+        # multi-row VALUES per batch dominated large publishes.
+        for batch in _batches(rows):
+            session.execute(INSERT_OBSERVATION, list(batch))
+
+    def _revive(
+        self,
+        observation_id: uuid.UUID,
+        draft: ObservationDraft,
+        model_id: uuid.UUID | None,
+        family_id: uuid.UUID,
+    ) -> None:
+        """Bring a superseded row of the same snapshot and definition back as current.
+
+        The row keeps its members: it is pointed at the family the draft computes, which is
+        the family it already cites when the members are unchanged (nothing is deleted).
+        """
+        self.session.execute(
+            sa.update(OBSERVATION)
+            .where(OBSERVATION.c.id == observation_id)
+            .values(
+                superseded_at=None,
+                computed_at=self.computed_at,
+                code_version=self.version,
+                outcome_model_id=model_id,
+                member_family_id=family_id,
+                updated_at=sa.func.now(),
+                **_insert_columns(stored_columns(draft, self.registry)),
+            )
+        )
+
+    def finish(self, *, not_observable: int = 0, not_attributable: int = 0) -> PublishResult:
+        self.session.flush()
+        result = PublishResult(
+            snapshot_id=self.snapshot_id,
+            content_hash=self.snapshot.content_hash,
+            observations_published=self.published,
+            suppressed=self.suppressed,
+            not_observable=not_observable,
+            superseded=self.superseded,
+            members_written=self.members_written,
+            subjects_published=self.subjects_published,
+            subjects_unchanged=self.subjects_unchanged,
+            not_attributable=not_attributable,
+            families_written=self.families_written,
+        )
+        log.info("metrics.published", **result.as_log())
+        return result
 
 
 def publish(
@@ -563,136 +753,17 @@ def publish(
     label: str | None = None,
     kinds: Collection[str] | None = None,
 ) -> PublishResult:
-    """Store the drafts (see the module docstring); the caller commits.
-
-    ``kinds`` are the registry kinds the drafts were computed for (every kind
-    by default): only current observations of those kinds are compared and
-    superseded, and a draft of another kind is refused.
-    """
-    scope = frozenset(KINDS) if kinds is None else frozenset(kinds)
-    for draft in drafts:
-        definition = registry.metrics.get(draft.slug)
-        if definition is None or definition.kind not in scope:
-            msg = f"{draft.slug} is not a registry metric of the kinds {sorted(scope)}"
-            raise PublishError(msg)
-    check_chain(snapshot, drafts)
-    models = model_ids(session, drafts, registry)
-    snapshot_id = upsert_snapshot(session, snapshot, registry, settings, label)
-    ids = definition_ids(session, registry)
-    for draft in drafts:
-        if (draft.slug, draft.version) not in ids:
-            msg = f"{draft.slug} version {draft.version} is not in metric_definition"
-            raise PublishError(msg)
-    version = code_version(settings)
-    computed_at = datetime.now(tz=UTC)
-    published = 0
-    suppressed = 0
-    superseded = 0
-    members_written = 0
-    subjects_published = 0
-    subjects_unchanged = 0
-    for (subject_type, subject_id, source_id), group in sorted(_group(drafts).items()):
-        current = load_observations(
-            session,
-            subject=(subject_type, subject_id),
-            source_id=uuid.UUID(source_id),
-            kinds=scope,
-        )
-        if _unchanged(group, current, registry):
-            subjects_unchanged += 1
-            continue
-        subjects_published += 1
-        if current:
-            session.execute(
-                sa.update(OBSERVATION)
-                .where(OBSERVATION.c.id.in_([item.id for item in current]))
-                .values(superseded_at=computed_at, updated_at=sa.func.now())
-            )
-            superseded += len(current)
-        # Superseded rows of this snapshot and definition that the drafts
-        # reproduce are revived rather than re-inserted (the unique key spans
-        # superseded rows).
-        revivable = {
-            item.key: item
-            for item in load_observations(
-                session,
-                current_only=False,
-                snapshot_id=snapshot_id,
-                subject=(subject_type, subject_id),
-                source_id=uuid.UUID(source_id),
-                with_members=False,
-                kinds=scope,
-            )
-        }
-        observation_rows: list[dict[str, Any]] = []
-        member_rows: list[dict[str, Any]] = []
-        for draft in group:
-            model_id = None if draft.model_hash is None else models[draft.model_hash]
-            previous = revivable.get(draft.key)
-            if previous is not None and previous.definition == (draft.slug, draft.version):
-                _revive(session, previous.id, draft, registry, version, computed_at, model_id)
-                member_rows.extend(_member_rows(previous.id, draft.members))
-            else:
-                observation_id = uuid.uuid4()
-                observation_rows.append(
-                    _observation_row(
-                        draft,
-                        observation_id=observation_id,
-                        definition_id=ids[(draft.slug, draft.version)],
-                        snapshot_id=snapshot_id,
-                        model_id=model_id,
-                        registry=registry,
-                        version=version,
-                        computed_at=computed_at,
-                    )
-                )
-                member_rows.extend(_member_rows(observation_id, draft.members))
-            published += 1
-            suppressed += int(draft.suppressed_flag)
-        # One compiled statement per table, executed over each batch (executemany):
-        # compiling a multi-row VALUES per batch dominated large publishes.
-        for batch in _batches(observation_rows):
-            session.execute(INSERT_OBSERVATION, list(batch))
-        for batch in _batches(member_rows):
-            session.execute(INSERT_MEMBER, list(batch))
-        members_written += len(member_rows)
-    session.flush()
-    result = PublishResult(
-        snapshot_id=snapshot_id,
-        content_hash=snapshot.content_hash,
-        observations_published=published,
-        suppressed=suppressed,
-        not_observable=len(not_observable),
-        superseded=superseded,
-        members_written=members_written,
-        subjects_published=subjects_published,
-        subjects_unchanged=subjects_unchanged,
-        not_attributable=len(not_attributable),
+    """Store the drafts (see the module docstring); the caller commits."""
+    publisher = Publisher(session, snapshot, registry, settings, label=label, kinds=kinds)
+    publisher.add(drafts)
+    return publisher.finish(
+        not_observable=len(not_observable), not_attributable=len(not_attributable)
     )
-    log.info("metrics.published", **result.as_log())
-    return result
 
 
-def _revive(
-    session: Session,
-    observation_id: uuid.UUID,
-    draft: ObservationDraft,
-    registry: Registry,
-    version: str,
-    computed_at: datetime,
-    model_id: uuid.UUID | None,
-) -> None:
-    """Bring a superseded row of the same snapshot and definition back as current."""
-    session.execute(sa.delete(MEMBER).where(MEMBER.c.observation_id == observation_id))
-    session.execute(
-        sa.update(OBSERVATION)
-        .where(OBSERVATION.c.id == observation_id)
-        .values(
-            superseded_at=None,
-            computed_at=computed_at,
-            code_version=version,
-            outcome_model_id=model_id,
-            updated_at=sa.func.now(),
-            **_insert_columns(stored_columns(draft, registry)),
-        )
-    )
+def family_of(draft: ObservationDraft) -> MemberFamily:
+    """The draft's member family (every computed draft has one)."""
+    if draft.family is None:
+        msg = f"{_where(draft)} has no member family"
+        raise PublishError(msg)
+    return draft.family

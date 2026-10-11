@@ -568,7 +568,7 @@ the committed fixture; the full-corpus figures are the operator's, not a
 test's. Peak memory is read from the operating system (the peak working set of
 the ingest process, sampled every two seconds from the process counters; on
 Linux `/usr/bin/time -v`), never from inside the process. This section holds
-the ingest's budget; Phase 5 Step 6 adds the metrics engine's.
+the ingest's budget and, after it, the metrics engine's (Phase 5 Step 6).
 
 ### Ingest of the Cook County corpus (Phase 5 Step 4, 2026-10-09)
 
@@ -635,9 +635,10 @@ Decisions this measurement settled:
   PostgreSQL's 65,535.
 - **A rerun costs seconds.** `load_context` (reading the exports back from the
   lake and indexing them) runs only when some artifact is to be parsed.
-- **Step 13 stays off.** Computing the impacted subjects' observations over
-  this corpus is Step 6's work; `ingest-cook` turns it off through its `env`
-  table.
+- **Step 13 defers.** Computing the impacted subjects' observations over this
+  corpus is the full `metrics compute`'s work (Step 6, "The step-13 rule"): a run that
+  touches more than 50,000 cases records why in `ingest_run.metrics_deferred_reason`
+  and computes nothing.
 
 ### The metrics engine with the corpus present (Phase 5 Step 5, 2026-10-10)
 
@@ -665,6 +666,72 @@ Decisions this measurement settled:
 - **Calendar years multiply the rows.** The demo's 3,418 descriptive
   observations became 28,252 with the eight calendar years, and the members
   roughly doubled; the corpus's years are Step 6's load to measure.
+
+### The metrics engine at corpus scale (Phase 5 Step 6, 2026-10-10)
+
+Measured as the deployed-and-verified sequence on a fresh copy of the
+maintainer's database (revision `0012`: the demo seed, the FJC slice, and the
+full Cook County corpus, 3,188 MB), by the same counters as above (wall time and
+the peak working set of the process and of its children). Every run is the
+command an operator types; the snapshot of the unchanged canonical tables was
+the one Step 5 recorded (`4c7b8610…`), so the compute runs reused it and the
+export is measured separately.
+
+| Run | Wall time | Peak memory | What it did |
+|-----|-----------|-------------|-------------|
+| `alembic upgrade head` (`0013`) | 82 s | 0.17 GiB | Folded 35,424 observations and their 2.86 million member rows into 2,614 families of 587,257 rows (the database went from 3,188 MB to 2,942 MB). |
+| `metrics compute` (first) | 298 s (5.0 min) | 3.44 GiB | Every registry metric for 557 subjects: 100,543 observations (Cook County 71,979 in 220 s; the demo 28,564 in 50 s, all of them superseded and republished once: see the last decision), 4,627 families of 10,417,469 rows, 112 coverage statistics (written already, so none written). The database grew by 1,554 MB. Cook County's frame is built in 1.3 s. |
+| `metrics compute` (second) | 151 s (2.5 min) | 3.52 GiB | Computed everything again, found every family by its digest, published nothing (557 subjects unchanged, no observation, no family, no member row). |
+| `metrics verify` | 155 s (2.6 min) | 3.58 GiB | Recomputed and matched all 100,543 observations (and their stored families' digests) and the 112 coverage statistics; exit 0. |
+| `provenance trace <id> --limit 20` | 4.1 s | 0.17 GiB | A random Cook County observation (54,879 members, 16,157 cases): `complete: yes`. |
+| the same, the largest observation | 5.2 s | 0.17 GiB | `judicial_dismissal_rate`, whole window: 630,610 members, 214,330 cases: `complete: yes`. |
+| Pipeline step 13 on a fixture-sized change | 44 s | 3.71 GiB | `ingest run cook_sao --from-fixture` over the full corpus: 35 impacted subjects, nothing to publish (the fixture re-derives what is stored). Dominated by the export read and the frames of both sources. |
+| Snapshot export alone | 31 s | 1.09 GiB | Every source's eleven tables, streamed from the database to Parquet (the Step 5 export took 72-79 s at 4.26 GiB). |
+
+For scale against the Step 5 figures: `metrics compute --source synthetic` took
+562 s at 4.26 GiB for 28,564 observations; the full compute above does 3.5 times
+the observations, over a corpus that was not computable at all, in 298 s at
+3.44 GiB, and `verify` covers all of them in 155 s where Step 5's covered the
+demo's in 291 s. Under the Phase 3 layout Cook County's observations would have
+stored about 54.7 million member rows (the sum of every current observation's
+projection of its family; 69,637 of its 71,979 observations hold members); its
+families store 10.41 million.
+
+The **budget** is each measurement with a margin of 1.5, rounded up: the migration
+within **3 minutes**; a first or repeated `metrics compute` within **8 minutes**
+and **5.5 GiB**; `metrics verify` within **5 minutes** and **5.5 GiB**; one trace
+page within **10 seconds** and **0.25 GiB** whatever the observation's size; a
+fixture-sized step 13 within **90 seconds** and **5.5 GiB**; the export within
+**60 seconds** and **1.7 GiB**. Peak memory is the largest frame plus the
+snapshot's sorted id column plus one subject's drafts, so it grows with the
+corpus and not with the number of observations.
+
+Decisions this measurement settled:
+
+- **A member is stored once per family, not once per observation.** A judge's
+  whole-window, six-window, and eight-year observations of one definition cite
+  the same cases; the families keep 10.41 million rows where one row per
+  observation member would keep about 54.7 million for Cook County alone, and
+  write them with `COPY` rather than executemany.
+- **A compute never holds the result.** One subject's drafts live from its
+  computation to its publication (`retain=False`); the peak above is the frames
+  and the snapshot's id columns, not 100,543 observations.
+- **The publish-time chain check is a binary search, not a statement.** A family's
+  distinct member ids are looked up in the snapshot's sorted id column with
+  `searchsorted` (`Snapshot.missing_member_ids`), so publishing never sends an id
+  list to the database; the trace checks the live tables in the database
+  (window aggregates over the members joined to their rows) and reads one page of
+  ids, which is why 630,610 members cost 5 s.
+- **The declared size of step 13 is far below the corpus.** A full Cook County
+  ingest touches 501,012 cases, ten times the 50,000 limit, so it defers by rule;
+  a fixture-sized change recomputes in 44 s, and an operator who wants the whole
+  corpus runs `uv run poe compute-metrics`.
+- **Medians by category republish once.** A median by offense category loses the
+  year of a member whose category has no observation in that year in a migrated
+  family (the old rows never recorded it), so every subject holding one republishes
+  whole after `0013` (the demo's 29 subjects, 28,564 observations, in the first
+  compute above); their multisets are unchanged and the second compute publishes
+  nothing.
 
 ## Database roles
 
@@ -891,7 +958,7 @@ because the web client is generated from it ("Web tier" below).
 | Command                                          | Role   | Notes                                                   |
 |--------------------------------------------------|--------|---------------------------------------------------------|
 | `judgemetrics ingest list-sources`               | none   | Registered connectors with parser versions.             |
-| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector, `uv run poe ingest-cook` the Cook County connector (outside `bootstrap`; its poe task sets `JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST=false` through an `env` table until Phase 5 Step 6). |
+| `judgemetrics ingest run <source> [--from-fixture DIR] [--force]` | ingest | Exit 0 on `succeeded`, 1 on `failed`/`refused`, 2 on usage errors. `uv run poe ingest-fjc` runs the FJC connector, `uv run poe ingest-cook` the Cook County connector (outside `bootstrap`; pipeline step 13 defers a run this large by the declared size, Phase 5 Step 6). |
 | `judgemetrics ingest retire <source> [--yes]`    | ingest | Delete every row derived from a registered source (metrics, issues, case-level rows, persons, reference rows nothing else cites, source records) in one transaction and append an `ingest.retire` audit row; keeps the `source` row, the run history, and the raw lake; asks first without `--yes`; refused (exit 1) in production, exit 2 for an unknown source. Use it before ingesting a new release of a source whose ids change with every release (Cook County) and before `seed` re-ingests a dataset regenerated under a newer generator version (`seed` does it itself; issue #36). |
 | `judgemetrics sources profile cook_sao [--out PATH] [--check] [--from-fixture DIR]` | ingest | Write `data/reference/cook_sao/profile.yaml` from the stored exports ("Cook County source"); `--check` exits 1 with a diff, 2 when the exports cannot be read. |
 | `judgemetrics sources excerpt cook_sao --out DIR [--from-fixture DIR]` | ingest | Write the stratified real-row fixture (blanked columns) by the committed profile's strata; exit 2 when the profile describes other exports. |
@@ -1279,11 +1346,13 @@ verification, and pipeline step 13 on top of them.
                                                           └─▶ intervals
                                                               (Wilson, Greenwood)
           ▼
-   compute.py  compute_all → ObservationDraft per metric, subject, window,
-               dimension (members: kind, id, counted, followed) | NotObservable
+   compute.py  iter_all → per subject: ObservationDraft per metric, window,
+               dimension, sharing one MemberFamily per (definition, subject)
+               (members.py: the canonical rows, flags per window)  | NotObservable
           ▼ suppression.apply (threshold per metric)
-   publish.py  metric_snapshot ⊕ metric_observation ⊕ metric_observation_member
-               (chain completeness, supersession, unchanged subjects skipped)
+   publish.py  metric_snapshot ⊕ metric_observation ⊕ metric_member_family ⊕
+               metric_member (COPY)   (chain completeness, supersession, unchanged
+               subjects skipped, one subject at a time)
           ▼
    verify.py   every current observation recomputed from its own snapshot
 ```
@@ -1459,39 +1528,41 @@ verification, and pipeline step 13 on top of them.
   `observed_rate` (six decimals) with their interval in the two bounds;
   medians fill `value`; distributions fill `distribution`. A metric whose
   outcome the source cannot document returns `NotObservable`: no
-  observation, never a zero. Every draft carries its members `(kind, id,
-  counted, followed)` — the population rows of a count, share,
-  distribution, or median (`followed` and `counted` mark the denominator
-  and numerator), the index events of a windowed metric — and
-  `suppression.apply` sets `suppressed_flag` when `cohort_size` is below
+  observation, never a zero. The drafts of one metric for one subject share a
+  *member family* (Phase 5 Step 6, "The engine at corpus scale" below): the
+  population rows of a count, share, distribution, or median, or the index events of
+  a windowed metric, each with the flags `(counted, followed)` per window that
+  mark the numerator and the denominator, and `draft.members` expands one
+  observation's own multiset from it. `suppression.apply` sets `suppressed_flag` when `cohort_size` is below
   the metric's threshold; the stored row keeps its numbers (the API
   withholds them in Step 3).
-- **Publishing** (`metrics.publish`), in the caller's transaction.
-  First the chain-completeness rule: every member id of every draft must
-  be present in the snapshot's own tables, otherwise `ProvenanceError`
-  is raised before anything is written and the caller rolls back (Step
-  3's trace test relies on it). Then `metric_snapshot` is upserted on
-  `content_hash`, `sync_definitions` runs, and per subject and source
-  the current observations (`superseded_at IS NULL`) and their members
-  are compared with the drafts over every column of `VERIFIED_COLUMNS`
-  and the member multiset: an unchanged subject is left in place — no
-  supersede, no insert, so a recompute without data changes writes
-  nothing — and a changed one has its current observations superseded
-  (`superseded_at = now()`) and the new observations and members
-  inserted in batches of 500 rows per statement. Nothing is ever
-  deleted; an observation a previous publish superseded and that the
-  same snapshot and definition produce again is revived rather than
-  re-inserted (`uq_metric_observation_key` spans superseded rows).
-  Observation and member rows carry entity ids only; log lines carry the
-  snapshot id, counts, and slugs.
+- **Publishing** (`metrics.publish.Publisher`), in the caller's transaction,
+  one subject at a time. First the chain-completeness rule: every member id of
+  every draft's family must be present in the snapshot's own tables, otherwise
+  `ProvenanceError` is raised before that subject is written and the caller rolls
+  back (the golden provenance test relies on it). `metric_snapshot` is upserted on
+  `content_hash` and `sync_definitions` runs once, and per subject and source the
+  current observations (`superseded_at IS NULL`) are compared with the drafts over
+  every column of `VERIFIED_COLUMNS` and the families' content hashes: an unchanged
+  subject is left in place — no supersede, no insert, no family read, so a recompute
+  without data changes writes nothing — and a changed one has its current
+  observations superseded (`superseded_at = now()`), its families found by content
+  hash or written (`COPY`), and the new observations inserted in batches of 500 rows
+  per statement. Nothing is ever deleted; an observation a previous publish
+  superseded and that the same snapshot and definition produce again is revived
+  rather than re-inserted (`uq_metric_observation_key` spans superseded rows), keeps
+  its members, and is pointed at the family the draft computes. Observation and member
+  rows carry entity ids only; log lines carry the snapshot id, counts, and slugs.
 - **Verification** (`metrics.verify`). `verify(session, settings,
   snapshot=None)` loads every current observation (or one snapshot's),
   opens each snapshot from `snapshot_dir`, recomputes the observations'
   subjects with the registry version they record — the current registry
   file must carry that `registry_version` and the definition's `(slug,
   version)`, otherwise the observation is `unverifiable` — and compares
-  every column of `VERIFIED_COLUMNS` and the member multiset exactly,
-  reporting each mismatch with the observation id, slug, subject,
+  every column of `VERIFIED_COLUMNS` and the member multiset exactly (each
+  stored family's rows are read back and hashed against its recorded digest, the
+  recompute's digest is compared, and only a differing digest expands the
+  observation's multisets), reporting each mismatch with the observation id, slug, subject,
   window, dimension, column, and both values; an observation the
   recompute no longer produces, and a recomputed observation the store
   lacks for a subject it holds, are mismatches too. `judgemetrics
@@ -1508,12 +1579,15 @@ verification, and pipeline step 13 on top of them.
   judge with an assignment, decision, or sentence on a touched case; the
   courts are those of the published case drafts plus the courts of every
   touched case. When `Settings.metrics_recompute_on_ingest` is on and
-  the set is non-empty, `metrics.engine.compute_and_publish` exports a
+  the set is non-empty and within the declared size ("The step-13 rule"),
+  `metrics.engine.compute_and_publish` exports a
   snapshot through the same session (so the run's rows are in it),
   computes and publishes those subjects only — unchanged ones are left in
   place — and records the snapshot in `ingest_run.metrics_snapshot_id`
   (revision 0006; a column rather than a `checkpoint` key because the
-  whole checkpoint is handed back to a checkpointing connector). A
+  whole checkpoint is handed back to a checkpointing connector). A larger
+  run is deferred and records why in `ingest_run.metrics_deferred_reason`
+  (revision 0013). A
   reference-only run (FJC) touches nothing and computes nothing; an
   unchanged rerun publishes no draft and computes nothing. The test
   suite turns the setting off (`tests/conftest.py`) and the step-13
@@ -1655,6 +1729,82 @@ semantics without moving any synthetic number (the golden suite is the proof):
   publishes under, so `/api/v1/ready` and `/api/v1/coverage` report the
   current ones. **Issue #40.** `models fit` prints `new=<n> existing=<n>
   status <status>=<n> ...`: `fitted` appears once, as a status.
+
+### The engine at corpus scale (Phase 5 Step 6)
+
+Step 5 made the semantics right for Cook County's 500,000 cases; Step 6 makes the
+engine able to compute, republish, verify, and trace them on the maintainer's machine
+without moving a published figure. What changed, and the equivalence that proves each:
+
+- **Member families.** The members of one definition, subject, source, and snapshot
+  are stored once, as a *family* (`metrics/members.py`, `member_store.py`; revision
+  `0013`, docs/DATA_MODEL.md "Member families"), and every observation's member
+  multiset is a filter of it (window → a flag bit, calendar year → the row's anchor
+  year, dimension → the row's value). A compute function emits one family per
+  (definition, subject) and every draft of it shares that family; `ObservationDraft.members`
+  expands one observation's multiset from it for tests. A family is content-addressed
+  (`members_hash`), so an unchanged recompute finds it and writes nothing, and a changed
+  one is a new row beside the old. Equivalence: the migration converts the dev
+  database's 35,424 observations (2.86 million member rows) to 2,614 families (587,257
+  rows) and back with every column and member multiset identical, and
+  `test_member_storage` holds the engine's multiset, the SQL projection, and the
+  Polars projection equal for every golden observation.
+- **Streaming compute and publish.** `compute.iter_all` yields one `SubjectResult` at a
+  time (the adjusted kind is computed for all of a source's judges first and merged into
+  its judge's result); `engine.compute_and_publish` hands each to `publish.Publisher.add`
+  and drops it, so a corpus compute holds one subject's drafts and families at a time.
+  Families are written with `COPY` (CSV from Polars through psycopg's copy API; the
+  statement is a constant). `retain=False` (the CLI and step 13) keeps only the
+  counts; the default keeps every draft for the tests.
+- **A columnar snapshot.** The export reads each table from a server-side cursor in
+  batches of 100,000 rows, the database doing the conversions (ids as text, times as naive
+  UTC, a date at its day's start or last microsecond), and writes one table at a time:
+  the same Parquet bytes as before, so the content hash of an unchanged database is the
+  hash it had (`test_snapshot_export` holds the streamed export equal to the Phase 3 export
+  kept in `tests/integration/snapshot_reference.py`; the dev database's snapshot
+  `4c7b8610…` was reproduced table by table). The frame of a source is built with Polars
+  lazy scans over the Parquet files — joins and sorts, no Python object per cell, merge
+  survivors resolved through a table — and equals the one the row-by-row loader built
+  (checked table by table on the synthetic source and on Cook County).
+- **Vectorized Kaplan-Meier.** `censoring.ProductLimit` sorts the cohort once, takes the
+  distinct event times and their failures with `np.unique`, counts the members at risk
+  with one `searchsorted`, and folds `np.cumprod` and `np.cumsum` left to right, so the
+  survival and Greenwood sums are the floats the loop `S *= 1 - d/n` produces; the loop
+  is kept in `tests/unit/test_censoring_vectorized.py` as the oracle, and
+  `tests/property/test_km_equivalence.py` requires equality on drawn cohorts with ties,
+  all-censored, all-failing, and negative durations.
+- **Frame caches.** A table that is a function of the frame alone (the disposed charges,
+  the case dispositions, the incarceration terms, a court's cases, the lead offense of a
+  case, the persons of a case) is built once per frame (`Frame.derived`) instead of once
+  per subject and definition.
+- **Verification streams.** `metrics verify` finds the current observations with one
+  grouped query and handles them a subject at a time: the stored family is read back and
+  hashed against its recorded digest, the recompute's digest is compared, and only when
+  they differ are the two multisets expanded and compared, so a mismatch is still
+  reported by observation, column (`members`, with both counts), and values.
+- **The trace pages.** `provenance.trace(limit, offset)` returns the totals over every
+  member (window aggregates computed in the database) and one page of ids; the
+  completeness rule is judged over all members. Three statements still (a page past the
+  end of a non-empty set costs a fourth, for the totals); the CLI has `--limit` and
+  `--offset`, the endpoint `limit` (1 to 1,000, default 100) and `offset`.
+
+#### The step-13 rule
+
+Pipeline step 13 exports the database, builds every source's frame (the coverage
+statistics need them), and computes the impacted subjects inside the ingest
+transaction. Its cost grows with the corpus and with the impacted set, so it has a
+declared size (`Settings.metrics_recompute_max_cases`, default 50,000, and
+`metrics_recompute_max_subjects`, default 500): a run that touches more cases, or whose
+closure impacts more judges and courts, is *deferred* — nothing is exported or
+computed, `ingest_run.metrics_deferred_reason` records the numbers (the touched count is
+checked before the closure is looked up, so a full corpus costs nothing), the run is
+logged `ingest.metrics.deferred`, and the next `metrics compute` publishes everything the
+run left. A fixture-sized change to the full corpus (one re-parsed artifact of the
+fixture's cases) is far below both limits and recomputes. Together with the adjusted
+kind's exception (step 13 recomputes the descriptive kinds only: ROADMAP §5 "Performance
+rules") this is the whole list of cases in which observations lag the canonical tables
+until the next full compute. `ingest-cook` no longer turns step 13 off: a full Cook County
+run is beyond the declared size and defers by rule.
 
 ## Risk adjustment
 

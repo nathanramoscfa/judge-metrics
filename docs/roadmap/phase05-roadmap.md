@@ -6839,6 +6839,31 @@ New per phase-boundary hygiene.
       provenance (Step 6), beside
       the demo seed and the FJC
       data.
+    - Step 6 notes (2026-10-10):
+      `GET /metrics/{id}/provenance`
+      takes `limit` (1 to 1,000,
+      default 100) and `offset` and
+      echoes both; each member group
+      carries the totals over every
+      member (`members`, `counted`,
+      `followed`, `resolved`,
+      `cases`) and the page's
+      `member_ids` and `case_ids`,
+      and `complete` is judged over
+      every member, so a panel pages
+      with `offset` and never needs
+      the whole set. Observations
+      are cuts of member families
+      (`metric_member_family`); the
+      API never reads a family
+      directly. A median by offense
+      category loses the year of a
+      member without a value in a
+      year with no observation of
+      its category, so after the
+      migration the demo's medians
+      republish once (nothing a
+      reader sees changes).
     - API (this roadmap's Current
       State, "API and web surface"):
       21 paths and 19 `StrictQuery`

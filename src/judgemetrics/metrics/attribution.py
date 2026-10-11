@@ -135,8 +135,13 @@ class Subject:
 
 
 def court_case_ids(frame: Frame, court_id: Any) -> pl.DataFrame:
-    """The ``case_id`` column of the court's cases."""
-    return frame.cases.filter(pl.col("court_id") == court_id).select(pl.col("id").alias("case_id"))
+    """The ``case_id`` column of the court's cases (kept on the frame: a court is asked for often)."""
+    return frame.derived(
+        f"court_cases:{court_id}",
+        lambda: frame.cases.filter(pl.col("court_id") == court_id).select(
+            pl.col("id").alias("case_id")
+        ),
+    )
 
 
 def rows_of_court(

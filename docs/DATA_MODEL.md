@@ -62,16 +62,23 @@ created by the Alembic revisions under `alembic/versions/`:
   `outcome_model` status `unavailable`. A downgrade deletes the
   calendar-year observations and the `unavailable` models (with the
   suppressed observations that cite one) before restoring the earlier key
-  and check.
+  and check;
+- `0013_member_storage` (Phase 5 Step 6) — the member families: the
+  `metric_member_family` and `metric_member` tables replace
+  `metric_observation_member`, `metric_observation.member_family_id` (not null,
+  `RESTRICT`, indexed) points each observation at its family, and
+  `ingest_run.metrics_deferred_reason` records why pipeline step 13 left a
+  run's metrics to the next full compute ("Member families" below; the
+  existing rows are converted in both directions, and a downgrade restores
+  every observation's member rows exactly).
 
 `uv run alembic check` must report no drift between the models and the
 head; `alembic/env.py` sets `include_schemas` (filtered to `public` and
 `restricted`), so the check covers the restricted schema too. Every
 table has a UUID `id` (`gen_random_uuid()` server default) and
 server-set `created_at` / `updated_at` (timezone-aware), except
-`metric_observation_member`, whose `id` is a bigint identity and which
-carries no timestamps (a member row is immutable and lives with its
-observation).
+`metric_member`, whose key is `(family_id, ordinal)` and which carries no
+timestamps (a member row is immutable and lives with its family).
 
 ## Tables
 
@@ -94,12 +101,13 @@ observation).
 | `justice_event`                | A documented later justice-system event for a person (new case, reconviction, FTA, revocation, …), derived by the connector. | `source_record_id` |
 | `source`                       | A data source from `docs/DATA_SOURCES.md`: owner, type, access method, terms; `coverage_start`, `coverage_end` (inclusive dates: the window the source's records cover, written by the runner from a `SupportsCoverage` connector — the synthetic connector reports its manifest's corpus — and the instant the metrics engine right-censors follow-up at is the day after `coverage_end` at 00:00 UTC; null for a source that declares none, for which no metric is computed) and `observable_outcomes` (the `justice_event_type` values the source can document, from `SourceInfo.observable_outcomes`; a metric whose outcome is not listed is *not observable* for the source: no observation is published, never a zero; 0005). | — |
 | `source_record`                | One retrieved artifact: immutable object path, sha256, retrieval and effective time, parser version, run, `metadata`. | `ingest_run_id` |
-| `ingest_run`                   | One pipeline run: status, counts, `code_version`, `parser_version`, `checkpoint`, `failure_reason`, `metrics_snapshot_id` (0006: the `metric_snapshot` step 13 published the impacted subjects from; null when the run touched no subject or the recompute setting was off). | —                  |
+| `ingest_run`                   | One pipeline run: status, counts, `code_version`, `parser_version`, `checkpoint`, `failure_reason`, `metrics_snapshot_id` (0006: the `metric_snapshot` step 13 published the impacted subjects from; null when the run touched no subject or the recompute setting was off), `metrics_deferred_reason` (0013: why step 13 did not run — the run touched more cases or impacted more judges and courts than the declared size, so the next full `metrics compute` publishes them; null otherwise). | —                  |
 | `entity_resolution_candidate`  | One ordered pair per model version: features (booleans, counts, the stage trace), score, decision, `stage`, `decided_at`/`decided_by` (`system:<model version>` or a reviewer label), `reason`, `ingest_run_id` (0004). **Restricted.** | `ingest_run_id` |
 | `metric_definition`            | A versioned metric with numerator, denominator, and eligibility definitions, and (0005) the registry columns `kind`, `subject_types`, `attribution`, `index_event`, `outcome`, `windows_days`, `dimension`, `suppression_threshold`, `unit`, `registry_version`, `methodology_version`, mirrored from `data/reference/metric_registry.yaml` by `sync_definitions`. | — |
 | `metric_snapshot`              | One hashed export of the canonical tables that observations are computed from (0005): `content_hash` (unique), `label`, `exported_at`, `code_version`, `registry_version`, `methodology_version`, `row_counts`, `coverage` (per source id: `coverage_start`, `coverage_end`), `storage_uri`. | — |
-| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`). Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. An `observed_expected` observation (0010, Phase 4 Step 3) keeps O in `observed_count`, n (the members in the ratio: followed for the window and every excluded-on-missing model feature known) in `cohort_size`, the cohort before the follow-up restriction in `eligible_count`, O / n in `observed_rate`, the model-expected count E in `expected_count` (Numeric(14, 4)), E / n in `expected_rate`, the pooled ratio (α + O) / (α + E) in `standardized_ratio`, its bootstrap percentile interval in the bounds, E / (E + α) in `pooling_weight` (Numeric(9, 6)), and the fitted model it was computed with in `outcome_model_id` (→ `outcome_model`, RESTRICT; null for every other kind); without a fitted model the expected and pooled figures are null. Every suppressed row carries `suppression_reason` — `below_threshold` for the descriptive kinds (0010 backfilled the stored rows), `below_threshold`, `expected_below_minimum`, or `model_unavailable` for an adjusted one — and no other row does (two check constraints). `period_start`/`period_end` are the source's coverage window, or (0012, Phase 5 Step 5) one calendar year of it — `calendar_year` (smallint) names that year and is null for the whole window; it is part of the unique key, and a check ties it to the year's first and last days. | via `metric_snapshot` and its members (and, adjusted, the model's artifact) |
-| `metric_observation_member`    | The canonical rows behind an observation (0005): `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids of public rows only — never a person id. | the member rows' own `source_record_id` |
+| `metric_observation`           | A computed value for a subject and period with cohort size, counts, interval, suppression flag, methodology version, and (0005) `snapshot_id`, `source_id`, `window_days`, `dimension_value`, `eligible_count` (the cohort before the follow-up restriction), `value` (medians, in days), `distribution`, `code_version`, `registry_version`, `superseded_at` (set when a recompute replaced it; the current rows are `IS NULL`), and (0013) `member_family_id`, the family its members are a filter of. Per kind (Phase 3 Step 2): a count keeps `observed_count` (`cohort_size` and `eligible_count` are the population); a share and a fixed-window rate keep `observed_count` / `cohort_size` with `observed_rate` (six decimals) and the Wilson bounds, a rate's `eligible_count` being the whole cohort before censoring; a survival estimate keeps the events by the window in `observed_count`, the whole cohort in `cohort_size`, `1 - S(w)` in `observed_rate`, and the Greenwood interval in the bounds; a distribution keeps one row per dimension value with the whole map in `distribution`; a median keeps `n` in `cohort_size` and the median in `value`. An `observed_expected` observation (0010, Phase 4 Step 3) keeps O in `observed_count`, n (the members in the ratio: followed for the window and every excluded-on-missing model feature known) in `cohort_size`, the cohort before the follow-up restriction in `eligible_count`, O / n in `observed_rate`, the model-expected count E in `expected_count` (Numeric(14, 4)), E / n in `expected_rate`, the pooled ratio (α + O) / (α + E) in `standardized_ratio`, its bootstrap percentile interval in the bounds, E / (E + α) in `pooling_weight` (Numeric(9, 6)), and the fitted model it was computed with in `outcome_model_id` (→ `outcome_model`, RESTRICT; null for every other kind); without a fitted model the expected and pooled figures are null. Every suppressed row carries `suppression_reason` — `below_threshold` for the descriptive kinds (0010 backfilled the stored rows), `below_threshold`, `expected_below_minimum`, or `model_unavailable` for an adjusted one — and no other row does (two check constraints). `period_start`/`period_end` are the source's coverage window, or (0012, Phase 5 Step 5) one calendar year of it — `calendar_year` (smallint) names that year and is null for the whole window; it is part of the unique key, and a check ties it to the year's first and last days. | via `metric_snapshot` and its member family (and, adjusted, the model's artifact) |
+| `metric_member_family`         | The members behind every observation of one definition, subject, source, and snapshot, stored once (0013): `metric_definition_id`, `subject_type`, `subject_id`, `source_id`, `snapshot_id` (all `RESTRICT`), `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`; one per family), `members_hash` (the sha256 of the kind and the canonical rows; unique with the five before it, so equal members are one family and a changed family is a new row), `row_count`, `member_count`. See "Member families". | via its rows |
+| `metric_member`                | A canonical row of a family (0013), keyed `(family_id, ordinal)` (`ON DELETE CASCADE`; `ordinal` is the place in the canonical order): `member_id` (the entity id of a public row — never a person id), `anchor_year`, `dimension_value`, `counted_mask`, `followed_mask`, `multiplicity`. | the member rows' own `source_record_id` |
 | `outcome_model`                | One fitted expected-outcome model (0009, Phase 4 Step 2) per snapshot, source, specification version, target, window, and seed: `content_hash` (the sha256 of its canonical JSON artifact, unique), `snapshot_id` and `source_id` (RESTRICT), `spec_version`, `model_version`, `target`, `window_days` (null for the release target), `seed`, `status` (`fitted`, `insufficient_events`, `not_converged`; 0012 adds `unavailable`: a target the source cannot support, its reason in `diagnostics`, no fit), the temporal split's `n_train`/`events_train` (before the cutoff) and `n_test`/`events_test` (at or after it; the published fit is over both), `train_start`/`train_end` (the index-time range) and `split_cutoff`, `diagnostics` and `coefficients` (JSONB, so a model card needs no artifact), `storage_uri` (the artifact under the snapshot directory; never returned by a public surface), `code_version`, `fitted_at`. No person-level column. | via `metric_snapshot` and its artifact |
 | `data_quality_issue`           | A finding of a data-quality check: severity, code, description, status.             | `source_record_id`            |
 | `coverage_statistic`           | One coverage statistic (0012, Phase 5 Step 5) per snapshot, source, scope, and statistic: `snapshot_id` and `source_id` (RESTRICT), `scope_type` (`source`, `jurisdiction`, `court`), `scope_id` (the source, jurisdiction, or court it covers), `statistic` (the brief's six — `cases_with_identified_judge`, `cases_with_final_disposition`, `cases_with_person_resolution`, `cases_with_adequate_follow_up`, `cases_with_complete_charge_classification`, `records_with_provenance` — and `unknown_actor_share`; defined in docs/METHODOLOGY.md "Coverage statistics"), `numerator`, `denominator`, `share` (Numeric(9, 6), null without a denominator), `methodology_version`. Aggregates only: no person id, no case list. | via `metric_snapshot` |
@@ -110,11 +118,71 @@ observation).
 The `Source of provenance` column shows how every fact row traces to raw
 bytes: `source_record` → `ingest_run` → the immutable object in the raw
 lake (`raw_object_path`, `raw_sha256`). A metric observation traces
-through its member rows — the decisions, charges, cases, sentences, court
-events, and justice events that formed its denominator and numerator —
-to their source records, and through its snapshot to the exact bytes it
+through its members — the decisions, charges, cases, sentences, court
+events, and justice events that formed its denominator and numerator,
+the rows of its member family — to their source records, and through its snapshot to the exact bytes it
 was computed from (Phase 3 Step 2 writes both; Step 3's
 `judgemetrics provenance trace` walks the chain).
+
+## Member families
+
+Revision 0005 stored every member of every observation: a case in the numerator of
+a rate was written once per window and once per calendar year (822,777 member rows
+for the demo's 3,426 observations before calendar years existed, and about a billion
+for Cook County's). The observations of one definition, subject, source, and
+snapshot — every window, every calendar year, every dimension value — are cuts of the
+same canonical rows, so revision 0013 stores the rows once, in a **member family**
+(`judgemetrics.metrics.members`; `member_store` reads and writes it), and every
+observation's own member multiset is a *filter* of it.
+
+A family row (`metric_member`) carries:
+
+| Column | Meaning |
+|--------|---------|
+| `member_id` | The entity id of the public row (`member_kind` of the family names its table). Never a person id. |
+| `anchor_year` | The calendar year (UTC) of the row's anchor (`registry.POPULATION_ANCHORS`: the filing, the decision, the disposition, the case disposition, the sentence, or the index time of a windowed metric). The year observation of that year holds the row; the whole-window observation holds every row. Null when the anchor is unknown. |
+| `dimension_value` | The dimension value the row belongs to (a **median by offense category**: the row is in its category's observation only) or counts in (a **distribution**: the row is in every value's observation and counts in the one of its own disposition); null for a metric without a dimension. |
+| `counted_mask`, `followed_mask` | Bit `i` is the row's `counted` (numerator) and `followed` (denominator after censoring) flag in the definition's `i`-th window (`metric_definition.windows_days`); a metric without windows uses bit 0. A distribution's `counted` is not a mask: it is `dimension_value = the observation's value`. |
+| `multiplicity` | How many identical rows this one stands for. A disposed case is one index event per defendant, and the family keeps that count without a person id. |
+
+The projection `MemberFamily.project(year, window, dimension)` (SQL twin:
+`member_store.projection`) is the single rule: keep the rows of the observation's
+calendar year (all rows for the whole window), keep a median's rows of the
+observation's dimension value, read `counted` and `followed` from bit `window`
+(a distribution: `counted` is `dimension_value = value`), and expand the
+multiplicity. `tests/integration/test_member_storage.py` holds the SQL and the
+in-memory forms equal for every observation of the golden compute, and equal to the
+multiset the engine computed.
+
+**Canonical form and identity.** Identical rows are merged into one with a
+multiplicity; rows that share `(member_id, anchor_year, dimension_value)` and differ
+in their flags (two defendants of one case who reoffended at different times) are
+paired by sorted order per window — the pairing across windows is not recorded by the
+observations, so it is fixed — and the rows are sorted by those columns and the two
+masks. `members_hash` is the sha256 over the member kind and the sorted rows as text
+(`id|year|dimension|counted|followed|multiplicity`, one per line). A family is therefore
+a function of its observations' member multisets alone, so the engine, the migration,
+and `metrics verify` agree on it, and it is **content-addressed**: a recompute that
+produces the same members finds the family and writes nothing; one that produces
+different members writes a new family and the observations that cited the old one
+keep it. Nothing in the member tables is ever updated or deleted except with its
+source (`ingest retire`).
+
+**Revision 0013 converts the stored rows** (superseded observations too): for each
+group of observations with one definition, subject, source, and snapshot it folds the
+members of the year observations, the whole window's remainder (the rows only the whole
+window holds keep a null year), and the windows' flags into one family, and every
+observation's multiset is exactly what it was (`downgrade` expands it back; the round
+trip of the dev database's 35,424 observations and 2.86 million member rows is
+identical in every column and every multiset). One thing the old rows cannot say: a
+median by dimension publishes a (dimension, year) observation only when it has a value,
+so a member without a value in a year with no observation of its dimension appears in
+the whole window's observation alone, and its year is unknown (null). Its observations'
+multisets are unchanged; its family differs from the one a fresh compute builds, which
+therefore publishes that subject once more (docs/ARCHITECTURE.md "Metrics engine").
+An inconsistent group (a year observation holding a member the whole window lacks, a
+distribution row counted in two values) stops the upgrade with a message naming the
+observation: nothing is guessed.
 
 ## Natural keys and unique constraints
 
@@ -190,9 +258,12 @@ every hash.
   left_record_id, right_record_id)`.
 - Metrics (0005): `metric_observation (subject_type, subject_id)` where
   `superseded_at IS NULL` (`ix_metric_observation_current`, the rows the
-  API serves), `metric_observation.snapshot_id`, `.source_id`;
-  `metric_observation_member (observation_id)` and
-  `(member_kind, member_id)` (an entity's observations, for the trace).
+  API serves), `metric_observation.snapshot_id`, `.source_id`; (0013)
+  `metric_observation.member_family_id`, `metric_member_family.source_id` and
+  `.snapshot_id`, the unique `uq_metric_member_family_key` (definition, subject
+  type and id, source, snapshot, `members_hash`), and the primary key
+  `metric_member (family_id, ordinal)`, which serves a family and a page of it.
+  There is no index on `member_id`: nothing asks which observations cite a row.
 
 ## Enumerations
 
@@ -439,8 +510,8 @@ Restricted attributes never appear in any of these columns.
 
 | Role                  | `person_identifier` | `correction_request`                          | The `restricted` schema (0008)          | Every other table                       |
 |-----------------------|---------------------|-----------------------------------------------|-----------------------------------------|-----------------------------------------|
-| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate`, `audit_log`, and (0011) `data_quality_issue` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` and `metric_observation_member`, granted by 0005: hashes, counts, and entity ids of public rows; `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value; and `coverage_statistic`, granted by 0012: aggregates per source, jurisdiction, and court) |
-| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants the two metrics tables, 0009 `outcome_model`, and 0012 `coverage_statistic` explicitly; the metrics engine and `models fit` write as this role) |
+| `judgemetrics_app`    | none (revoked); likewise on `entity_resolution_candidate`, `audit_log`, and (0011) `data_quality_issue` | `INSERT` only (0007): the corrections intake writes a row it can never read back; no `SELECT` means no `RETURNING` either, so the API's insert has none | nothing: no `USAGE` on the schema, so it cannot even name `restricted.party_attribute` (`InsufficientPrivilege`) | `SELECT` (including `metric_snapshot` (0005) and `metric_member_family` and `metric_member` (0013, which replaced the member table 0005 granted: hashes, counts, and entity ids of public rows); `outcome_model`, granted by 0009: coefficients, counts, and bins, never a person-level value; and `coverage_statistic`, granted by 0012: aggregates per source, jurisdiction, and court) |
+| `judgemetrics_ingest` | `SELECT, INSERT, UPDATE, DELETE`; on `audit_log` only `SELECT, INSERT` | `SELECT, INSERT, UPDATE, DELETE` | `USAGE`; `SELECT, INSERT, UPDATE, DELETE` on its tables, and by default privilege on later ones | `SELECT, INSERT, UPDATE, DELETE` (0005 grants `metric_snapshot`, 0009 `outcome_model`, 0012 `coverage_statistic`, and 0013 the two member tables explicitly; the metrics engine and `models fit` write as this role) |
 | `judgemetrics_admin`  | all (owner of migrations); the `audit_log` trigger still rejects its updates and deletes | all (the admin tooling that answers corrections holds the key and decrypts) | all, and by default privilege on later tables | all |
 
 `PUBLIC` holds nothing on `restricted` (revoked by 0008).
@@ -494,7 +565,8 @@ observation names the exact bytes it was computed from), the
 `metric_observation` columns that key an observation by snapshot,
 source, window, and dimension and keep superseded rows as history, the
 `metric_observation_member` table (the brief's provenance chain from a
-published number to eligible events, as rows), and
+published number to eligible events, as rows; revision 0013 stores those rows once
+per family instead of once per observation), and
 `source.coverage_start`, `coverage_end`, `observable_outcomes` (the
 window follow-up is censored at and the outcomes a source can document,
 which every connector must declare from Phase 5). Revision 0008 creates

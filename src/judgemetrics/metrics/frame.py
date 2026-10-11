@@ -58,14 +58,21 @@ whose outcome is not among them is not observable for the source
 ``judgemetrics.capabilities``) are the judge gates the source records, its
 person-key scope, and the revocation scopes it documents; a frame built
 without them (the synthetic world in memory, a test) records everything.
+
+A frame is immutable, so a table derived from it alone — the disposed charges, the case
+dispositions, the incarceration terms, the lead offense of each case — is the same for
+every subject and metric that asks. ``Frame.derived(key, build)`` builds such a table
+once and keeps it on the frame (Phase 5 Step 6): computing a corpus's subjects no longer
+sorts a million charges once per subject and definition.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from datetime import UTC, date, datetime, time, timedelta
 from types import MappingProxyType
+from typing import Any, cast
 
 import polars as pl
 
@@ -226,6 +233,9 @@ class Frame:
     coverage_end: date
     observable_outcomes: frozenset[str] = frozenset()
     capabilities: SourceCapabilities = field(default_factory=SourceCapabilities.full)
+    # Tables derived from the frame alone, built on first use (``derived``); never compared,
+    # copied, or passed to the constructor.
+    _derived: dict[str, Any] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.coverage_end < self.coverage_start:
@@ -261,6 +271,12 @@ class Frame:
         """``coverage_start`` at 00:00 UTC: the first instant of the coverage window."""
         return datetime.combine(self.coverage_start, time.min, UTC)
 
+    def derived[T](self, key: str, build: Callable[[], T]) -> T:
+        """A table derived from this frame alone, built once (``build`` is a pure function of it)."""
+        if key not in self._derived:
+            self._derived[key] = build()
+        return cast(T, self._derived[key])
+
     def table(self, name: str) -> pl.DataFrame:
         if name not in SCHEMAS:
             msg = f"unknown frame table {name!r}"
@@ -292,6 +308,6 @@ class Frame:
         if unknown:
             msg = f"unknown frame tables {sorted(unknown)}"
             raise FrameError(msg)
-        values = {f.name: getattr(self, f.name) for f in fields(self)}
+        values = {f.name: getattr(self, f.name) for f in fields(self) if f.init}
         values.update(tables)
         return Frame(**values)

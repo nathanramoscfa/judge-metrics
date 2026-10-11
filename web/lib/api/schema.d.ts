@@ -1397,13 +1397,22 @@ export interface components {
         /**
          * MemberGroup
          * @description The observation's members of one kind: the eligible canonical rows behind the number.
+         *
+         *     The counts cover every member; `member_ids` and `case_ids` are one page of them
+         *     (`limit` and `offset` of the request), so a response is bounded however large the
+         *     cohort is.
          */
         MemberGroup: {
             /**
              * Case Ids
-             * @description The distinct cases the members belong to (`/cases/{id}`), sorted.
+             * @description The distinct cases (`/cases/{id}`) of the page's members, sorted.
              */
             case_ids: string[];
+            /**
+             * Cases
+             * @description The distinct cases the members belong to, in all.
+             */
+            cases: number;
             /**
              * Counted
              * @description Members in the numerator.
@@ -1414,6 +1423,11 @@ export interface components {
              * @description Members in the denominator after censoring.
              */
             followed: number;
+            /**
+             * Member Ids
+             * @description The page of members, by id: the canonical rows (a decision, charge, case, sentence, court event, or justice event) the observation was computed from.
+             */
+            member_ids: string[];
             /**
              * Member Kind
              * @enum {string}
@@ -1924,6 +1938,11 @@ export interface components {
              */
             complete: boolean;
             /**
+             * Limit
+             * @description The size of the page of members listed.
+             */
+            limit: number;
+            /**
              * Members
              * @description By member kind.
              */
@@ -1931,10 +1950,15 @@ export interface components {
             /** @description The fitted model of an adjusted observation; null for a descriptive one. */
             model: components["schemas"]["ProvenanceModel"] | null;
             observation: components["schemas"]["TracedObservation"];
+            /**
+             * Offset
+             * @description Members skipped before the page.
+             */
+            offset: number;
             snapshot: components["schemas"]["SnapshotOut"];
             /**
              * Source Records
-             * @description The distinct artifacts behind every member, newest retrieval first.
+             * @description The distinct artifacts behind every member, not only the page's, newest first.
              */
             source_records: components["schemas"]["SourceRecordOut"][];
             /**
@@ -3426,7 +3450,12 @@ export interface operations {
     };
     get_observation_provenance_api_v1_metrics__observation_id__provenance_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Members listed, at most 1000; the counts cover them all. */
+                limit?: number;
+                /** @description Members to skip before the page. */
+                offset?: number;
+            };
             header?: never;
             path: {
                 observation_id: string;

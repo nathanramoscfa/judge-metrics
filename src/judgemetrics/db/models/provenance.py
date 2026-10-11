@@ -101,6 +101,10 @@ class IngestRun(UUIDPrimaryKey, Timestamps, Base):
     metrics_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("metric_snapshot.id", ondelete="RESTRICT"), index=True
     )
+    # Revision 0013: why step 13 left the metrics to the next full `metrics compute` — the
+    # run touched more cases or impacted more subjects than the declared size
+    # (`Settings.metrics_recompute_max_cases` / `_max_subjects`); null when it ran or was off.
+    metrics_deferred_reason: Mapped[str | None] = mapped_column(Text)
 
     source: Mapped[Source] = relationship(back_populates="runs")
     records: Mapped[list[SourceRecord]] = relationship(back_populates="ingest_run")

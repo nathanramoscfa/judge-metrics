@@ -9,7 +9,8 @@ source over its older rows leaves the old ones behind (issue #36). ``retire_sour
 deletes, in the dependency order the test helper ``purge_source`` established, everything
 derived from one registered source:
 
-1. its metric observations (their members cascade), its fitted expected-outcome models,
+1. its metric observations, their member families (the family rows cascade), its fitted
+   expected-outcome models,
    its coverage statistics, and the snapshot rows nothing cites any more;
 2. its data-quality issues, then its case-level rows — justice events, pretrial releases,
    sentences, decisions, court events, charges, assignments, case parties (their restricted
@@ -160,6 +161,7 @@ def retire_source(
     # 1. Metrics: observations (members cascade), models, coverage statistics, and the
     #    snapshots nothing cites.
     observation = TABLES["metric_observation"]
+    family = TABLES["metric_member_family"]
     model = TABLES["outcome_model"]
     coverage = TABLES["coverage_statistic"]
     snapshot = TABLES["metric_snapshot"]
@@ -167,6 +169,12 @@ def retire_source(
         deleted,
         "metric_observation",
         session.execute(delete(observation).where(observation.c.source_id == source_id)),
+    )
+    # The observations cited the families (RESTRICT): the families, and their rows, go after.
+    _count(
+        deleted,
+        "metric_member_family",
+        session.execute(delete(family).where(family.c.source_id == source_id)),
     )
     _count(
         deleted,
@@ -185,6 +193,7 @@ def retire_source(
     )
     cited_snapshots = sa.union(
         select(observation.c.snapshot_id),
+        select(family.c.snapshot_id),
         select(model.c.snapshot_id),
         select(coverage.c.snapshot_id),
         select(INGEST_RUN.c.metrics_snapshot_id).where(

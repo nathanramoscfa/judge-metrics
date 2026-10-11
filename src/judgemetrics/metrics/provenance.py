@@ -6,18 +6,24 @@
 ``metric_observation`` in three statements, whatever the observation
 holds:
 
-1. the observation with its definition (slug, version, kind, threshold),
+1. the observation with its definition (slug, version, kind, threshold, windows),
    its snapshot (content hash, label, export time, code version, storage
-   URI, row counts), and its source (key, type, coverage window,
-   observable outcomes);
-2. its members, each resolved through an outer join to the canonical row
-   its ``member_kind`` names — ``decision``, ``charge``, ``court_case``,
-   ``sentence``, ``court_event``, ``justice_event`` — for the case the row
-   belongs to (a justice event's ``related_case_id``) and the row's
-   ``source_record_id``; a member whose row no longer exists resolves to
-   nothing and is counted as unresolved;
-3. the distinct source records behind those rows, joined to their source:
-   external id, sha256, retrieval time, parser version, run, and the
+   URI, row counts), its source (key, type, coverage window, observable
+   outcomes), and its member family (id and kind);
+2. its members: the observation's own cut of the family
+   (``member_store.projection``: the family's rows for its calendar year, flag slot,
+   and dimension value), each outer-joined to the canonical row its family's member
+   kind names — ``decision``, ``charge``, ``court_case``, ``sentence``,
+   ``court_event``, ``justice_event`` — for the case the row belongs to (a justice
+   event's ``related_case_id``) and the row's ``source_record_id``. One statement
+   returns the *totals* over every member (members, counted, followed, resolved,
+   without a source record, distinct cases — window aggregates, so the set operations
+   run in the database over the whole observation) and one *page* of them, ordered by
+   member id: ``limit`` rows (default 100, at most 1,000) from ``offset``. A member whose
+   row no longer exists resolves to nothing and is counted as unresolved. A page past the
+   end of a non-empty set carries no totals, and costs a fourth statement for them;
+3. the distinct source records behind *all* the members (not only the page), joined to
+   their source: external id, sha256, retrieval time, parser version, run, and the
    artifact URI the run recorded. The source systems listed are the
    observation's own source plus any other source a member's record
    belongs to.
@@ -26,12 +32,14 @@ The trace is ``complete`` when every member resolved to a row, every row
 resolved to a source record, and every source record carries a sha256
 digest of the stored artifact — the rule ``publish.check_chain`` enforces
 before an observation is written, re-checked here against the live
-tables (``tests/golden/test_golden_provenance.py`` asserts both). Members
-are entity ids and the trace names no person, no hash of a person
-identifier, and never the lake's storage key (``raw_object_path`` is not
-selected). ``render`` prints the chain top-down in the brief's order for
-``judgemetrics provenance trace``; ``as_dict`` is its ``--json`` form and
-what the API's ``ObservationProvenance`` is built from.
+tables (``tests/golden/test_golden_provenance.py`` asserts both). The rule is judged on
+the totals, never on the page: a trace of the first twenty members of a million says
+whether all of them resolve. Members are entity ids and the trace names no person, no
+hash of a person identifier, and never the lake's storage key (``raw_object_path`` is
+not selected). A response is bounded by its page, so one request cannot pull a court's
+whole case list. ``render`` prints the chain top-down in the brief's order for
+``judgemetrics provenance trace``; ``as_dict`` is its ``--json`` form and what the
+API's ``ObservationProvenance`` is built from.
 
 Phase 4 Step 3: an ``observed_expected`` observation's chain also names the
 outcome model it was computed with — id, content hash, specification and
@@ -50,23 +58,24 @@ API passed the kinds it served while the adjusted kind was held out).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, and_, case, select
+from sqlalchemy import CTE, Select, distinct, func, select
 from sqlalchemy.orm import Session
 
 from judgemetrics.config import Settings
 from judgemetrics.db.models import SYNTHETIC_SOURCE_TYPE, Base
+from judgemetrics.metrics.member_store import projection
+from judgemetrics.metrics.members import mode_for, windows_for
 from judgemetrics.metrics.snapshot import HEX64, snapshot_root
 
 DEFINITION = Base.metadata.tables["metric_definition"]
 SNAPSHOT = Base.metadata.tables["metric_snapshot"]
 OBSERVATION = Base.metadata.tables["metric_observation"]
-MEMBER = Base.metadata.tables["metric_observation_member"]
 SOURCE = Base.metadata.tables["source"]
 SOURCE_RECORD = Base.metadata.tables["source_record"]
 DECISION = Base.metadata.tables["decision"]
@@ -76,6 +85,7 @@ SENTENCE = Base.metadata.tables["sentence"]
 COURT_EVENT = Base.metadata.tables["court_event"]
 JUSTICE_EVENT = Base.metadata.tables["justice_event"]
 OUTCOME_MODEL = Base.metadata.tables["outcome_model"]
+FAMILY = Base.metadata.tables["metric_member_family"]
 
 # member_kind → (the canonical table, its case column). The order is the
 # brief's chain order for the rendered output.
@@ -87,7 +97,13 @@ MEMBER_TABLES: tuple[tuple[str, Any, Any], ...] = (
     ("court_event", COURT_EVENT, COURT_EVENT.c.case_id),
     ("justice_event", JUSTICE_EVENT, JUSTICE_EVENT.c.related_case_id),
 )
+MEMBER_TABLE_OF: dict[str, tuple[Any, Any]] = {
+    kind: (table, case_column) for kind, table, case_column in MEMBER_TABLES
+}
 STATEMENTS = 3
+# A trace lists one page of members: this many by default, and never more than the maximum.
+DEFAULT_LIMIT = 100
+MAX_LIMIT = 1_000
 PUBLIC_URI_SCHEMES = ("http://", "https://")
 
 
@@ -174,12 +190,19 @@ class TracedSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class TracedMember:
+    """One member of the page: a canonical row, its flags, and where it comes from.
+
+    ``copies`` is how many identical members the row stands for (a disposed case is one
+    index event per defendant, with no person id kept).
+    """
+
     kind: str
     id: uuid.UUID
     counted: bool
     followed: bool
     case_id: uuid.UUID | None
     source_record_id: uuid.UUID | None
+    copies: int = 1
 
     @property
     def resolved(self) -> bool:
@@ -188,11 +211,21 @@ class TracedMember:
 
 @dataclass(frozen=True, slots=True)
 class MemberGroup:
+    """The totals over every member of one kind, and the page of them the trace lists.
+
+    ``members`` counts every member (copies included), ``counted`` and ``followed`` the
+    numerator and denominator after censoring, ``resolved`` the members whose canonical
+    row exists and cites a source record, and ``cases`` the distinct cases they belong
+    to. ``member_ids`` and ``case_ids`` are the page: the members listed and their cases.
+    """
+
     kind: str
     members: int
     counted: int
     followed: int
     resolved: int
+    cases: int
+    member_ids: tuple[uuid.UUID, ...]
     case_ids: tuple[uuid.UUID, ...]
 
 
@@ -244,6 +277,9 @@ class ObservationTrace:
     statements: int = STATEMENTS
     groups: tuple[MemberGroup, ...] = field(default_factory=tuple)
     model: TracedModel | None = None
+    # The page ``members`` is: its size limit and its offset into the observation's members.
+    limit: int = DEFAULT_LIMIT
+    offset: int = 0
 
     @property
     def complete(self) -> bool:
@@ -256,7 +292,18 @@ class ObservationTrace:
 
     @property
     def case_ids(self) -> tuple[uuid.UUID, ...]:
+        """The distinct cases of the page's members."""
         return tuple(sorted({m.case_id for m in self.members if m.case_id is not None}, key=str))
+
+    @property
+    def member_total(self) -> int:
+        """Every member of the observation, not only the page."""
+        return sum(group.members for group in self.groups)
+
+    @property
+    def case_total(self) -> int:
+        """Every distinct case behind the observation, not only the page's."""
+        return sum(group.cases for group in self.groups)
 
     def as_dict(self) -> dict[str, Any]:
         """The JSON form of the chain (``--json``), in the brief's order."""
@@ -339,11 +386,14 @@ class ObservationTrace:
                     "counted": group.counted,
                     "followed": group.followed,
                     "resolved": group.resolved,
+                    "cases": group.cases,
+                    "member_ids": [str(member_id) for member_id in group.member_ids],
                     "case_ids": [str(case_id) for case_id in group.case_ids],
                 }
                 for group in self.groups
             ],
             "cases": [str(case_id) for case_id in self.case_ids],
+            "page": {"limit": self.limit, "offset": self.offset},
             "source_records": [
                 {
                     "id": str(record.id),
@@ -428,6 +478,9 @@ def observation_statement(
             DEFINITION.c.unit.label("unit"),
             DEFINITION.c.outcome.label("outcome"),
             DEFINITION.c.suppression_threshold.label("suppression_threshold"),
+            DEFINITION.c.windows_days.label("definition_windows"),
+            DEFINITION.c.dimension.label("definition_dimension"),
+            FAMILY.c.member_kind.label("family_kind"),
             SNAPSHOT.c.content_hash.label("snapshot_hash"),
             SNAPSHOT.c.label.label("snapshot_label"),
             SNAPSHOT.c.exported_at.label("snapshot_exported_at"),
@@ -460,6 +513,7 @@ def observation_statement(
         .join(DEFINITION, DEFINITION.c.id == OBSERVATION.c.metric_definition_id)
         .join(SNAPSHOT, SNAPSHOT.c.id == OBSERVATION.c.snapshot_id)
         .join(SOURCE, SOURCE.c.id == OBSERVATION.c.source_id)
+        .join(FAMILY, FAMILY.c.id == OBSERVATION.c.member_family_id)
         .outerjoin(OUTCOME_MODEL, OUTCOME_MODEL.c.id == OBSERVATION.c.outcome_model_id)
         .where(OBSERVATION.c.id == observation_id)
     )
@@ -468,51 +522,99 @@ def observation_statement(
     return stmt
 
 
-def resolved_members_statement(observation_id: uuid.UUID) -> Select[Any]:
-    """Every member with the case and source record its canonical row names: one statement.
+def resolved_members(
+    family_id: uuid.UUID,
+    *,
+    kind: str,
+    mode: str,
+    slot: int,
+    year: int | None,
+    dimension: str | None,
+) -> CTE:
+    """The observation's members, one row per distinct ``(member, counted, followed)``.
 
-    Each member table is outer-joined on ``member_kind`` and ``member_id``,
-    so a member whose row was deleted yields null ``case_id`` and
+    The family's rows cut for this observation (``member_store.projection``), summed over
+    identical members, each outer-joined to the canonical row of ``kind`` and to its source
+    record, so a member whose row was deleted yields a null ``case_id`` and
     ``source_record_id`` rather than vanishing from the count.
     """
-    stmt = select(
-        MEMBER.c.member_kind,
-        MEMBER.c.member_id,
-        MEMBER.c.counted,
-        MEMBER.c.followed,
-        case(
-            *(
-                (MEMBER.c.member_kind == kind, case_column)
-                for kind, _, case_column in MEMBER_TABLES
-            ),
-            else_=None,
-        ).label("case_id"),
-        case(
-            *(
-                (MEMBER.c.member_kind == kind, table.c.source_record_id)
-                for kind, table, _ in MEMBER_TABLES
-            ),
-            else_=None,
-        ).label("source_record_id"),
-    ).select_from(MEMBER)
-    for kind, table, _ in MEMBER_TABLES:
-        stmt = stmt.outerjoin(
-            table, and_(MEMBER.c.member_kind == kind, table.c.id == MEMBER.c.member_id)
+    table, case_column = MEMBER_TABLE_OF[kind]
+    base = projection(family_id, mode=mode, slot=slot, year=year, dimension=dimension).subquery(
+        "projected"
+    )
+    grouped = (
+        select(
+            base.c.member_id,
+            base.c.counted,
+            base.c.followed,
+            func.sum(base.c.multiplicity).label("copies"),
         )
-    return stmt.where(MEMBER.c.observation_id == observation_id).order_by(
-        MEMBER.c.member_kind, MEMBER.c.member_id
+        .group_by(base.c.member_id, base.c.counted, base.c.followed)
+        .subquery("grouped")
+    )
+    return (
+        select(
+            grouped.c.member_id,
+            grouped.c.counted,
+            grouped.c.followed,
+            grouped.c.copies,
+            case_column.label("case_id"),
+            table.c.id.label("row_id"),
+            table.c.source_record_id.label("source_record_id"),
+            SOURCE_RECORD.c.id.label("record_id"),
+        )
+        .select_from(grouped)
+        .outerjoin(table, table.c.id == grouped.c.member_id)
+        .outerjoin(SOURCE_RECORD, SOURCE_RECORD.c.id == table.c.source_record_id)
+        .cte("resolved")
     )
 
 
-def source_records_statement(observation_id: uuid.UUID) -> Select[Any]:
-    """The distinct source records behind the members with their sources: one statement.
+def members_statement(resolved: CTE, *, limit: int, offset: int) -> Select[Any]:
+    """The totals over every member and one page of them: one statement.
 
-    Built over ``resolved_members_statement`` as a subquery rather than an
-    ``IN`` list of record ids, so an observation with thousands of members
-    never exceeds the bind-parameter limit. ``raw_object_path`` — the
-    lake's internal storage key — is not selected.
+    The totals are window aggregates (``sum(...) OVER ()``) over the whole set, computed
+    before the page is cut, so every row of the page carries them; the distinct case count
+    is a scalar subquery over the same (materialized) set.
     """
-    resolved = resolved_members_statement(observation_id).order_by(None).subquery("resolved")
+    copies = resolved.c.copies
+    return (
+        select(
+            resolved.c.member_id,
+            resolved.c.counted,
+            resolved.c.followed,
+            copies,
+            resolved.c.case_id,
+            resolved.c.source_record_id,
+            func.sum(copies).over().label("total_members"),
+            func.sum(copies).filter(resolved.c.counted).over().label("total_counted"),
+            func.sum(copies).filter(resolved.c.followed).over().label("total_followed"),
+            func.sum(copies)
+            .filter(resolved.c.source_record_id.is_not(None))
+            .over()
+            .label("total_resolved"),
+            func.sum(copies)
+            .filter(
+                resolved.c.source_record_id.is_not(None) & resolved.c.record_id.is_(None),
+            )
+            .over()
+            .label("total_unrecorded"),
+            select(func.count(distinct(resolved.c.case_id))).scalar_subquery().label("total_cases"),
+        )
+        .order_by(resolved.c.member_id, resolved.c.counted, resolved.c.followed)
+        .limit(limit)
+        .offset(offset)
+    )
+
+
+def source_records_statement(resolved: CTE) -> Select[Any]:
+    """The distinct source records behind every member with their sources: one statement.
+
+    Built over the resolved members as a common table expression rather than an ``IN``
+    list of record ids, so an observation with thousands of members never exceeds the
+    bind-parameter limit. ``raw_object_path`` — the lake's internal storage key — is
+    not selected.
+    """
     return (
         select(
             SOURCE_RECORD.c.id,
@@ -544,26 +646,24 @@ def source_records_statement(observation_id: uuid.UUID) -> Select[Any]:
 # --- the trace ---------------------------------------------------------------------------
 
 
-def _group(members: Sequence[TracedMember]) -> tuple[MemberGroup, ...]:
-    order = [kind for kind, _, _ in MEMBER_TABLES]
-    groups: list[MemberGroup] = []
-    for kind in order:
-        of_kind = [m for m in members if m.kind == kind]
-        if not of_kind:
-            continue
-        groups.append(
-            MemberGroup(
-                kind=kind,
-                members=len(of_kind),
-                counted=sum(1 for m in of_kind if m.counted),
-                followed=sum(1 for m in of_kind if m.followed),
-                resolved=sum(1 for m in of_kind if m.resolved),
-                case_ids=tuple(
-                    sorted({m.case_id for m in of_kind if m.case_id is not None}, key=str)
-                ),
-            )
-        )
-    return tuple(groups)
+def _group(
+    kind: str, members: Sequence[TracedMember], totals: Mapping[str, int]
+) -> tuple[MemberGroup, ...]:
+    """The one group of the observation's family kind: the totals and the page's ids."""
+    if not totals["members"]:
+        return ()
+    return (
+        MemberGroup(
+            kind=kind,
+            members=totals["members"],
+            counted=totals["counted"],
+            followed=totals["followed"],
+            resolved=totals["resolved"],
+            cases=totals["cases"],
+            member_ids=tuple(member.id for member in members),
+            case_ids=tuple(sorted({m.case_id for m in members if m.case_id is not None}, key=str)),
+        ),
+    )
 
 
 def _artifact_problem(settings: Settings | None, snapshot_hash: str, model_hash: str) -> str | None:
@@ -608,18 +708,46 @@ def _traced_model(row: Any, settings: Settings | None) -> TracedModel | None:
     )
 
 
+def _totals(row: Mapping[Any, Any] | None) -> dict[str, int]:
+    """The totals over every member, read from any row of the members statement."""
+    if row is None:
+        return {
+            "members": 0,
+            "counted": 0,
+            "followed": 0,
+            "resolved": 0,
+            "unrecorded": 0,
+            "cases": 0,
+        }
+    return {
+        "members": int(row["total_members"] or 0),
+        "counted": int(row["total_counted"] or 0),
+        "followed": int(row["total_followed"] or 0),
+        "resolved": int(row["total_resolved"] or 0),
+        "unrecorded": int(row["total_unrecorded"] or 0),
+        "cases": int(row["total_cases"] or 0),
+    }
+
+
 def trace(
     session: Session,
     observation_id: uuid.UUID | str,
     *,
+    limit: int = DEFAULT_LIMIT,
+    offset: int = 0,
     settings: Settings | None = None,
     kinds: Collection[str] | None = None,
 ) -> ObservationTrace:
     """The chain behind ``observation_id`` (superseded observations trace too); ``TraceError`` if none.
 
-    ``settings`` locates an adjusted observation's model artifact (the
-    configured snapshot directory); ``kinds`` limits the observations traced.
+    ``limit`` (1 to ``MAX_LIMIT``) and ``offset`` choose the page of members listed; the
+    totals and the completeness rule always cover every member. ``settings`` locates an
+    adjusted observation's model artifact (the configured snapshot directory); ``kinds``
+    limits the observations traced.
     """
+    if not 1 <= limit <= MAX_LIMIT or offset < 0:
+        msg = f"a trace page has a limit of 1 to {MAX_LIMIT} and a non-negative offset"
+        raise TraceError(msg)
     oid = (
         observation_id
         if isinstance(observation_id, uuid.UUID)
@@ -682,16 +810,43 @@ def trace(
         storage_uri=str(row["snapshot_storage_uri"]),
         row_counts={str(k): int(v) for k, v in dict(row["snapshot_row_counts"] or {}).items()},
     )
+    family_kind = str(row["family_kind"])
+    definition_kind = str(row["kind"])
+    windows = windows_for(definition_kind, row["definition_windows"])
+    if observation.window_days not in windows:
+        msg = (
+            f"observation {oid} has window {observation.window_days}; its definition has {windows}"
+        )
+        raise TraceError(msg)
+    resolved = resolved_members(
+        _uuid(row["member_family_id"]),
+        kind=family_kind,
+        mode=mode_for(definition_kind, row["definition_dimension"]),
+        slot=windows.index(observation.window_days),
+        year=row["calendar_year"],
+        dimension=observation.dimension_value,
+    )
+    statements = STATEMENTS
+    page = session.execute(members_statement(resolved, limit=limit, offset=offset)).mappings().all()
+    if not page and offset > 0:
+        # A page past the end carries no totals: ask for the first row to read them.
+        statements += 1
+        page = session.execute(members_statement(resolved, limit=1, offset=0)).mappings().all()
+        shown: Sequence[Any] = ()
+    else:
+        shown = page
+    totals = _totals(page[0]) if page else _totals(None)
     members = tuple(
         TracedMember(
-            kind=str(item["member_kind"]),
+            kind=family_kind,
             id=_uuid(item["member_id"]),
             counted=bool(item["counted"]),
             followed=bool(item["followed"]),
             case_id=_optional_uuid(item["case_id"]),
             source_record_id=_optional_uuid(item["source_record_id"]),
+            copies=int(item["copies"]),
         )
-        for item in session.execute(resolved_members_statement(oid)).mappings()
+        for item in shown
     )
     records: list[TracedSourceRecord] = []
     # The observation's own source system first; the members' records may add
@@ -710,7 +865,7 @@ def trace(
             ),
         )
     }
-    for item in session.execute(source_records_statement(oid)).mappings():
+    for item in session.execute(source_records_statement(resolved)).mappings():
         records.append(
             TracedSourceRecord(
                 id=_uuid(item["id"]),
@@ -737,18 +892,19 @@ def trace(
                 ),
             ),
         )
-    found_records = {record.id for record in records}
-    referenced = {m.source_record_id for m in members if m.source_record_id is not None}
     return ObservationTrace(
         observation=observation,
         snapshot=snapshot,
         members=members,
         source_records=tuple(records),
         sources=tuple(sources[key] for key in sorted(sources)),
-        unresolved_members=sum(1 for m in members if not m.resolved),
-        unresolved_records=len(referenced - found_records),
-        groups=_group(members),
+        unresolved_members=totals["members"] - totals["resolved"],
+        unresolved_records=totals["unrecorded"],
+        statements=statements,
+        groups=_group(family_kind, members, totals),
         model=_traced_model(row, settings),
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -820,13 +976,21 @@ def render(traced: ObservationTrace) -> list[str]:
             f"{model.seed}; specification {model.spec_version}; model {model.model_version}",
             f"  artifact: {artifact}",
         ]
-    lines.append(f"eligible canonical events: {len(traced.members)} member(s)")
+    lines.append(f"eligible canonical events: {traced.member_total} member(s)")
     for group in traced.groups:
         lines.append(
             f"  {group.kind}: {group.members} (counted {group.counted}, followed "
-            f"{group.followed}); resolved {group.resolved}; cases {len(group.case_ids)}"
+            f"{group.followed}); resolved {group.resolved}; cases {group.cases}"
         )
-    lines.append(f"canonical cases: {len(traced.case_ids)}")
+    lines.append(f"canonical cases: {traced.case_total}")
+    if traced.members:
+        first = traced.offset + 1
+        last = traced.offset + len(traced.members)
+        lines.append(
+            f"  members {first}-{last} of {traced.member_total} (--limit {traced.limit}"
+            + (f" --offset {traced.offset}" if traced.offset else "")
+            + "); their cases:"
+        )
     lines.extend(f"  {case_id}" for case_id in traced.case_ids)
     lines.append(f"source records: {len(traced.source_records)}")
     for record in traced.source_records:

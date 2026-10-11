@@ -25,6 +25,8 @@ from judgemetrics.api.deps import (
 )
 from judgemetrics.api.errors import ApiError, error_responses
 from judgemetrics.config import Settings
+from judgemetrics.metrics.provenance import DEFAULT_LIMIT as DEFAULT_TRACE_LIMIT
+from judgemetrics.metrics.provenance import MAX_LIMIT as MAX_TRACE_LIMIT
 from judgemetrics.schemas.metrics import (
     ComparePage,
     ObservationProvenance,
@@ -170,12 +172,23 @@ def get_compare(
     response_model=ObservationProvenance,
     responses=error_responses(404, 422),
     summary="The provenance chain of a current observation, from its number to the raw artifacts",
-    dependencies=[Depends(StrictQuery())],
+    dependencies=[Depends(StrictQuery("limit", "offset"))],
 )
 def get_observation_provenance(
-    observation_id: uuid.UUID, session: SessionDep, settings: SettingsDep
+    observation_id: uuid.UUID,
+    session: SessionDep,
+    settings: SettingsDep,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=MAX_TRACE_LIMIT,
+            description=f"Members listed, at most {MAX_TRACE_LIMIT}; the counts cover them all.",
+        ),
+    ] = DEFAULT_TRACE_LIMIT,
+    offset: Annotated[int, Query(ge=0, description="Members to skip before the page.")] = 0,
 ) -> ObservationProvenance:
-    found = observation_provenance(session, settings, observation_id)
+    found = observation_provenance(session, settings, observation_id, limit=limit, offset=offset)
     if found is None:
         raise ApiError(
             status_code=404, code="not_found", message=f"observation {observation_id} not found"

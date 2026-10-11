@@ -2251,16 +2251,22 @@
         "type": "object"
       },
       "MemberGroup": {
-        "description": "The observation's members of one kind: the eligible canonical rows behind the number.",
+        "description": "The observation's members of one kind: the eligible canonical rows behind the number.\n\nThe counts cover every member; `member_ids` and `case_ids` are one page of them\n(`limit` and `offset` of the request), so a response is bounded however large the\ncohort is.",
         "properties": {
           "case_ids": {
-            "description": "The distinct cases the members belong to (`/cases/{id}`), sorted.",
+            "description": "The distinct cases (`/cases/{id}`) of the page's members, sorted.",
             "items": {
               "format": "uuid",
               "type": "string"
             },
             "title": "Case Ids",
             "type": "array"
+          },
+          "cases": {
+            "description": "The distinct cases the members belong to, in all.",
+            "minimum": 0.0,
+            "title": "Cases",
+            "type": "integer"
           },
           "counted": {
             "description": "Members in the numerator.",
@@ -2273,6 +2279,15 @@
             "minimum": 0.0,
             "title": "Followed",
             "type": "integer"
+          },
+          "member_ids": {
+            "description": "The page of members, by id: the canonical rows (a decision, charge, case, sentence, court event, or justice event) the observation was computed from.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Member Ids",
+            "type": "array"
           },
           "member_kind": {
             "enum": [
@@ -2305,6 +2320,8 @@
           "counted",
           "followed",
           "resolved",
+          "cases",
+          "member_ids",
           "case_ids"
         ],
         "title": "MemberGroup",
@@ -3359,6 +3376,12 @@
             "title": "Complete",
             "type": "boolean"
           },
+          "limit": {
+            "description": "The size of the page of members listed.",
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
           "members": {
             "description": "By member kind.",
             "items": {
@@ -3381,11 +3404,17 @@
           "observation": {
             "$ref": "#/components/schemas/TracedObservation"
           },
+          "offset": {
+            "description": "Members skipped before the page.",
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "snapshot": {
             "$ref": "#/components/schemas/SnapshotOut"
           },
           "source_records": {
-            "description": "The distinct artifacts behind every member, newest retrieval first.",
+            "description": "The distinct artifacts behind every member, not only the page's, newest first.",
             "items": {
               "$ref": "#/components/schemas/SourceRecordOut"
             },
@@ -3406,6 +3435,8 @@
           "snapshot",
           "model",
           "members",
+          "limit",
+          "offset",
           "source_records",
           "sources",
           "complete"
@@ -6328,6 +6359,33 @@
               "format": "uuid",
               "title": "Observation Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "Members listed, at most 1000; the counts cover them all.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "Members listed, at most 1000; the counts cover them all.",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Members to skip before the page.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Members to skip before the page.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           }
         ],
