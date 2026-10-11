@@ -688,6 +688,20 @@ export is measured separately.
 | Pipeline step 13 on a fixture-sized change | 44 s | 3.71 GiB | `ingest run cook_sao --from-fixture` over the full corpus: 35 impacted subjects, nothing to publish (the fixture re-derives what is stored). Dominated by the export read and the frames of both sources. |
 | Snapshot export alone | 31 s | 1.09 GiB | Every source's eleven tables, streamed from the database to Parquet (the Step 5 export took 72-79 s at 4.26 GiB). |
 
+**Deployed and verified** (the same sequence on the maintainer's database itself,
+after the merge of PR #60, 2026-10-10; the rehearsal above was on a copy):
+`uv run poe migrate` took 82.3 s at 0.21 GiB and `/api/v1/ready` then reported
+`0013`; `uv run poe compute-metrics` took 297.5 s at 3.60 GiB (100,543
+observations: 71,979 for Cook County and 28,564 for the demo; 7,241 families of
+11,004,726 rows; the database grew to 4,495 MB) and a second run took 138.7 s at
+3.58 GiB and published nothing (557 subjects unchanged); `uv run judgemetrics
+metrics verify` took 148.6 s at 3.66 GiB and verified all 100,543 observations
+and 112 coverage statistics; `provenance trace --limit 20` answered `complete:
+yes` in 2.1 s for a random Cook County observation (2 members) and in 4.1 s for
+the largest (630,610 members, 214,330 cases). Wall times are within 9% of the
+rehearsal's (the reruns were faster), peak memory within 5% (the migration's differs
+by 0.04 GiB), and every figure is inside the budget below.
+
 For scale against the Step 5 figures: `metrics compute --source synthetic` took
 562 s at 4.26 GiB for 28,564 observations; the full compute above does 3.5 times
 the observations, over a corpus that was not computable at all, in 298 s at
