@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import polars as pl
@@ -76,10 +76,11 @@ from judgemetrics.metrics.attribution import (
     Subject,
     pretrial_decisions_for,
 )
-from judgemetrics.metrics.compute import Member, NotObservableRecord, ObservationDraft
+from judgemetrics.metrics.compute import NotObservableRecord, ObservationDraft
 from judgemetrics.metrics.frame import Frame
 from judgemetrics.metrics.index_events import MEMBER_DECISION, PRETRIAL_RELEASE, index_events
 from judgemetrics.metrics.intervals import round6
+from judgemetrics.metrics.members import PLAIN, MemberFamily, atoms
 from judgemetrics.metrics.registry import (
     OBSERVED_EXPECTED,
     MetricDefinitionSpec,
@@ -221,8 +222,13 @@ def _window_drafts(
     estimates: Estimates,
     parameters: ModelParameters,
     cohorts: Mapping[str, Sequence[str]],
-) -> list[ObservationDraft]:
-    """One draft per requested judge for one window (see the module docstring)."""
+) -> tuple[list[ObservationDraft], dict[str, dict[str, bool]]]:
+    """One draft per requested judge for one window, and each judge's members in the ratio.
+
+    The second value maps a judge to ``{member: had the outcome}`` for the members the
+    design scored (the drafts carry no members of their own: ``_judge_family`` builds one
+    family per judge from every window's flags).
+    """
     scored = estimates.scored
     ratios, weights = estimates.ratio, estimates.weight
     lower, upper = estimates.lower, estimates.upper
@@ -267,15 +273,6 @@ def _window_drafts(
             distribution=None,
             lower=_finite(float(lower[position])) if has_ratio and position is not None else None,
             upper=_finite(float(upper[position])) if has_ratio and position is not None else None,
-            members=tuple(
-                Member(
-                    kind=MEMBER_DECISION,
-                    id=member,
-                    counted=in_ratio.get(member, False),
-                    followed=member in in_ratio,
-                )
-                for member in cohort
-            ),
             expected_count=expected,
             expected_rate=None if expected is None or n == 0 else round6(expected / n),
             standardized_ratio=(
@@ -287,7 +284,30 @@ def _window_drafts(
             model_hash=parameters.content_hash,
         )
         drafts.append(apply(draft, definition))
-    return drafts
+    return drafts, outcomes
+
+
+def _judge_family(
+    cohort: Sequence[str], flags: Sequence[Mapping[str, bool]], windows: Sequence[int | None]
+) -> MemberFamily:
+    """One judge's family: the cohort's decisions, a flag slot per window.
+
+    ``flags[i]`` maps the cohort members in the ratio of window ``i`` to whether they
+    had the outcome: ``followed`` is membership, ``counted`` the outcome. Adjusted
+    observations cover the whole coverage window, so no row carries an anchor year.
+    """
+    members = pl.DataFrame({"member_id": list(cohort)}, schema={"member_id": pl.String})
+    counted: list[pl.Expr] = []
+    followed: list[pl.Expr] = []
+    for in_ratio in flags:
+        counted.append(pl.col("member_id").is_in([m for m, outcome in in_ratio.items() if outcome]))
+        followed.append(pl.col("member_id").is_in(list(in_ratio)))
+    return MemberFamily(
+        MEMBER_DECISION,
+        PLAIN,
+        tuple(windows),
+        atoms(members, member_id="member_id", anchor=None, counted=counted, followed=followed),
+    )
 
 
 def adjusted_observations(
@@ -323,6 +343,7 @@ def adjusted_observations(
     rule = AttributionRule.from_spec(definition.attribution)
     cohorts = _cohorts(frame, target, rule, wanted)
     drafts: list[ObservationDraft] = []
+    per_window: list[dict[str, dict[str, bool]]] = []
     for window in target.windows:
         parameters = _model(models, target, window, spec)
         design = design_rows(frame, spec, target, window)
@@ -333,16 +354,22 @@ def adjusted_observations(
             estimates = estimate(design, parameters, spec)
         except RatioError as exc:
             raise RatioError(f"{definition.slug}: {exc}") from exc
-        drafts.extend(
-            _window_drafts(
-                frame,
-                definition,
-                source_id=source_id,
-                window=window,
-                design=design,
-                estimates=estimates,
-                parameters=parameters,
-                cohorts=cohorts,
-            )
+        window_drafts, outcomes = _window_drafts(
+            frame,
+            definition,
+            source_id=source_id,
+            window=window,
+            design=design,
+            estimates=estimates,
+            parameters=parameters,
+            cohorts=cohorts,
         )
-    return drafts, []
+        drafts.extend(window_drafts)
+        per_window.append(outcomes)
+    families = {
+        judge: _judge_family(
+            cohort, [outcomes.get(judge, {}) for outcomes in per_window], tuple(target.windows)
+        )
+        for judge, cohort in cohorts.items()
+    }
+    return [replace(draft, family=families[draft.subject_id]) for draft in drafts], []

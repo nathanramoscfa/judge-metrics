@@ -41,7 +41,9 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Self
 
+import numpy as np
 import polars as pl
 
 from judgemetrics.metrics.intervals import normal_interval, round6, wilson
@@ -124,27 +126,97 @@ def fixed_window_rates(
     coverage_end_exclusive_at: datetime,
     windows: tuple[int, ...] = WINDOWS_DAYS,
 ) -> list[WindowRate]:
-    """The fixed-window rate per window over the followed members."""
+    """The fixed-window rate per window over the followed members.
+
+    One pass over the cohort: for each window the followed members (``exposure_start + w``
+    inside the coverage) and, of those, the members whose first outcome is within the window
+    are summed together (the same flags ``member_windows`` lists per member, without
+    materializing a row per member and window).
+    """
     eligible = cohort.height
-    flags = member_windows(cohort, coverage_end_exclusive_at, windows)
+    end = pl.lit(coverage_end_exclusive_at)
+    sums: list[pl.Expr] = []
+    for window in windows:
+        reach = pl.col("exposure_start") + pl.duration(days=window)
+        followed = reach < end
+        outcome = pl.col(FIRST_OUTCOME_AT).is_not_null() & (pl.col(FIRST_OUTCOME_AT) <= reach)
+        sums.append(followed.sum().alias(f"followed_{window}"))
+        sums.append((followed & outcome.fill_null(False)).sum().alias(f"counted_{window}"))
+    totals = cohort.select(sums).row(0, named=True) if windows else {}
     rates: list[WindowRate] = []
     for window in windows:
-        rows = flags.filter(pl.col("window_days") == window)
-        followed = int(rows["followed"].sum())
-        numerator = int(rows["counted"].sum())
-        lower, upper = wilson(numerator, followed)
+        followed_members = int(totals[f"followed_{window}"])
+        numerator = int(totals[f"counted_{window}"])
+        lower, upper = wilson(numerator, followed_members)
         rates.append(
             WindowRate(
                 window_days=window,
                 eligible=eligible,
-                followed=followed,
+                followed=followed_members,
                 numerator=numerator,
-                value=None if followed == 0 else round6(numerator / followed),
+                value=None if followed_members == 0 else round6(numerator / followed_members),
                 lower=lower,
                 upper=upper,
             )
         )
     return rates
+
+
+@dataclass(frozen=True, slots=True)
+class ProductLimit:
+    """The product-limit curve of one cohort, evaluated at any time in O(log events).
+
+    Built once from the cohort's durations and event flags with sorted arrays
+    (``np.unique`` for the distinct event times and their failures, one
+    ``searchsorted`` for the members at risk), the curve keeps the survival after
+    each event time and the Greenwood sum up to it. ``np.cumprod`` and
+    ``np.cumsum`` fold left to right, so every float is the one the plain loop
+    ``S *= 1 - d / n``, ``G += d / (n (n - d))`` produces: the vectorized estimator
+    equals the reference loop (kept in ``tests/unit/test_censoring_vectorized.py``
+    as the oracle) bit for bit, not only to six decimals.
+    """
+
+    times: np.ndarray
+    survival: np.ndarray
+    greenwood: np.ndarray
+    # The first event time at which every member at risk fails (``len(times)`` if none).
+    exhausted: int
+
+    @classmethod
+    def fit(
+        cls, durations: Sequence[int] | np.ndarray, events: Sequence[bool] | np.ndarray
+    ) -> Self:
+        """The curve of ``durations[i]`` ending in an event when ``events[i]``.
+
+        Events at a time are counted before censorings at the same time, so a
+        member censored at ``t_i`` is still at risk there.
+        """
+        spans = np.asarray(durations, dtype=np.int64)
+        flags = np.asarray(events, dtype=np.bool_)
+        if spans.shape != flags.shape:
+            msg = "durations and events must align"
+            raise ValueError(msg)
+        times, failed = np.unique(spans[flags], return_counts=True)
+        failed = failed.astype(np.int64)
+        at_risk = spans.size - np.searchsorted(np.sort(spans), times, side="left")
+        at_risk = at_risk.astype(np.int64)
+        every = at_risk == failed
+        exhausted = int(np.argmax(every)) if bool(every.any()) else int(times.size)
+        # An exhausted time divides by zero below; no value from it onwards is read.
+        survivors = np.where(every, 1, at_risk - failed)
+        survival = np.cumprod(1.0 - failed / at_risk)
+        greenwood = np.cumsum(failed / (at_risk * survivors))
+        return cls(times=times, survival=survival, greenwood=greenwood, exhausted=exhausted)
+
+    def at(self, time: int) -> tuple[float, float]:
+        """``(S(time), Greenwood variance of S(time))``; ``(0.0, 0.0)`` once all at risk failed."""
+        reached = int(np.searchsorted(self.times, time, side="right"))
+        if self.exhausted < reached:
+            return 0.0, 0.0
+        if reached == 0:
+            return 1.0, 0.0
+        survival = float(self.survival[reached - 1])
+        return survival, survival * survival * float(self.greenwood[reached - 1])
 
 
 def product_limit(durations: Sequence[int], events: Sequence[bool], at: int) -> tuple[float, float]:
@@ -154,24 +226,7 @@ def product_limit(durations: Sequence[int], events: Sequence[bool], at: int) -> 
     any common unit; ``events[i]`` whether it ended in an event. Events at
     a time are counted before censorings at the same time.
     """
-    if len(durations) != len(events):
-        msg = "durations and events must align"
-        raise ValueError(msg)
-    event_times = sorted({t for t, is_event in zip(durations, events, strict=True) if is_event})
-    survival = 1.0
-    greenwood = 0.0
-    for time_i in event_times:
-        if time_i > at:
-            break
-        at_risk = sum(1 for t in durations if t >= time_i)
-        failed = sum(
-            1 for t, is_event in zip(durations, events, strict=True) if is_event and t == time_i
-        )
-        if at_risk == failed:
-            return 0.0, 0.0
-        survival *= 1.0 - failed / at_risk
-        greenwood += failed / (at_risk * (at_risk - failed))
-    return survival, survival * survival * greenwood
+    return ProductLimit.fit(durations, events).at(at)
 
 
 def _durations(cohort: pl.DataFrame, coverage_end_exclusive_at: datetime) -> pl.DataFrame:
@@ -201,19 +256,16 @@ def kaplan_meier(
     if eligible == 0:
         return [SurvivalPoint(window, 0, 0, 0, None, None, None, None) for window in windows]
     table = _durations(cohort, coverage_end_exclusive_at)
-    durations: list[int] = []
-    events: list[bool] = []
-    for event_us, censor_us in table.iter_rows():
-        if event_us is not None and event_us < censor_us:
-            durations.append(int(event_us))
-            events.append(True)
-        else:
-            durations.append(int(censor_us))
-            events.append(False)
+    event_us = table[EVENT_US]
+    censor_us = table[CENSOR_US]
+    # A first outcome at or after the coverage end is a censoring, not an event.
+    is_event = (event_us.is_not_null() & (event_us < censor_us)).fill_null(False).to_numpy()
+    durations = np.where(is_event, event_us.fill_null(0).to_numpy(), censor_us.to_numpy())
+    curve = ProductLimit.fit(durations, is_event)
     points: list[SurvivalPoint] = []
     for window in windows:
         at = window * MICROSECONDS_PER_DAY
-        survival, variance = product_limit(durations, events, at)
+        survival, variance = curve.at(at)
         incidence = 1.0 - survival
         standard_error = math.sqrt(variance)
         lower, upper = normal_interval(incidence, standard_error)
@@ -221,8 +273,8 @@ def kaplan_meier(
             SurvivalPoint(
                 window_days=window,
                 eligible=eligible,
-                events=sum(1 for t, e in zip(durations, events, strict=True) if e and t <= at),
-                censored=sum(1 for t, e in zip(durations, events, strict=True) if not e and t < at),
+                events=int(np.count_nonzero(is_event & (durations <= at))),
+                censored=int(np.count_nonzero(~is_event & (durations < at))),
                 cumulative_incidence=round6(incidence),
                 standard_error=round6(standard_error),
                 lower=lower,

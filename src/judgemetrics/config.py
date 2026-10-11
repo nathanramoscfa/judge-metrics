@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     # ingest transaction; the test suite turns it off and enables it per test.
     snapshot_dir: Path = Path("data") / "snapshots"
     metrics_recompute_on_ingest: bool = True
+    # The declared size of step 13 (docs/ARCHITECTURE.md "The step-13 rule"): a run that
+    # touches more cases, or impacts more judges and courts, is not recomputed inside its
+    # ingest transaction; the reason is recorded on the run and the next full
+    # `metrics compute` publishes it.
+    metrics_recompute_max_cases: int = Field(default=50_000, ge=0)
+    metrics_recompute_max_subjects: int = Field(default=500, ge=0)
     # Public API (judgemetrics.api). `trust_proxy` lets the rate limiter key
     # on the address a trusted reverse proxy appended to `X-Forwarded-For`;
     # without it the header is ignored (a client could otherwise spoof its

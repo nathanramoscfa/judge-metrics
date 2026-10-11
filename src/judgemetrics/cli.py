@@ -960,7 +960,12 @@ def metrics_compute(
         with Session(engine) as session:
             try:
                 result = compute_and_publish(
-                    session, settings, subjects=subjects, label=label, sources=sources
+                    session,
+                    settings,
+                    subjects=subjects,
+                    label=label,
+                    sources=sources,
+                    retain=False,
                 )
             except (PublishError, SnapshotError, ComputeError, RegistryError) as exc:
                 session.rollback()
@@ -1137,12 +1142,26 @@ def metrics_coverage(
 def provenance_trace(
     observation_id: Annotated[str, typer.Argument(help="A metric_observation id (UUID).")],
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+    limit: Annotated[
+        int,
+        typer.Option(
+            "--limit",
+            min=1,
+            max=1_000,
+            help="Members listed (default 100, at most 1,000); the counts cover them all.",
+        ),
+    ] = 100,
+    offset: Annotated[
+        int, typer.Option("--offset", min=0, help="Members to skip before the page.")
+    ] = 0,
 ) -> None:
     """Print the chain observation → snapshot → members → cases → source records → artifacts.
 
     Reads as the read-only role; exits 1 when the chain is incomplete (a
     member without a canonical row, a row without a source record, a
-    record without its artifact digest) and 2 for a malformed or unknown id.
+    record without its artifact digest — judged over every member, not only the
+    page) and 2 for a malformed or unknown id. `--limit` and `--offset` choose the
+    page of members listed, so the output is bounded however large the cohort is.
     """
     import json
 
@@ -1165,7 +1184,7 @@ def provenance_trace(
         with Session(engine) as session:
             try:
                 # The settings locate an adjusted observation's model artifact.
-                traced = trace(session, oid, settings=settings)
+                traced = trace(session, oid, limit=limit, offset=offset, settings=settings)
             except TraceError as exc:
                 typer.echo(f"error: {exc}", err=True)
                 raise typer.Exit(EXIT_USAGE) from exc

@@ -150,7 +150,7 @@ uv run poe migrate         # alembic upgrade head as the admin role
 uv run poe dev-api         # uvicorn with reload: /api/v1/health, /api/v1/ready
 uv run poe dev-web         # Next.js dev server in web/ (pnpm) against the local API
 uv run poe ingest-fjc      # FJC judges, courts, service records → raw lake + canonical tables (ingest role)
-uv run poe ingest-cook     # the five Cook County SAO exports (1.2 GB) streamed → raw lake → canonical tables, step 13 off via the task's env table (not in bootstrap); a rerun downloads and parses nothing
+uv run poe ingest-cook     # the five Cook County SAO exports (1.2 GB) streamed → raw lake → canonical tables, step 13 deferred by the declared size (not in bootstrap); a rerun downloads and parses nothing
 uv run judgemetrics ingest retire SOURCE [--yes]   # delete a registered source's rows (ingest role, one transaction, refused in production) before ingesting a new release; keeps the source row, runs, lake, audit log
 uv run judgemetrics sources profile cook_sao [--out PATH] [--check] [--from-fixture DIR]   # data/reference/cook_sao/profile.yaml from the stored exports (ingest role); --check exits 1 on drift
 uv run judgemetrics sources excerpt cook_sao --out DIR [--from-fixture DIR]   # the stratified real-row fixture, blanked columns emptied; excerpting the fixture reproduces it
@@ -167,7 +167,7 @@ uv run poe compute-metrics                       # judgemetrics metrics compute:
 uv run judgemetrics metrics compute [--label TEXT] [--subject judge:<uuid> ...] [--source SOURCE ...] [--json]   # --source: those sources' observations only (the snapshot and the coverage statistics still cover every source)
 uv run judgemetrics metrics verify [--snapshot HASH] [--json]   # recompute every current observation and coverage statistic from its snapshot; exit 1 on any mismatch
 uv run judgemetrics metrics coverage [--source SOURCE ...] [--json]   # the latest snapshot's coverage statistics per source, jurisdiction, and court (app role)
-uv run judgemetrics provenance trace <observation id> [--json]  # the chain from a published number to the raw artifacts, top-down (app role; an adjusted observation's model artifact is checked under JUDGEMETRICS_SNAPSHOT_DIR); exit 1 when incomplete
+uv run judgemetrics provenance trace <observation id> [--json] [--limit N] [--offset N]  # the chain from a published number to the raw artifacts, top-down (app role; an adjusted observation's model artifact is checked under JUDGEMETRICS_SNAPSHOT_DIR); the totals cover every member, N members are listed (default 100, at most 1,000); exit 1 when incomplete
 uv run judgemetrics models fit [--snapshot HASH] [--json]       # fit and record every expected-outcome model the latest (or named) snapshot lacks (ingest role); idempotent
 uv run judgemetrics models list|show <id or hash> [--json]      # the model catalogue and a model card (app role); never the storage URI
 uv run judgemetrics models verify [--snapshot HASH] [--refit]   # every artifact hashes to its row; --refit reproduces it byte for byte; exit 1 on any mismatch
@@ -1277,8 +1277,7 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   batch at a time and issues are inserted with Core in batches of 1,000;
   `recompute_metrics` checks the setting before computing the impacted set;
   the parent cases of a run's children that exist only in the database are
-  read for the case-level checks (`quality.checks.CaseFacts`). **Do not run
-  `compute-metrics` over a database holding the full corpus until Step 6.**
+  read for the case-level checks (`quality.checks.CaseFacts`).
   **`ingest retire SOURCE_ID [--yes]`** (`ingest/retire.py`) deletes a
   registered source's rows in dependency order (metrics, issues, case-level
   rows, persons, reference rows nothing else cites, source records nothing
@@ -1287,8 +1286,8 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   person of the source that a row of another source still points at aborts
   it. `purge_source` (tests) calls it; `seed` retires the synthetic source
   first when the dataset on disk was written by an older `GENERATOR_VERSION`
-  (issue #36). The `ingest-cook` poe task is an inline table with an `env`
-  entry turning pipeline step 13 off.
+  (issue #36). Step 6 removed the `ingest-cook` task's `env` entry: a full Cook
+  County run is beyond step 13's declared size and defers by rule.
 
 - Real-data metric semantics (Phase 5 Step 5, docs/ARCHITECTURE.md "Real-data
   semantics", docs/METHODOLOGY.md, docs/DATA_MODEL.md "Revision 0012"): registry
@@ -1347,7 +1346,8 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   unfitted; the validation report defaults to sources with an attempted fit.
   `Snapshot.frame` caches one frame per source per opened snapshot; building
   Cook County's takes about 4 minutes on an idle machine and up to 9 under
-  load (Python row construction: Step 6's streamed export). Issue #42: a reused `metric_snapshot` row takes the
+  load (Python row construction; Step 6's Polars scans build it in about a second).
+  Issue #42: a reused `metric_snapshot` row takes the
   versions of the latest publish; issue #40: `models fit` prints `new=N
   existing=N status ...`. Thresholds stayed 0/10/30 after measuring Cook
   County's cohorts (registry `suppression.measurements`, 88 rows, regenerate
@@ -1355,6 +1355,68 @@ In `web/`: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`,
   `under_threshold` is against the metrics' own threshold. Tests:
   `test_cook_sao_restricted.py` matches restricted values as whole tokens (an
   age band's digits occur inside random UUIDs in audit payloads).
+
+- Metrics engine at corpus scale (Phase 5 Step 6, docs/ARCHITECTURE.md "The
+  engine at corpus scale" and "Scale budgets", docs/DATA_MODEL.md "Member
+  families"): migration `0013_member_storage` replaces
+  `metric_observation_member` with **member families** — one
+  `metric_member_family` per definition, subject, source, snapshot, and content
+  (`members_hash` = sha256 of the kind and the canonical rows) and its
+  `metric_member` rows `(family_id, ordinal, member_id, anchor_year,
+  dimension_value, counted_mask, followed_mask, multiplicity)`; bit `i` of a mask
+  is the flag in the definition's `i`-th window, and every observation's members
+  are a *filter* of its family (`MemberFamily.project`; SQL twin
+  `member_store.projection`; the three ways a row relates to a dimension are
+  `plain`, `belongs_to` — a median by category — and `counted_in` — a
+  distribution). A compute function emits one family per (definition, subject)
+  (`members.atoms` builds the rows from Polars expressions) and `ObservationDraft.family`
+  is shared by its drafts; `draft.members` expands one observation's multiset for
+  tests only. A family is canonical (identical rows merged into a multiplicity;
+  rows sharing `(member_id, anchor_year, dimension_value)` paired by sorted order
+  per window, because the pairing is not in the observations), content-addressed
+  (an unchanged recompute finds it and writes nothing; a changed one is a new
+  row and the observations that cited the old one keep it — nothing in the member
+  tables is updated or deleted except with its source by `ingest retire`), and
+  written with `COPY` (`member_store.write_rows`, CSV from Polars through
+  psycopg's copy API). The migration converts both ways (its own pure-Python
+  fold, `COPY` for the rows; an inconsistent group stops it with a message); a
+  median by dimension loses the year of a member without a value in a year whose
+  (dimension, year) observation does not exist (a null year), so such a subject
+  republishes once after the migration. **Never edit `0013_member_storage.py`
+  after it has run on a database** (the scratch database keeps the old text:
+  `ALTER` by hand or recreate it). The compute streams: `compute.iter_all` yields
+  one `SubjectResult` per subject (the adjusted kind is computed for a source's
+  judges first and merged in) and `publish.Publisher.add` writes it before the
+  next is computed; `compute_and_publish(retain=False)` (the CLI and step 13)
+  keeps only counts, the default keeps every draft for the tests. The snapshot
+  export streams each table from a server-side cursor in 100,000-row batches with
+  the conversions done in SQL (`snapshot.export_statements`) and writes one table
+  at a time — byte for byte the Phase 3 export (kept in
+  `tests/integration/snapshot_reference.py` as the oracle); the frame of a source
+  is built with Polars lazy scans (merge survivors through a table, derived
+  other-case outcomes by group-by), equal to the row-by-row loader's. A table
+  that is a function of the frame alone is built once per frame
+  (`Frame.derived`: disposed charges, case dispositions, incarceration terms, a
+  court's cases, lead offenses, case persons); `Frame.replace` starts with an empty
+  cache. `censoring.ProductLimit` is the vectorized product-limit curve (the
+  Phase 3 loop is the oracle in `tests/unit/test_censoring_vectorized.py`;
+  bit-identical floats because `np.cumprod` and `np.cumsum` fold left to right) and
+  `fixed_window_rates` sums the six windows in one pass. `metrics verify` streams
+  by snapshot, source, and subject (the adjusted kind's models are read first; a
+  `ComputeError` marks every observation not yet compared `unverifiable`), reads
+  and hashes each stored family, and expands multisets only where a digest
+  differs (`members_hash` is a mismatch column of its own: a family whose rows do
+  not hash to their recorded digest). `provenance.trace(limit, offset)` returns the
+  totals over every member (window aggregates over a common table expression) and
+  one page ordered by member id; `check_chain` is a binary search of a family's
+  distinct ids in the snapshot's sorted id column (`Snapshot.missing_member_ids`),
+  not a Python loop over members. Pipeline step 13 has a declared size
+  (`Settings.metrics_recompute_max_cases` 50,000 touched cases and
+  `metrics_recompute_max_subjects` 500 impacted judges and courts): beyond it the
+  recompute is deferred, `ingest_run.metrics_deferred_reason` records why, and the
+  next `metrics compute` publishes it; `ingest-cook` has no `env` any more. The
+  metrics modules must not spell a restricted attribute word (the unit test greps
+  `race`, `gender`, `age_band`, ... as whole words, comments included).
 
 ## End-of-session report (from the brief)
 

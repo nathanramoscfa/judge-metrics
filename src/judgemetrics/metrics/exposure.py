@@ -58,14 +58,19 @@ class ExposureError(AttributionError):
 
 def incarceration_terms(frame: Frame) -> pl.DataFrame:
     """Every positive incarceration term: ``case_id``, ``person_id``, start, end, days."""
-    return frame.sentences.filter(
-        pl.col("incarceration_days").is_not_null() & (pl.col("incarceration_days") > 0)
-    ).select(
-        "case_id",
-        "person_id",
-        pl.col("sentence_at").alias(TERM_START),
-        (pl.col("sentence_at") + pl.duration(days=pl.col("incarceration_days"))).alias(TERM_END),
-        pl.col("incarceration_days").cast(pl.Int64).alias(TERM_DAYS),
+    return frame.derived(
+        "incarceration_terms",
+        lambda: frame.sentences.filter(
+            pl.col("incarceration_days").is_not_null() & (pl.col("incarceration_days") > 0)
+        ).select(
+            "case_id",
+            "person_id",
+            pl.col("sentence_at").alias(TERM_START),
+            (pl.col("sentence_at") + pl.duration(days=pl.col("incarceration_days"))).alias(
+                TERM_END
+            ),
+            pl.col("incarceration_days").cast(pl.Int64).alias(TERM_DAYS),
+        ),
     )
 
 

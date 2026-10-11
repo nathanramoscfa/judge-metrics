@@ -509,7 +509,12 @@ class SnapshotOut(BaseModel):
 
 
 class MemberGroup(BaseModel):
-    """The observation's members of one kind: the eligible canonical rows behind the number."""
+    """The observation's members of one kind: the eligible canonical rows behind the number.
+
+    The counts cover every member; `member_ids` and `case_ids` are one page of them
+    (`limit` and `offset` of the request), so a response is bounded however large the
+    cohort is.
+    """
 
     member_kind: MemberKind
     members: int = Field(ge=0, description="Rows of this kind behind the observation.")
@@ -519,8 +524,15 @@ class MemberGroup(BaseModel):
         ge=0,
         description="Members whose canonical row still exists; equals `members` when complete.",
     )
+    cases: int = Field(ge=0, description="The distinct cases the members belong to, in all.")
+    member_ids: list[uuid.UUID] = Field(
+        description=(
+            "The page of members, by id: the canonical rows (a decision, charge, case, "
+            "sentence, court event, or justice event) the observation was computed from."
+        )
+    )
     case_ids: list[uuid.UUID] = Field(
-        description="The distinct cases the members belong to (`/cases/{id}`), sorted."
+        description="The distinct cases (`/cases/{id}`) of the page's members, sorted."
     )
 
 
@@ -585,8 +597,10 @@ class ObservationProvenance(BaseModel):
         description="The fitted model of an adjusted observation; null for a descriptive one."
     )
     members: list[MemberGroup] = Field(description="By member kind.")
+    limit: int = Field(ge=1, description="The size of the page of members listed.")
+    offset: int = Field(ge=0, description="Members skipped before the page.")
     source_records: list[SourceRecordOut] = Field(
-        description="The distinct artifacts behind every member, newest retrieval first."
+        description="The distinct artifacts behind every member, not only the page's, newest first."
     )
     sources: list[SourceOut] = Field(description="The distinct source systems, by key.")
     complete: bool = Field(

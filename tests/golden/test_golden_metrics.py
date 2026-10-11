@@ -39,10 +39,17 @@ import pytest
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from judgemetrics.db.models import Base, MetricObservation, MetricObservationMember, MetricSnapshot
+from judgemetrics.db.models import (
+    Base,
+    MetricMember,
+    MetricMemberFamily,
+    MetricObservation,
+    MetricSnapshot,
+)
 from judgemetrics.db.models.enums import SubjectType
 from judgemetrics.db.session import make_engine
 from judgemetrics.metrics.engine import compute_and_publish
+from judgemetrics.metrics.member_store import observation_members
 from judgemetrics.metrics.registry import OBSERVED_EXPECTED, load_registry
 from judgemetrics.metrics.snapshot import (
     MEMBER_TABLES,
@@ -204,15 +211,14 @@ NOT_ADDITIVE_KINDS = frozenset({"survival", "median", OBSERVED_EXPECTED})
 
 
 def _members(session: Session, observation_ids: list[uuid.UUID]) -> Counter[tuple[Any, ...]]:
-    rows = session.execute(
-        select(
-            MetricObservationMember.member_kind,
-            MetricObservationMember.member_id,
-            MetricObservationMember.counted,
-            MetricObservationMember.followed,
-        ).where(MetricObservationMember.observation_id.in_(observation_ids))
-    ).all()
-    return Counter(tuple(row) for row in rows)
+    """The union of the observations' member multisets, ``(kind, id, counted, followed)``."""
+    found: Counter[tuple[Any, ...]] = Counter()
+    for observation_id in observation_ids:
+        found.update(
+            (m.kind, uuid.UUID(m.id), m.counted, m.followed)
+            for m in observation_members(session, observation_id)
+        )
+    return found
 
 
 @pytest.mark.parametrize(("kind", "code"), SUBJECTS, ids=[f"{k}-{c}" for k, c in SUBJECTS])
@@ -323,10 +329,7 @@ def test_every_member_id_exists_in_the_canonical_tables(
     session: Session, golden_metrics: GoldenMetrics
 ) -> None:
     del golden_metrics
-    kinds = {
-        row[0]
-        for row in session.execute(select(MetricObservationMember.member_kind).distinct()).all()
-    }
+    kinds = {row[0] for row in session.execute(select(MetricMemberFamily.member_kind).distinct())}
     assert kinds and kinds <= set(MEMBER_TABLES)
     for kind in sorted(kinds):
         table = Base.metadata.tables[
@@ -341,8 +344,9 @@ def test_every_member_id_exists_in_the_canonical_tables(
         ]
         member_ids = set(
             session.scalars(
-                select(MetricObservationMember.member_id)
-                .where(MetricObservationMember.member_kind == kind)
+                select(MetricMember.member_id)
+                .join(MetricMemberFamily, MetricMemberFamily.id == MetricMember.family_id)
+                .where(MetricMemberFamily.member_kind == kind)
                 .distinct()
             )
         )
@@ -353,10 +357,11 @@ def test_every_member_id_exists_in_the_canonical_tables(
     without = session.scalar(
         select(func.count())
         .select_from(MetricObservation)
+        .join(MetricMemberFamily, MetricMemberFamily.id == MetricObservation.member_family_id)
         .where(
             MetricObservation.superseded_at.is_(None),
             MetricObservation.eligible_count > 0,
-            ~MetricObservation.id.in_(select(MetricObservationMember.observation_id)),
+            MetricMemberFamily.row_count == 0,
         )
     )
     assert without == 0

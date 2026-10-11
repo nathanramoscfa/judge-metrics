@@ -72,9 +72,12 @@ def final_dispositions() -> tuple[str, ...]:
 
 def disposed_charges(frame: Frame) -> pl.DataFrame:
     """Charges with a final disposition and a disposition time (never a non-final one)."""
-    return frame.charges.filter(
-        pl.col("disposition").is_in(list(final_dispositions()))
-        & pl.col("disposed_at").is_not_null()
+    return frame.derived(
+        "disposed_charges",
+        lambda: frame.charges.filter(
+            pl.col("disposition").is_in(list(final_dispositions()))
+            & pl.col("disposed_at").is_not_null()
+        ),
     )
 
 
@@ -86,25 +89,41 @@ def case_dispositions(frame: Frame) -> pl.DataFrame:
     whose disposal sets that time, ties broken by the source's charge id
     (``source_row_id``) and then the canonical id.
     """
-    return (
-        disposed_charges(frame)
-        .sort(
-            ["case_id", "disposed_at", "source_row_id", "id"],
-            descending=[False, True, False, False],
-            nulls_last=True,
-        )
-        .unique(subset=["case_id"], keep="first", maintain_order=True)
-        .select(
-            "case_id",
-            pl.col("disposed_at").alias(DISPOSITION_AT),
-            pl.col("judge_id").alias(DISPOSING_JUDGE),
-        )
+    return frame.derived(
+        "case_dispositions",
+        lambda: (
+            disposed_charges(frame)
+            .sort(
+                ["case_id", "disposed_at", "source_row_id", "id"],
+                descending=[False, True, False, False],
+                nulls_last=True,
+            )
+            .unique(subset=["case_id"], keep="first", maintain_order=True)
+            .select(
+                "case_id",
+                pl.col("disposed_at").alias(DISPOSITION_AT),
+                pl.col("judge_id").alias(DISPOSING_JUDGE),
+            )
+        ),
     )
 
 
 def disposed_cases(frame: Frame) -> pl.DataFrame:
     """The disposed cases: ``cases`` columns, ``disposition_at``, the disposing judge."""
-    return frame.cases.join(case_dispositions(frame), left_on="id", right_on="case_id", how="inner")
+    return frame.derived(
+        "disposed_cases",
+        lambda: frame.cases.join(
+            case_dispositions(frame), left_on="id", right_on="case_id", how="inner"
+        ),
+    )
+
+
+def disposed_case_persons(frame: Frame) -> pl.DataFrame:
+    """``(case_id, person_id)`` of every person with a disposed charge in a case, distinct."""
+    return frame.derived(
+        "disposed_case_persons",
+        lambda: disposed_charges(frame).select("case_id", "person_id").unique(),
+    )
 
 
 def _select_index(
@@ -133,7 +152,7 @@ def disposition_index(frame: Frame, rule: AttributionRule, subject: Subject) -> 
     cases = attributed_cases(
         frame, rule, subject, rows=disposed_cases(frame), time_column=DISPOSITION_AT
     ).select(pl.col("id").alias("case_id"), DISPOSITION_AT)
-    persons = disposed_charges(frame).select("case_id", "person_id").unique()
+    persons = disposed_case_persons(frame)
     rows = cases.join(persons, on="case_id", how="inner").with_columns(
         pl.col("case_id").alias("member_id")
     )

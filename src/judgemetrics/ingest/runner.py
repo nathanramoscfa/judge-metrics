@@ -379,32 +379,37 @@ def run_ingest(
 
 @dataclass(frozen=True, slots=True)
 class RecomputeResult:
-    """What step 13 did: the impacted subjects and, when it ran, the engine's counts."""
+    """What step 13 did: the impacted subjects and, when it ran, the engine's counts.
+
+    ``deferred`` is why it did not run when the run touched more than the declared size
+    (``Settings.metrics_recompute_max_cases`` and ``..._max_subjects``): the next full
+    ``metrics compute`` recomputes everything; the reason is recorded on the run.
+    """
 
     impacted: tuple[Subject, ...]
     engine: EngineResult | None
+    deferred: str | None = None
 
     @property
     def ran(self) -> bool:
         return self.engine is not None
 
 
-def impacted_subjects(
-    session: Session, resolved: _Resolved, published: PublishedIds
-) -> tuple[Subject, ...]:
-    """The judges and courts whose observations the run's published rows can change.
+@dataclass(frozen=True, slots=True)
+class Touched:
+    """The rows a run published, by id: what the impacted set is closed from."""
 
-    The touched cases are those of every published case-level draft
-    (cases, parties, assignments, charges, events, decisions, sentences)
-    and the related cases of published justice events, widened to every
-    case of the persons those rows name — an outcome is the person's, so a
-    changed charge or event in one case moves the cohorts of the person's
-    other cases. The judges are those the published assignment, decision,
-    and sentence drafts name plus every judge with an assignment, decision,
-    or sentence on a touched case; the courts are those of the published
-    case drafts plus the courts of every touched case. A reference-only
-    run (FJC) touches nothing.
-    """
+    case_ids: set[uuid.UUID]
+    person_ids: set[uuid.UUID]
+    judge_ids: set[uuid.UUID]
+    court_ids: set[uuid.UUID]
+
+    def __bool__(self) -> bool:
+        return bool(self.case_ids or self.person_ids or self.judge_ids or self.court_ids)
+
+
+def touched_rows(resolved: _Resolved, published: PublishedIds) -> Touched:
+    """The cases, persons, judges, and courts the run's published drafts name (in memory)."""
     case_ids: set[uuid.UUID] = set()
     person_ids: set[uuid.UUID] = set()
     judge_ids: set[uuid.UUID] = set()
@@ -446,7 +451,33 @@ def impacted_subjects(
         related = published.get("case", event.related_case_key)
         if related is not None:
             case_ids.add(related)
-    if not case_ids and not person_ids and not judge_ids and not court_ids:
+    return Touched(case_ids, person_ids, judge_ids, court_ids)
+
+
+def impacted_subjects(
+    session: Session, resolved: _Resolved, published: PublishedIds
+) -> tuple[Subject, ...]:
+    """The judges and courts whose observations the run's published rows can change.
+
+    The touched cases are those of every published case-level draft
+    (cases, parties, assignments, charges, events, decisions, sentences)
+    and the related cases of published justice events, widened to every
+    case of the persons those rows name — an outcome is the person's, so a
+    changed charge or event in one case moves the cohorts of the person's
+    other cases. The judges are those the published assignment, decision,
+    and sentence drafts name plus every judge with an assignment, decision,
+    or sentence on a touched case; the courts are those of the published
+    case drafts plus the courts of every touched case. A reference-only
+    run (FJC) touches nothing.
+    """
+    return close_impacted(session, touched_rows(resolved, published))
+
+
+def close_impacted(session: Session, touched: Touched) -> tuple[Subject, ...]:
+    """The closure of ``touched`` (see ``impacted_subjects``): bounded array lookups."""
+    case_ids, person_ids = set(touched.case_ids), set(touched.person_ids)
+    judge_ids, court_ids = set(touched.judge_ids), set(touched.court_ids)
+    if not touched:
         return ()
     charge = Base.metadata.tables["charge"]
     court_case = Base.metadata.tables["court_case"]
@@ -526,26 +557,66 @@ def recompute_metrics(
     from judgemetrics.metrics.registry import DESCRIPTIVE_KINDS
 
     if not settings.metrics_recompute_on_ingest:
-        # The impacted set costs a lookup per touched case: not computed when nothing
-        # will use it (a full Cook County run turns step 13 off until the engine scales).
         bound.info("ingest.metrics.skipped", because="metrics_recompute_on_ingest is off")
         return RecomputeResult(impacted=(), engine=None)
-    impacted = impacted_subjects(session, resolved, published)
+    touched = touched_rows(resolved, published)
+    if not touched:
+        bound.info("ingest.metrics.skipped", because="no impacted subject")
+        return RecomputeResult(impacted=(), engine=None)
+    # The declared size (docs/ARCHITECTURE.md "The step-13 rule"): the recompute exports the
+    # database and rebuilds the frames inside the ingest transaction, and its work grows with
+    # the impacted subjects, so a run that touches more is left to the next full compute.
+    if len(touched.case_ids) > settings.metrics_recompute_max_cases:
+        return _defer(
+            run,
+            session,
+            bound,
+            f"the run touched {len(touched.case_ids)} cases, more than the "
+            f"{settings.metrics_recompute_max_cases} step 13 recomputes",
+        )
+    impacted = close_impacted(session, touched)
     if not impacted:
         bound.info("ingest.metrics.skipped", because="no impacted subject")
         return RecomputeResult(impacted=(), engine=None)
+    if len(impacted) > settings.metrics_recompute_max_subjects:
+        return _defer(
+            run,
+            session,
+            bound,
+            f"the run impacts {len(impacted)} judges and courts, more than the "
+            f"{settings.metrics_recompute_max_subjects} step 13 recomputes",
+            impacted=impacted,
+        )
     engine = compute_and_publish(
         session,
         settings,
         subjects=list(impacted),
         label=f"ingest run {run.id}",
         kinds=DESCRIPTIVE_KINDS,
+        retain=False,
     )
     run.metrics_snapshot_id = engine.published.snapshot_id
     session.add(run)
     session.flush()
     bound.info("ingest.metrics.recomputed", impacted=len(impacted), **engine.published.as_log())
     return RecomputeResult(impacted=impacted, engine=engine)
+
+
+def _defer(
+    run: IngestRun,
+    session: Session,
+    bound: Any,
+    because: str,
+    *,
+    impacted: tuple[Subject, ...] = (),
+) -> RecomputeResult:
+    """Record that step 13 was deferred to the next full ``metrics compute``, and why."""
+    reason = f"{because}; the next `metrics compute` recomputes them"
+    run.metrics_deferred_reason = reason
+    session.add(run)
+    session.flush()
+    bound.info("ingest.metrics.deferred", because=because)
+    return RecomputeResult(impacted=impacted, engine=None, deferred=reason)
 
 
 # --- run bookkeeping -----------------------------------------------------------

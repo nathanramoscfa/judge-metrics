@@ -486,10 +486,13 @@ def test_provenance_endpoint_answers_the_chain_and_404_for_unknown_or_superseded
         "snapshot",
         "model",
         "members",
+        "limit",
+        "offset",
         "source_records",
         "sources",
         "complete",
     }
+    assert (body["limit"], body["offset"]) == (100, 0)
     assert body["complete"] is True
     assert body["model"] is None  # a descriptive observation cites no model
     assert body["observation"]["id"] == observation["id"]
@@ -503,6 +506,7 @@ def test_provenance_endpoint_answers_the_chain_and_404_for_unknown_or_superseded
     group = body["members"][0]
     assert group["members"] == group["resolved"] == observation["eligible_count"]
     assert group["counted"] == observation["numerator"]
+    assert 0 < len(group["member_ids"]) <= 100 and group["cases"] >= len(group["case_ids"]) > 0
     assert group["case_ids"] and all(
         uuid.UUID(case_id) in golden_fixture.case_ids.values() for case_id in group["case_ids"]
     )

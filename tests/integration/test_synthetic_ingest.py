@@ -867,6 +867,58 @@ def test_step_13_recomputes_only_the_subjects_a_run_changed(
     assert lines[-1]["subjects_unchanged"] == len(judges) + len(courts) - 2
 
 
+@pytest.mark.parametrize(
+    ("limits", "fragment"),
+    [
+        ({"metrics_recompute_max_cases": 10}, "touched 60 cases, more than the 10"),
+        ({"metrics_recompute_max_subjects": 3}, "judges and courts, more than the 3"),
+    ],
+    ids=["cases", "subjects"],
+)
+def test_step_13_defers_a_run_beyond_the_declared_size_and_records_why(
+    clean_session: Session,
+    store: FilesystemRawObjectStore,
+    tmp_path: Path,
+    captured_logs: io.StringIO,
+    limits: dict[str, Any],
+    fragment: str,
+) -> None:
+    """A run that touches more than the declared size leaves its metrics to the next compute."""
+    session = clean_session
+    settings = _settings(
+        metrics_recompute_on_ingest=True, snapshot_dir=tmp_path / "snapshots", **limits
+    )
+    run = _run(session, store, settings=settings)
+    assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
+    # Nothing was exported, computed, or published inside the ingest transaction.
+    assert run.metrics_snapshot_id is None
+    assert run.metrics_deferred_reason is not None
+    assert fragment in run.metrics_deferred_reason
+    assert "next `metrics compute`" in run.metrics_deferred_reason
+    assert _count(session, "metric_observation") == 0
+    assert not (tmp_path / "snapshots").exists()
+    deferred = [
+        json.loads(line)
+        for line in captured_logs.getvalue().splitlines()
+        if '"ingest.metrics.deferred"' in line
+    ]
+    assert len(deferred) == 1 and fragment in deferred[0]["because"]
+    # The full compute publishes everything the run left.
+    full = compute_and_publish(session, settings, kinds=DESCRIPTIVE_KINDS)
+    assert full.published.observations_published > 0
+    assert _current_by_subject(session)
+
+
+def test_step_13_within_the_declared_size_records_no_deferral(
+    clean_session: Session, store: FilesystemRawObjectStore, tmp_path: Path
+) -> None:
+    session = clean_session
+    settings = _settings(metrics_recompute_on_ingest=True, snapshot_dir=tmp_path / "snapshots")
+    run = _run(session, store, settings=settings)
+    assert run.status is IngestRunStatus.SUCCEEDED, run.failure_reason
+    assert run.metrics_snapshot_id is not None and run.metrics_deferred_reason is None
+
+
 def test_step_13_neither_publishes_nor_supersedes_an_adjusted_observation(
     clean_session: Session, store: FilesystemRawObjectStore, tmp_path: Path
 ) -> None:

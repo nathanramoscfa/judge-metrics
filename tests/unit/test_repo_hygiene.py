@@ -568,13 +568,9 @@ def test_command_interface_targets_present() -> None:
     assert tasks["dev-api"] == "judgemetrics serve --reload"
     assert tasks["dev-web"] == "pnpm --dir web dev"
     assert tasks["ingest-fjc"] == "judgemetrics ingest run fjc"
-    # Phase 5 Steps 1 and 4: the Cook County ingest, outside the one-command demo; pipeline
-    # step 13 stays off for it (through the task's own `env` table, which poe applies on
-    # Windows and Ubuntu alike) until Step 6 makes the engine scale to the corpus.
-    assert tasks["ingest-cook"] == {
-        "cmd": "judgemetrics ingest run cook_sao",
-        "env": {"JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST": "false"},
-    }
+    # Phase 5 Steps 1, 4, and 6: the Cook County ingest, outside the one-command demo. Pipeline
+    # step 13 defers a run this large by the declared size (Step 6), so the task needs no `env`.
+    assert tasks["ingest-cook"] == "judgemetrics ingest run cook_sao"
     assert tasks["seed"] == "judgemetrics seed"
     assert tasks["compute-metrics"] == "judgemetrics metrics compute"
     # The one-command startup (Phase 3 Step 5): a sequence of idempotent stages;

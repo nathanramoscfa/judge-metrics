@@ -5708,9 +5708,9 @@ is New per phase-boundary hygiene.
 
 ---
 
-## Step 6 — The Metrics Engine at Corpus Scale
+## Step 6 — The Metrics Engine at Corpus Scale ✅
 
-**Status:** Not started
+**Status:** Complete — PR #60 (2026-10-10)
 
 > **Goal:** Make the full Cook County compute, its rerun, `metrics verify`, the
 > provenance trace, and pipeline step 13 run on the maintainer's machine within
@@ -6839,6 +6839,31 @@ New per phase-boundary hygiene.
       provenance (Step 6), beside
       the demo seed and the FJC
       data.
+    - Step 6 notes (2026-10-10):
+      `GET /metrics/{id}/provenance`
+      takes `limit` (1 to 1,000,
+      default 100) and `offset` and
+      echoes both; each member group
+      carries the totals over every
+      member (`members`, `counted`,
+      `followed`, `resolved`,
+      `cases`) and the page's
+      `member_ids` and `case_ids`,
+      and `complete` is judged over
+      every member, so a panel pages
+      with `offset` and never needs
+      the whole set. Observations
+      are cuts of member families
+      (`metric_member_family`); the
+      API never reads a family
+      directly. A median by offense
+      category loses the year of a
+      member without a value in a
+      year with no observation of
+      its category, so after the
+      migration the demo's medians
+      republish once (nothing a
+      reader sees changes).
     - API (this roadmap's Current
       State, "API and web surface"):
       21 paths and 19 `StrictQuery`
@@ -8341,7 +8366,7 @@ workflow above maps directly to the corresponding row below.
 | 3    | Attribution rules, tables, vocabulary 3        | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #54 |
 | 4    | Cook County connector at corpus scale          | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #55 |
 | 5    | Real-data semantics, coverage statistics       | Opus 5.5   | Claude Code | Effort XHigh   | On       | New  | Complete — PR #58 |
-| 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Not started |
+| 6    | Metrics engine at corpus scale                 | Sonnet 5.5 | Claude Code | Effort XHigh   | On       | New  | Complete — PR #60 |
 | 7    | Public surfaces for the first real source      | Sonnet 5.5 | Claude Code | Effort High    | On       | New  | Not started |
 | 8    | QA + verify_phase05.py                         | Opus 5.5   | Claude Code | Effort Medium  | On       | New  | Not started |
 | V1   | Due diligence, fetch, profile scope            | CI: phase-verify.yml, ci.yml | -- | --     | --       | --   | --          |

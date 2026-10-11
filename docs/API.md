@@ -412,11 +412,15 @@ that validation; since Step 5 the API serves them like any other kind
 route traces them. Every adjusted observation names its model (`model`),
 suppressed or not.
 
-`GET /metrics/{observation_id}/provenance` is the chain
+`GET /metrics/{observation_id}/provenance?limit=&offset=` is the chain
 (`docs/PROVENANCE.md`): the observation (the public shape above plus
 its registry and code versions), the snapshot (hash, label, export time,
 versions, row counts — never its storage path), the members grouped by
-kind with counts and the cases they belong to, the distinct source
+kind with counts over all of them (`members`, `counted`, `followed`,
+`resolved`, and the distinct `cases`) and one page of them (`member_ids` and
+the `case_ids` of those members, `limit` 1 to 1,000 and default 100, `offset`
+default 0, echoed in the body — the counts and `complete` cover every member,
+so a response is bounded however large the cohort is), the distinct source
 records with their sha256 digests, retrieval times, parser versions,
 runs, and public artifact URLs (an artifact read from the operator's
 filesystem shows `artifact_uri: null`), the source systems, and
@@ -572,7 +576,7 @@ statements at the cursor (`tests/integration/test_query_counts.py`):
 | registry                       | 0          | `GET /metrics` reads the registry file only                          |
 | subject metrics                | ≤ 2        | the subject with its synthetic flag, then its current observations joined to their definition, source, snapshot, and (outer) cited model |
 | compare                        | ≤ 2        | the page with its window count, the cohort's reference period, and the sort columns (an adjusted page sorted by `ratio` too); an empty page costs one more that also settles whether the cohort exists |
-| observation provenance         | ≤ 6        | three today: the observation with its definition, snapshot, source, and (outer) model; the members resolved to their rows; the distinct source records with their sources |
+| observation provenance         | ≤ 6        | three today (a fourth only for a page past the end of a non-empty set): the observation with its definition, snapshot, source, member family, and (outer) model; the totals over every member with one page of them resolved to their rows; the distinct source records with their sources |
 | model card                     | 1          | the model with its snapshot hash and source, while a current observation cites its snapshot; `storage_uri` is never selected |
 | correction                     | ≤ 2        | the target lookup and the `INSERT` — with no `RETURNING`             |
 

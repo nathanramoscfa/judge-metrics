@@ -19,40 +19,50 @@ The brief's chain, top-down, and where each link lives:
 | `metric_observation`                        | The number: subject, source, period, window, dimension, `eligible_count`, `cohort_size`, `observed_count`, rate, bounds, value, distribution, `suppressed_flag`, the registry, methodology, and code versions, `computed_at`, `superseded_at`. |
 | The snapshot                                | `metric_snapshot`: the content hash of the Parquet export the number was computed from, its label, export time, code version, row counts, and storage URI (`docs/ARCHITECTURE.md` "Metrics engine"). `metrics verify` recomputes the number from it. |
 | The outcome model (adjusted observations)   | Phase 4 Step 3: an `observed_expected` observation's `outcome_model_id` → the `outcome_model` row (content hash, specification and model versions, target, window, seed, status) and its canonical JSON artifact under the snapshot directory — the coefficients and bootstrap replicates the expected count, the pooled ratio, and the interval were computed from (`docs/ARCHITECTURE.md` "Observed-to-expected ratios"). `metrics verify` recomputes the number from the snapshot and that artifact. |
-| Eligible canonical events                   | `metric_observation_member`: one row per canonical row behind the number — `member_kind` (`decision`, `charge`, `court_case`, `sentence`, `court_event`, `justice_event`), `member_id`, `counted` (in the numerator), `followed` (in the denominator after censoring). Entity ids only, never a person id. |
-| Canonical cases, decisions, outcomes        | The member rows themselves, each with its `case_id` (a justice event's `related_case_id`) and its `source_record_id`. |
+| Eligible canonical events                   | The observation's **member family** (Phase 5 Step 6; `docs/DATA_MODEL.md` "Member families"): `metric_observation.member_family_id` → `metric_member_family` (`member_kind`: `decision`, `charge`, `court_case`, `sentence`, `court_event`, or `justice_event`; `members_hash`) and its `metric_member` rows — each canonical row once, with the calendar year, dimension value, and per-window `counted` and `followed` flags that cut it into the observations of every window and year. The observation's own members are a filter of the family (`MemberFamily.project`, in SQL `member_store.projection`). Entity ids only, never a person id. |
+| Canonical cases, decisions, outcomes        | The member rows themselves, each with its `case_id` (a justice event's `related_case_id`) and its `source_record_id`, resolved from the canonical table the family's kind names. |
 | `source_record`                             | One retrieved artifact: `external_record_id`, `raw_sha256`, `retrieved_at`, `parser_version`, `ingest_run_id`, the artifact URI in its `metadata`. |
 | Raw source artifact                         | The immutable object in the raw lake under the record's sha256 (`docs/ARCHITECTURE.md` "The raw lake"); its storage key is internal and never returned. |
 | Source system, retrieval time, checksum, parser version | The `source` row (key, owner, type, coverage window, observable outcomes) and the record's retrieval facts above. |
 
-`publish.check_chain` enforces the chain *before* an observation is
-written: every member id of every draft must be present in the
-snapshot's own tables, otherwise `ProvenanceError` is raised, nothing is
-written, and the caller rolls back. An observation whose chain cannot be
-reconstructed is therefore never published.
+`publish.check_chain` enforces the chain *before* a subject's observations
+are written: every member id of every draft's family must be present in the
+snapshot's own tables (a binary search of the family's distinct ids in the
+snapshot's sorted id column of the family's kind), otherwise `ProvenanceError`
+is raised, nothing of that subject is written, and the caller rolls back. An
+observation whose chain cannot be reconstructed is therefore never published.
 
 ## The trace
 
-`judgemetrics.metrics.provenance.trace(session, observation_id)`
-reconstructs the chain for one observation in three statements,
-whatever the observation holds:
+`judgemetrics.metrics.provenance.trace(session, observation_id, limit=100,
+offset=0)` reconstructs the chain for one observation in three statements,
+whatever the observation holds (a page of members past the end of a
+non-empty set costs a fourth, for the totals):
 
-1. the observation joined to its definition, its snapshot, its source,
-   and — outer-joined, so the count stays three — the outcome model an
-   adjusted observation cites;
-2. its members, each outer-joined to the canonical row its kind names,
-   yielding the row's case and `source_record_id` — a member whose row
-   no longer exists yields neither and is counted as unresolved;
-3. the distinct source records behind those rows joined to their
-   sources, built over the member statement as a subquery rather than
-   an `IN` list, so an observation with thousands of members never
-   exceeds the bind-parameter limit.
+1. the observation joined to its definition, its snapshot, its source, its
+   member family, and — outer-joined, so the count stays three — the outcome
+   model an adjusted observation cites;
+2. its members: the observation's cut of the family (the family's rows for its
+   calendar year, flag slot, and dimension value), each outer-joined to the
+   canonical row the family's kind names, yielding the row's case and
+   `source_record_id` — a member whose row no longer exists yields neither and
+   is counted as unresolved. The statement returns the **totals over every
+   member** (members, counted, followed, resolved, without a source record,
+   distinct cases) as window aggregates computed in the database before the page
+   is cut, and one **page** of members ordered by member id: `limit` (1 to
+   1,000, default 100) from `offset`;
+3. the distinct source records behind *all* the members (not only the page's)
+   joined to their sources, built over the same common table expression rather
+   than an `IN` list, so an observation with thousands of members never exceeds
+   the bind-parameter limit.
 
 The trace names no person, no hash of a person identifier, and never the
 lake's storage key (`raw_object_path` is not selected). Members are
 grouped by kind with counts (`members`, `counted`, `followed`,
-`resolved`) and the distinct case ids they belong to, which are what a
-reader can follow (`/cases/{id}`).
+`resolved`, and the distinct `cases`) and the page's `member_ids` and
+`case_ids` — the cases a reader can follow (`/cases/{id}`). A response is
+bounded by its page, so one request cannot pull a court's whole case list; the
+completeness rule below is judged over every member, never the page.
 
 ### The completeness rule
 
@@ -82,6 +92,7 @@ produced), and that `check_chain` refuses a draft naming a foreign id.
 ```sh
 uv run judgemetrics provenance trace <observation id>          # the chain as text
 uv run judgemetrics provenance trace <observation id> --json   # the same chain as JSON
+uv run judgemetrics provenance trace <observation id> --limit 20 --offset 40   # members 41-60
 ```
 
 Reads as the read-only role. Exit 0 when the chain is complete, 1 when
@@ -147,6 +158,7 @@ snapshot 2e0cfd16915a192975d4b3ae695da80e765bdef8fec4c74934901f7d4a0c7edf
 eligible canonical events: 9 member(s)
   decision: 9 (counted 1, followed 4); resolved 9; cases 9
 canonical cases: 9
+  members 1-9 of 9 (--limit 100); their cases:
   1b4ec1d4-80d8-4582-989c-ead4fee7142a
   1d9d4368-02b9-4d5f-a7c4-6a314c1b07a2
   36d3b147-fc05-43ce-a710-a36069207ac6
@@ -180,6 +192,6 @@ curl -s 'http://127.0.0.1:8000/api/v1/metrics/98793363-c99c-4bef-a700-31a1995dde
 
 returns `observation` (the public shape: `numerator`, `denominator`,
 `rate`, `lower`, `upper` null because it is suppressed), `snapshot`
-(without `storage_uri`), `members`, `source_records` (with
-`artifact_uri: null` for the fixture file), `sources`, and
-`complete: true`.
+(without `storage_uri`), `members` (by kind, with the page's `member_ids` and
+`case_ids`), the page's `limit` and `offset`, `source_records` (with
+`artifact_uri: null` for the fixture file), `sources`, and `complete: true`.

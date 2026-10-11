@@ -92,9 +92,9 @@ def _url(engine: Engine) -> str:
 def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database: Engine) -> None:
     snapshot = _snapshot(migrated_database)
     assert set(CANONICAL_TABLES) <= set(snapshot.tables)
-    # The brief's twenty-three, audit_log (0004), metric_snapshot and
-    # metric_observation_member (0005), outcome_model (0009).
-    assert len(CANONICAL_TABLES) == 28
+    # The brief's twenty-three, audit_log (0004), metric_snapshot (0005), outcome_model (0009),
+    # coverage_statistic (0012), and the member families (0013).
+    assert len(CANONICAL_TABLES) == 29
     assert EXPECTED_ENUMS <= set(snapshot.enums)
     assert "pg_trgm" in snapshot.extensions
     indexes = snapshot.indexes
@@ -159,8 +159,11 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     assert "ix_metric_observation_current" in indexes["metric_observation"]
     assert "ix_metric_observation_snapshot_id" in indexes["metric_observation"]
     assert "ix_metric_observation_source_id" in indexes["metric_observation"]
-    assert "ix_metric_observation_member_observation_id" in indexes["metric_observation_member"]
-    assert "ix_metric_observation_member_member" in indexes["metric_observation_member"]
+    # Revision 0013: the observation points at its member family; the old table is gone.
+    assert "ix_metric_observation_member_family_id" in indexes["metric_observation"]
+    assert "ix_metric_member_family_source_id" in indexes["metric_member_family"]
+    assert "ix_metric_member_family_snapshot_id" in indexes["metric_member_family"]
+    assert "metric_observation_member" not in snapshot.tables
     uniques = snapshot.uniques
     assert "court_case_number" in uniques["court_case"]
     assert "uq_person_public_person_key" in uniques["person"]
@@ -183,10 +186,12 @@ def test_upgrade_creates_every_canonical_table_enum_and_index(migrated_database:
     # Revision 0011: the Cook County judge identity, the charge's disposing judge.
     assert "uq_judge_external_ids_cook_sao_judge" in indexes["judge"]
     assert "ix_charge_judge_id" in indexes["charge"]
-    assert current_revision(migrated_database) == head_revision() == "0012"
+    assert current_revision(migrated_database) == head_revision() == "0013"
 
 
-def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -> None:
+def test_revision_0005_columns_and_key_and_0013_member_families(
+    migrated_database: Engine,
+) -> None:
     with migrated_database.connect() as connection:
         columns = {
             (table, column): (data_type, nullable == "YES")
@@ -220,14 +225,24 @@ def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -
         assert columns[(observation, "value")] == ("numeric", True)
         assert columns[(observation, "distribution")] == ("jsonb", True)
         assert columns[(observation, "superseded_at")] == ("timestamp with time zone", True)
-        member = "metric_observation_member"
-        assert columns[(member, "id")] == ("bigint", False)
-        assert columns[(member, "member_kind")] == ("text", False)
+        # Revision 0013: a member family and its rows (entity ids only: no person column).
+        family = "metric_member_family"
+        member = "metric_member"
+        assert columns[(observation, "member_family_id")] == ("uuid", False)
+        assert columns[(family, "members_hash")] == ("character", False)
+        assert columns[(family, "member_kind")] == ("text", False)
+        assert columns[(family, "row_count")] == ("integer", False)
+        assert columns[(family, "member_count")] == ("integer", False)
+        assert columns[(member, "family_id")] == ("uuid", False)
+        assert columns[(member, "ordinal")] == ("integer", False)
         assert columns[(member, "member_id")] == ("uuid", False)
-        assert columns[(member, "counted")] == ("boolean", False)
-        assert columns[(member, "followed")] == ("boolean", False)
-        # The member table carries entity ids only: no person column at all.
-        assert not any(table == member and "person" in column for table, column in columns)
+        assert columns[(member, "anchor_year")] == ("smallint", True)
+        assert columns[(member, "dimension_value")] == ("text", True)
+        assert columns[(member, "counted_mask")] == ("smallint", False)
+        assert columns[(member, "followed_mask")] == ("smallint", False)
+        assert columns[(member, "multiplicity")] == ("integer", False)
+        for table in (family, member):
+            assert not any(t == table and "person" in column for t, column in columns), table
         assert columns[("source", "coverage_start")] == ("date", True)
         assert columns[("source", "coverage_end")] == ("date", True)
         assert columns[("source", "observable_outcomes")] == ("jsonb", False)
@@ -255,11 +270,44 @@ def test_revision_0005_columns_key_and_member_check(migrated_database: Engine) -
             for row in connection.execute(
                 text(
                     "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
-                    "WHERE contype = 'c' AND conrelid = 'metric_observation_member'::regclass"
+                    "WHERE contype = 'c' AND conrelid IN "
+                    "('metric_member_family'::regclass, 'metric_member'::regclass)"
                 )
             )
         }
-        assert "member_kind" in checks["ck_metric_observation_member_member_kind"]
+        assert "member_kind" in checks["ck_metric_member_family_member_kind"]
+        assert "multiplicity > 0" in checks["ck_metric_member_multiplicity"]
+        assert "counted_mask >= 0" in checks["ck_metric_member_masks"]
+        rules = {
+            row[0]: row[1]
+            for row in connection.execute(
+                text(
+                    "SELECT rc.constraint_name, rc.delete_rule "
+                    "FROM information_schema.referential_constraints rc"
+                )
+            )
+        }
+        assert rules["fk_metric_observation_member_family_id_metric_member_family"] == "RESTRICT"
+        assert rules["fk_metric_member_family_id_metric_member_family"] == "CASCADE"
+        unique = connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_metric_member_family_key'")
+        ).scalar()
+        assert unique is not None and "members_hash" in unique and "snapshot_id" in unique
+        grants = {
+            (row[0], row[1])
+            for row in connection.execute(
+                text(
+                    "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
+                    "WHERE grantee = 'judgemetrics_app' "
+                    "AND table_name IN ('metric_member_family', 'metric_member')"
+                )
+            )
+        }
+        # The app role's access is what it was to the old member table: SELECT, nothing else.
+        assert grants == {
+            ("metric_member_family", "SELECT"),
+            ("metric_member", "SELECT"),
+        }
         default = connection.execute(
             text(
                 "SELECT column_default FROM information_schema.columns "
@@ -599,16 +647,27 @@ def test_revision_0003_columns_and_partial_index_predicate(migrated_database: En
 def test_upgrade_downgrade_upgrade_round_trip_is_identical(migrated_database: Engine) -> None:
     url = _url(migrated_database)
     before = _snapshot(migrated_database)
-    # 0012 goes first (coverage_statistic), then 0011 and 0010, then 0009: outcome_model.
+    # 0013 goes first (the member families, the old member table returns), then 0012
+    # (coverage_statistic), then 0011 and 0010, then 0009: outcome_model.
+    families = {"metric_member_family", "metric_member"}
+    downgrade(url, "0012")
+    assert current_revision(migrated_database) == "0012"
+    without_families = _snapshot(migrated_database)
+    assert without_families.tables == sorted(
+        (set(before.tables) - families) | {"metric_observation_member"}
+    )
     downgrade(url, "0011")
     assert current_revision(migrated_database) == "0011"
     without_coverage = _snapshot(migrated_database)
-    assert without_coverage.tables == sorted(set(before.tables) - {"coverage_statistic"})
+    assert without_coverage.tables == sorted(
+        (set(before.tables) - families - {"coverage_statistic"}) | {"metric_observation_member"}
+    )
     downgrade(url, "0008")
     assert current_revision(migrated_database) == "0008"
     without_models = _snapshot(migrated_database)
     assert without_models.tables == sorted(
-        set(before.tables) - {"outcome_model", "coverage_statistic"}
+        (set(before.tables) - families - {"outcome_model", "coverage_statistic"})
+        | {"metric_observation_member"}
     )
     assert without_models.restricted == before.restricted
     # 0008 next: the restricted schema goes, the ordinal party keys stay.

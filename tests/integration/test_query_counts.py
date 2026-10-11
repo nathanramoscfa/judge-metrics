@@ -291,6 +291,25 @@ def test_provenance_needs_at_most_six_statements(
         assert all("person_identifier" not in statement for statement in counter.statements)
 
 
+def test_a_page_of_provenance_members_is_still_three_statements(
+    counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
+) -> None:
+    """Paging changes the page, not the statements; a page past the end asks for the totals once more."""
+    client, counter = counted_metrics
+    judge_id = golden_fixture.judge_ids["J-0003"]
+    body = client.get(f"/api/v1/judges/{judge_id}/metrics").json()
+    observations = [item for group in body["observations"].values() for item in group]
+    biggest = max(observations, key=lambda o: o["eligible_count"])
+    path = f"/api/v1/metrics/{biggest['id']}/provenance"
+    for params in ({"limit": "5"}, {"limit": "5", "offset": "3"}, {"limit": "1000"}):
+        assert _count(counted_metrics, path, **params) == 3, params
+        assert len(counter.statements) == 3
+    assert _count(counted_metrics, path, limit="5", offset="100000") == 4
+    # The members statement names the family and the paging, never a person or the lake's key.
+    assert any("metric_member" in statement for statement in counter.statements)
+    assert all("person_identifier" not in statement for statement in counter.statements)
+
+
 def test_the_model_card_is_one_statement_and_never_selects_the_storage_uri(
     counted_metrics: tuple[TestClient, StatementCounter], golden_fixture: GoldenFixture
 ) -> None:

@@ -61,6 +61,9 @@ from judgemetrics.metrics.methodology import (
     SEMANTICS,
     adjustment_prose,
 )
+from judgemetrics.metrics.provenance import (
+    DEFAULT_LIMIT as DEFAULT_TRACE_LIMIT,
+)
 from judgemetrics.metrics.provenance import TracedModel, TraceError, trace
 from judgemetrics.metrics.registry import (
     OBSERVED_EXPECTED,
@@ -564,15 +567,28 @@ def _provenance_model(model: TracedModel) -> ProvenanceModel:
 
 
 def observation_provenance(
-    session: Session, settings: Settings, observation_id: uuid.UUID
+    session: Session,
+    settings: Settings,
+    observation_id: uuid.UUID,
+    *,
+    limit: int = DEFAULT_TRACE_LIMIT,
+    offset: int = 0,
 ) -> ObservationProvenance | None:
     """The chain behind a current observation of a served kind, else ``None`` (a 404).
 
     ``settings`` locate an adjusted observation's model artifact, which the
-    chain's ``complete`` requires.
+    chain's ``complete`` requires; ``limit`` and ``offset`` choose the page of members
+    listed (the counts and the completeness cover them all).
     """
     try:
-        traced = trace(session, observation_id, settings=settings, kinds=SERVED_KINDS)
+        traced = trace(
+            session,
+            observation_id,
+            limit=limit,
+            offset=offset,
+            settings=settings,
+            kinds=SERVED_KINDS,
+        )
     except TraceError:
         return None
     if traced.observation.superseded_at is not None:
@@ -647,10 +663,14 @@ def observation_provenance(
                 counted=group.counted,
                 followed=group.followed,
                 resolved=group.resolved,
+                cases=group.cases,
+                member_ids=list(group.member_ids),
                 case_ids=list(group.case_ids),
             )
             for group in traced.groups
         ],
+        limit=traced.limit,
+        offset=traced.offset,
         source_records=[
             SourceRecordOut(
                 id=record.id,

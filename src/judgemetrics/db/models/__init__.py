@@ -2,19 +2,21 @@
 """Every canonical entity of the brief, exported so Alembic autogenerate and
 the application see one complete ``Base.metadata``.
 
-Twenty-seven tables: the brief's twenty-three — jurisdiction, court, judge,
+Twenty-nine tables: the brief's twenty-three — jurisdiction, court, judge,
 judge_service, person, person_identifier, court_case, case_party,
 judge_assignment, charge, court_event, decision, pretrial_release,
 sentence, justice_event, source, source_record, ingest_run,
 entity_resolution_candidate, metric_definition, metric_observation,
 data_quality_issue, correction_request — the append-only audit_log the
 brief's security requirements ask for (revision 0004), the metrics
-engine's metric_snapshot and metric_observation_member (revision 0005),
-and the fitted expected-outcome models' outcome_model (revision 0009).
+engine's metric_snapshot (revision 0005), the fitted expected-outcome models'
+outcome_model (revision 0009), the coverage_statistic table (revision 0012), and the
+member families metric_member_family and metric_member (revision 0013, which replaced
+0005's metric_observation_member).
 
 Beside them, the ``restricted`` PostgreSQL schema (revision 0008) holds
 ``restricted.party_attribute``; its tables are listed in
-``RESTRICTED_SCHEMA_TABLES``, not among the twenty-seven public tables.
+``RESTRICTED_SCHEMA_TABLES``, not among the twenty-nine public tables.
 """
 
 from judgemetrics.db.base import Base
@@ -47,8 +49,9 @@ from judgemetrics.db.models.metrics import (
     MEMBER_KINDS,
     CoverageStatistic,
     MetricDefinition,
+    MetricMember,
+    MetricMemberFamily,
     MetricObservation,
-    MetricObservationMember,
     MetricSnapshot,
 )
 from judgemetrics.db.models.outcome_models import OUTCOME_MODEL_STATUSES, OutcomeModel
@@ -87,7 +90,8 @@ CANONICAL_TABLES: tuple[str, ...] = (
     "metric_definition",
     "metric_observation",
     "metric_snapshot",
-    "metric_observation_member",
+    "metric_member_family",
+    "metric_member",
     "outcome_model",
     "coverage_statistic",
     "data_quality_issue",
@@ -149,8 +153,9 @@ __all__ = [
     "JurisdictionType",
     "JusticeEvent",
     "MetricDefinition",
+    "MetricMember",
+    "MetricMemberFamily",
     "MetricObservation",
-    "MetricObservationMember",
     "MetricSnapshot",
     "OutcomeModel",
     "PartyAttribute",

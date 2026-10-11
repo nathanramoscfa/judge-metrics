@@ -158,11 +158,12 @@ ingest-fjc = "judgemetrics ingest run fjc"
 # Ingest (Phase 5): the five Cook County State's Attorney exports (about 1.2 GB)
 # streamed into the raw lake, parsed, and published as the ingest role; a rerun
 # downloads and parses nothing while the portal's rows-updated times are
-# unchanged. Pipeline step 13 (recompute the impacted metrics) is off for this
-# source until Step 6 makes the engine scale to it; the poe `env` table sets the
-# variable on every platform. Not part of `bootstrap`: a gigabyte download does
-# not belong in the one-command demo.
-ingest-cook = { cmd = "judgemetrics ingest run cook_sao", env = { JUDGEMETRICS_METRICS_RECOMPUTE_ON_INGEST = "false" } }
+# unchanged. Pipeline step 13 (recompute the impacted metrics) defers a run this
+# large by rule (docs/ARCHITECTURE.md "The step-13 rule": the run touches far more
+# than JUDGEMETRICS_METRICS_RECOMPUTE_MAX_CASES cases, records why on the run, and
+# leaves the figures to `compute-metrics`). Not part of `bootstrap`: a gigabyte
+# download does not belong in the one-command demo.
+ingest-cook = "judgemetrics ingest run cook_sao"
 # Seed: generate the demo-scale synthetic dataset (data/synthetic/20260916,
 # skipped when its manifest is current) and ingest it through the synthetic
 # connector as the ingest role; refused in production.

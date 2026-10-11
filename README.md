@@ -435,10 +435,12 @@ stored by its sha256, then parsed through the reviewed rule tables
 (`data/reference/cook_sao/`) into the canonical tables in one transaction
 (`docs/ARCHITECTURE.md` "Cook County connector"; its "Scale budgets" give
 the wall time and memory of a full run). The `ingest-cook` task turns
-pipeline step 13 (recompute the impacted metrics) off through its `env`
-table until Phase 5 Step 6 makes the engine scale to the corpus, so the
-source has no published figure yet (do not run `compute-metrics` over it
-before then). The SAO
+pipeline step 13 (recompute the impacted metrics) defers a run this large by
+its declared size (`docs/ARCHITECTURE.md` "The step-13 rule": the run records why
+on `ingest_run.metrics_deferred_reason`), so its figures come from
+`uv run poe compute-metrics`, which computes, publishes, and
+`uv run judgemetrics metrics verify` reproduces for the full corpus
+(Phase 5 Step 6; "Scale budgets" gives the wall time and memory). The SAO
 re-hashes every case and participant id for each release, so a new release is
 ingested after `ingest retire`, never over the old rows. The data stays on your machine: the raw lake and
 the database are never committed, and the only real rows in the
